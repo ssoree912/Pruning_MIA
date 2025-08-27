@@ -217,20 +217,27 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger
         target = target.cuda()
         
         # Forward pass
-        if config.pruning.enabled and config.pruning.method == 'dcil':
-            # DCIL with dual outputs
-            output = model(input, 0)  # Sparse output
-            output_full = model(input, 1)  # Full output
-            
-            # DCIL loss with KL divergence
-            if epoch < config.training.warmup_loss_epoch:
-                loss = criterion(output, target) + criterion(output_full, target)
+        if config.pruning.enabled:
+            if config.pruning.method == 'dcil':
+                # DCIL with dual outputs
+                output = model(input, 0)  # Sparse output
+                output_full = model(input, 1)  # Full output
+                
+                # DCIL loss with KL divergence
+                if epoch < config.training.warmup_loss_epoch:
+                    loss = criterion(output, target) + criterion(output_full, target)
+                else:
+                    # Simple KL loss implementation
+                    kl_loss = nn.KLDivLoss(reduction='batchmean')
+                    loss = (criterion(output, target) + criterion(output_full, target) + 
+                           kl_loss(torch.log_softmax(output, dim=1), torch.softmax(output_full, dim=1)) + 
+                           kl_loss(torch.log_softmax(output_full, dim=1), torch.softmax(output, dim=1)))
             else:
-                from run_dcil import KLLoss
-                criterion_kl = KLLoss().cuda()
-                loss = (criterion(output, target) + criterion(output_full, target) + 
-                       criterion_kl(output, output_full) + criterion_kl(output_full, output))
+                # Static or DPF - use sparse output (type_value=0)
+                output = model(input, 0)
+                loss = criterion(output, target)
         else:
+            # Dense model - no type_value needed
             output = model(input)
             loss = criterion(output, target)
         
@@ -292,9 +299,11 @@ def validate(model, val_loader, criterion, config, logger):
             input = input.cuda()
             target = target.cuda()
             
-            if config.pruning.enabled and config.pruning.method == 'dcil':
-                output = model(input, 0)  # Use sparse output for evaluation
+            if config.pruning.enabled:
+                # All pruning methods use sparse output (type_value=0) for evaluation
+                output = model(input, 0)
             else:
+                # Dense model - no type_value needed
                 output = model(input)
             
             loss = criterion(output, target)
