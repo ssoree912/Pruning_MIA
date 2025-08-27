@@ -23,8 +23,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import models
 import pruning
 from data import DataLoader
-from utils import AverageMeter, accuracy
 from mia import create_shadow_datasets
+
+# Import from root utils.py file
+import utils as root_utils
+AverageMeter = root_utils.AverageMeter
+accuracy = root_utils.accuracy
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Shadow Model Training for LiRA')
