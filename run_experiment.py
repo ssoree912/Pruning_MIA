@@ -22,14 +22,8 @@ import models
 import pruning
 from data import DataLoader
 
-# Import from root utils.py file
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-import utils as root_utils
-AverageMeter = root_utils.AverageMeter
-ProgressMeter = root_utils.ProgressMeter
-accuracy = root_utils.accuracy
-set_scheduler = root_utils.set_scheduler
-set_arch_name = root_utils.set_arch_name
+# Import common utilities
+from common_utils import AverageMeter, ProgressMeter, accuracy, set_scheduler, set_arch_name
 
 def create_model(config):
     """Create model based on configuration"""

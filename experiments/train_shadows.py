@@ -25,10 +25,8 @@ import pruning
 from data import DataLoader
 from mia import create_shadow_datasets
 
-# Import from root utils.py file
-import utils as root_utils
-AverageMeter = root_utils.AverageMeter
-accuracy = root_utils.accuracy
+# Import common utilities
+from common_utils import AverageMeter, accuracy
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Shadow Model Training for LiRA')

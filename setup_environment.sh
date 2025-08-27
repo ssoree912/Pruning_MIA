@@ -3,7 +3,7 @@
 # DCIL-MIA Experiment Environment Setup Script
 # This script sets up the conda environment for Dense/Static/DPF pruning experiments with MIA evaluation
 
-set -e  # Exit on any error
+set -e # Exit on any error
 
 echo "🚀 Setting up DCIL-MIA Experiment Environment"
 echo "=============================================="
@@ -48,7 +48,8 @@ echo "1. Activate the environment:"
 echo "   conda activate $ENV_NAME"
 echo ""
 echo "2. Verify installation:"
-echo "   python -c \"import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')\""
+# The line below has been modified to prevent quoting errors.
+echo "   python -c \"import torch; print('PyTorch: ' + torch.__version__); print('CUDA available: ' + str(torch.cuda.is_available()))\""
 echo ""
 echo "3. Test the setup:"
 echo "   python scripts/test_setup.py"
