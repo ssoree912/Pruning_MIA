@@ -26,7 +26,7 @@ def parse_args():
     # Experiment parameters
     parser.add_argument('--dataset', default='cifar10', choices=['cifar10', 'cifar100'])
     parser.add_argument('--arch', default='resnet', type=str)
-    parser.add_argument('--layers', default=18, type=int)
+    parser.add_argument('--layers', default=20, type=int)
     parser.add_argument('--seeds', nargs='+', type=int, default=[42, 123, 456],
                        help='Random seeds to run')
     

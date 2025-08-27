@@ -46,6 +46,10 @@ def create_model(config):
             model_mult=config.model.model_mult
         )
     
+    # Check if model creation failed
+    if model is None:
+        raise ValueError(f"Failed to create model: {config.model.arch} with {config.model.layers} layers for {config.data.dataset}")
+    
     return model, image_size
 
 def setup_training(model, config):

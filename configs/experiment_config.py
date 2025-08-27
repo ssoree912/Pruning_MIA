@@ -27,7 +27,7 @@ class DataConfig:
 class ModelConfig:
     """Model configuration"""
     arch: str = 'resnet'
-    layers: int = 18
+    layers: int = 20
     width_mult: float = 1.0
     depth_mult: float = 1.0
     model_mult: int = 0
@@ -302,7 +302,7 @@ def parse_config_args() -> ExperimentConfig:
     
     # Model parameters
     parser.add_argument('--arch', type=str, default='resnet')
-    parser.add_argument('--layers', type=int, default=18)
+    parser.add_argument('--layers', type=int, default=20)
     
     # Training parameters
     parser.add_argument('--epochs', type=int, default=200)
