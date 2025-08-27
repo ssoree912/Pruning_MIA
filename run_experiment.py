@@ -18,10 +18,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from configs.experiment_config import parse_config_args, setup_reproducibility
 from utils.logger import ExperimentLogger, get_system_info
+from utils import AverageMeter, ProgressMeter, accuracy, set_scheduler, set_arch_name
 import models
 import pruning
 from data import DataLoader
-from utils import *
 
 def create_model(config):
     """Create model based on configuration"""

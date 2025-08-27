@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pruning
 from data import DataLoader
-from utils import *
+from utils import AverageMeter, accuracy
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Dynamic Pruning (DPF) Training')
