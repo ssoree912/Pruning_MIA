@@ -288,7 +288,6 @@ class ResNet(nn.Module):
         else:
             x = self.bn1_full(x)
 
-        x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
