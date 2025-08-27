@@ -92,8 +92,6 @@ class Masker_full_use(torch.autograd.Function):
 
 
 
-
-
 class MaskConv2d(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
@@ -121,5 +119,6 @@ class MaskConv2d(nn.Conv2d):
         else:
             masked_weight = Masker_full.apply(self.weight, self.mask)
 
+        # PyTorch version compatibility
         return F.conv2d(input, masked_weight, self.bias, self.stride,
                         self.padding, self.dilation, self.groups)
