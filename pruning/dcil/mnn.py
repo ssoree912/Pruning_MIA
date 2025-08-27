@@ -15,6 +15,28 @@ class Masker(torch.autograd.Function):
         return grad, None
 
 
+class MaskerStatic(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, mask):
+        ctx.save_for_backward(mask)
+        return x * mask
+    
+    @staticmethod
+    def backward(ctx, grad_out):
+        (mask,) = ctx.saved_tensors
+        return grad_out * mask, None
+
+
+class MaskerDynamic(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, mask):
+        return x * mask
+    
+    @staticmethod
+    def backward(ctx, grad_out):
+        return grad_out, None
+
+
 class Masker_part(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, mask):
@@ -88,11 +110,14 @@ class MaskConv2d(nn.Conv2d):
             masked_weight = Masker_part.apply(self.weight, self.mask)
         elif self.type_value == 2:
             masked_weight = Masker.apply(self.weight, self.mask)
-
         elif self.type_value == 3:
             masked_weight = Masker_dis.apply(self.weight, self.mask)
         elif self.type_value == 4:
             masked_weight = Masker_full_use.apply(self.weight, self.mask)
+        elif self.type_value == 5:
+            masked_weight = MaskerStatic.apply(self.weight, self.mask)
+        elif self.type_value == 6:
+            masked_weight = MaskerDynamic.apply(self.weight, self.mask)
         else:
             masked_weight = Masker_full.apply(self.weight, self.mask)
 
