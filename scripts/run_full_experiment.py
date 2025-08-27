@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument('--max-parallel', type=int, default=1,
                        help='Maximum parallel jobs')
     parser.add_argument('--save-dir', default='./runs', type=str)
-    parser.add_argument('--datapath', default='../data', type=str)
+    parser.add_argument('--datapath', default='~/Datasets/CIFAR', type=str)
     parser.add_argument('--dry-run', action='store_true',
                        help='Print commands without running')
     
@@ -364,7 +364,7 @@ def generate_final_report(results: List[Dict], args):
     
     # Create results directory
     report_dir = Path(args.save_dir) / 'final_report'
-    report_dir.mkdir(exist_ok=True)
+    report_dir.mkdir(parents=True, exist_ok=True)
     
     # Summary statistics
     total_experiments = len(results)

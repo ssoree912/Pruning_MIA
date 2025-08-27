@@ -15,7 +15,7 @@ from pathlib import Path
 class DataConfig:
     """Data configuration"""
     dataset: str = 'cifar10'
-    datapath: str = '../data'
+    datapath: str = '~/Datasets/CIFAR'
     batch_size: int = 128
     workers: int = 4
     
@@ -296,7 +296,7 @@ def parse_config_args() -> ExperimentConfig:
     # Data parameters
     parser.add_argument('--dataset', type=str, default='cifar10',
                        choices=['cifar10', 'cifar100'])
-    parser.add_argument('--datapath', type=str, default='../data')
+    parser.add_argument('--datapath', type=str, default='~/Datasets/CIFAR')
     parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--workers', type=int, default=4)
     

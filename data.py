@@ -1,3 +1,4 @@
+import os
 import torch.utils.data
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10, CIFAR100
@@ -20,6 +21,9 @@ def _verify_dataset(dataset):
 
 
 def cifar10_loader(batch_size, num_workers, datapath, image_size=32, cuda=False):
+    # Expand user path (~ to full path)
+    datapath = os.path.expanduser(datapath)
+    
     normalize = transforms.Normalize(
         mean=[0.4914, 0.4822, 0.4465],
         std=[0.2023, 0.1994, 0.2010])
@@ -35,10 +39,10 @@ def cifar10_loader(batch_size, num_workers, datapath, image_size=32, cuda=False)
     ])
 
     trainset = CIFAR10(
-        root=datapath, train=True, download=True,
+        root=datapath, train=True, download=False,  # Changed to False since data already exists
         transform=transform_train)
     valset = CIFAR10(
-        root=datapath, train=False, download=True,
+        root=datapath, train=False, download=False,  # Changed to False since data already exists
         transform=transform_val)
 
     if cuda:
@@ -64,6 +68,9 @@ def cifar10_loader(batch_size, num_workers, datapath, image_size=32, cuda=False)
 
 
 def cifar100_loader(batch_size, num_workers, datapath, image_size=32, cuda=False):
+    # Expand user path (~ to full path)
+    datapath = os.path.expanduser(datapath)
+    
     normalize = transforms.Normalize(
         mean=[0.4914, 0.4822, 0.4465],
         std=[0.2023, 0.1994, 0.2010])
@@ -79,10 +86,10 @@ def cifar100_loader(batch_size, num_workers, datapath, image_size=32, cuda=False
     ])
 
     trainset = CIFAR100(
-        root=datapath, train=True, download=True,
+        root=datapath, train=True, download=False,  # Changed to False since data already exists
         transform=transform_train)
     valset = CIFAR100(
-        root=datapath, train=False, download=True,
+        root=datapath, train=False, download=False,  # Changed to False since data already exists
         transform=transform_val)
 
     if cuda:
