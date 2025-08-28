@@ -124,7 +124,7 @@ def merge_training_mia_data(training_df, mia_df):
 
 def create_privacy_utility_tradeoff(df, save_dir):
     """Create privacy-utility tradeoff analysis"""
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
     
     methods = ['Dense', 'Static', 'DPF']
     colors = {'Dense': '#2E8B57', 'Static': '#DC143C', 'DPF': '#4169E1'}
@@ -152,7 +152,12 @@ def create_privacy_utility_tradeoff(df, save_dir):
     ax1.set_xlabel('MIA Vulnerability (LiRA AUC)', fontsize=12)
     ax1.set_ylabel('Test Accuracy (%)', fontsize=12)
     ax1.set_title('Privacy-Utility Tradeoff (LiRA)', fontsize=14, fontweight='bold')
-    ax1.legend(fontsize=10)
+    
+    # Only add legend if we have labeled data
+    handles, labels = ax1.get_legend_handles_labels()
+    if handles:
+        ax1.legend(fontsize=10)
+    
     ax1.grid(True, alpha=0.3)
     
     # Add ideal region
@@ -190,7 +195,12 @@ def create_privacy_utility_tradeoff(df, save_dir):
     ax2.set_xlabel('Sparsity (%)', fontsize=12)
     ax2.set_ylabel('MIA Attack Success (Confidence)', fontsize=12)
     ax2.set_title('MIA Vulnerability vs Sparsity', fontsize=14, fontweight='bold')
-    ax2.legend(fontsize=10)
+    
+    # Only add legend if we have labeled data
+    handles, labels = ax2.get_legend_handles_labels()
+    if handles:
+        ax2.legend(fontsize=10)
+    
     ax2.grid(True, alpha=0.3)
     
     # 3. Multiple MIA Attacks Comparison
@@ -228,7 +238,12 @@ def create_privacy_utility_tradeoff(df, save_dir):
     ax3.set_title('Vulnerability to Different MIA Attacks', fontsize=14, fontweight='bold')
     ax3.set_xticks(x_pos + width)
     ax3.set_xticklabels(attack_labels, rotation=45)
-    ax3.legend(fontsize=10)
+    
+    # Only add legend if we have labeled data
+    handles, labels = ax3.get_legend_handles_labels()
+    if handles:
+        ax3.legend(fontsize=10)
+    
     ax3.grid(True, alpha=0.3)
     
     # 4. Privacy-Efficiency-Utility 3D Analysis (projected to 2D)
@@ -262,14 +277,20 @@ def create_privacy_utility_tradeoff(df, save_dir):
     ax4.legend(fontsize=10)
     ax4.grid(True, alpha=0.3)
     
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'privacy_utility_tradeoff.png'), dpi=300, bbox_inches='tight')
+    try:
+        plt.tight_layout()
+    except Exception as e:
+        print(f"Layout warning: {e}")
+        pass  # Continue even if tight_layout fails
+    
+    plt.savefig(os.path.join(save_dir, 'privacy_utility_tradeoff.png'), dpi=150, bbox_inches='tight', 
+                pad_inches=0.2, facecolor='white')
     plt.close()
 
 def create_mia_vulnerability_dashboard(df, save_dir):
     """Create comprehensive MIA vulnerability dashboard"""
-    fig = plt.figure(figsize=(20, 14))
-    gs = fig.add_gridspec(4, 4, hspace=0.4, wspace=0.3)
+    fig = plt.figure(figsize=(16, 12))
+    gs = fig.add_gridspec(3, 4, hspace=0.4, wspace=0.3)
     
     methods = ['Dense', 'Static', 'DPF']
     colors = {'Dense': '#2E8B57', 'Static': '#DC143C', 'DPF': '#4169E1'}
@@ -415,64 +436,8 @@ def create_mia_vulnerability_dashboard(df, save_dir):
     ax_attacks.legend()
     ax_attacks.grid(True, alpha=0.3)
     
-    # Privacy improvement analysis (row 3)
-    ax_improvement = fig.add_subplot(gs[2, :])
-    
-    # Calculate privacy improvement over dense baseline
-    dense_data = df[df['method'] == 'Dense']
-    if len(dense_data) > 0 and 'lira_auc' in dense_data.columns:
-        dense_vuln = dense_data['lira_auc'].mean()
-        
-        sparsity_levels = sorted(df[df['method'].isin(['Static', 'DPF'])]['sparsity_percent'].unique())
-        
-        static_improvements = []
-        dpf_improvements = []
-        
-        for sparsity in sparsity_levels:
-            # Static improvement
-            static_data = df[(df['method'] == 'Static') & (df['sparsity_percent'] == sparsity)]
-            if len(static_data) > 0 and 'lira_auc' in static_data.columns:
-                static_vuln = static_data['lira_auc'].mean()
-                static_improvement = (dense_vuln - static_vuln) / dense_vuln * 100
-                static_improvements.append(max(static_improvement, 0))
-            else:
-                static_improvements.append(0)
-            
-            # DPF improvement
-            dpf_data = df[(df['method'] == 'DPF') & (df['sparsity_percent'] == sparsity)]
-            if len(dpf_data) > 0 and 'lira_auc' in dpf_data.columns:
-                dpf_vuln = dpf_data['lira_auc'].mean()
-                dpf_improvement = (dense_vuln - dpf_vuln) / dense_vuln * 100
-                dpf_improvements.append(max(dpf_improvement, 0))
-            else:
-                dpf_improvements.append(0)
-        
-        x = np.arange(len(sparsity_levels))
-        width = 0.35
-        
-        bars1 = ax_improvement.bar(x - width/2, static_improvements, width, 
-                                 label='Static', color=colors['Static'], alpha=0.8)
-        bars2 = ax_improvement.bar(x + width/2, dpf_improvements, width, 
-                                 label='DPF', color=colors['DPF'], alpha=0.8)
-        
-        # Add value labels
-        for bars in [bars1, bars2]:
-            for bar in bars:
-                height = bar.get_height()
-                ax_improvement.text(bar.get_x() + bar.get_width()/2., height + 0.5,
-                                  f'{height:.1f}%', ha='center', va='bottom', fontsize=9)
-        
-        ax_improvement.set_xlabel('Sparsity Level (%)')
-        ax_improvement.set_ylabel('Privacy Improvement over Dense (%)')
-        ax_improvement.set_title('Privacy Benefits of Pruning')
-        ax_improvement.set_xticks(x)
-        ax_improvement.set_xticklabels([f'{int(s)}%' for s in sparsity_levels])
-        ax_improvement.legend()
-        ax_improvement.grid(True, alpha=0.3)
-        ax_improvement.set_ylim(0, None)
-    
-    # Key insights (row 4)
-    ax_insights = fig.add_subplot(gs[3, :])
+    # Key insights (row 3, spans all columns)
+    ax_insights = fig.add_subplot(gs[2, :])
     ax_insights.axis('off')
     
     # Calculate key insights
@@ -520,12 +485,13 @@ def create_mia_vulnerability_dashboard(df, save_dir):
     plt.suptitle('MIA Vulnerability Analysis: Privacy vs Utility Dashboard', 
                 fontsize=18, fontweight='bold', y=0.98)
     
-    plt.savefig(os.path.join(save_dir, 'mia_vulnerability_dashboard.png'), dpi=300, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, 'mia_vulnerability_dashboard.png'), dpi=150, bbox_inches='tight',
+                pad_inches=0.2, facecolor='white')
     plt.close()
 
 def create_comparative_mia_analysis(df, save_dir):
     """Create detailed comparative MIA analysis"""
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
     
     methods = ['Dense', 'Static', 'DPF']
     colors = {'Dense': '#2E8B57', 'Static': '#DC143C', 'DPF': '#4169E1'}
@@ -679,8 +645,14 @@ def create_comparative_mia_analysis(df, save_dir):
     ax4.set_ylim(0.5, 3.5)
     ax4.invert_yaxis()  # Better rank on top
     
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'comparative_mia_analysis.png'), dpi=300, bbox_inches='tight')
+    try:
+        plt.tight_layout()
+    except Exception as e:
+        print(f"Layout warning: {e}")
+        pass
+    
+    plt.savefig(os.path.join(save_dir, 'comparative_mia_analysis.png'), dpi=150, bbox_inches='tight',
+                pad_inches=0.2, facecolor='white')
     plt.close()
 
 def main():
