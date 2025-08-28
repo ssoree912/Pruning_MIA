@@ -1,0 +1,62 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dense vs Static vs DPF: Complete MIA Vulnerability Analysis</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1, h2 { color: #333; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        img { max-width: 100%; height: auto; margin: 20px 0; }
+        .section { margin: 40px 0; }
+    </style>
+</head>
+<body>
+    <h1>Dense vs Static vs DPF: Complete MIA Vulnerability Analysis</h1>
+    
+    <div class="section">
+        <h2>Experiment Overview</h2>
+        <p><strong>Total Experiments:</strong> 12</p>
+        <p><strong>Model Types:</strong> Dense, Static, DPF</p>
+        <p><strong>Sparsity Levels:</strong> 0.0, 0.5, 0.7, 0.8, 0.9, 0.95</p>
+        <p><strong>MIA Evaluation:</strong> Not Available</p>
+    </div>
+    
+    <div class="section">
+        <h2>Accuracy Comparison</h2>
+        <img src="accuracy_comparison.png" alt="Accuracy Comparison Plots">
+    </div>
+
+    <div class="section">
+        <h2>Summary Statistics</h2>
+        <table>
+<tr><th>Model Type</th><th>Sparsity</th><th>Best Acc1 Mean</th><th>Best Acc1 Std</th><th>Final Acc1 Mean</th><th>Final Acc1 Std</th><th>Total Duration Hours Mean</th><th>Total Duration Hours Std</th></tr>
+<tr><td>DPF</td><td>0.5000</td><td>91.9100</td><td>nan</td><td>91.3400</td><td>nan</td><td>0.4862</td><td>nan</td></tr>
+<tr><td>DPF</td><td>0.7000</td><td>91.0900</td><td>nan</td><td>90.7600</td><td>nan</td><td>0.4735</td><td>nan</td></tr>
+<tr><td>DPF</td><td>0.8000</td><td>90.5200</td><td>nan</td><td>90.1700</td><td>nan</td><td>0.4698</td><td>nan</td></tr>
+<tr><td>DPF</td><td>0.9000</td><td>89.8200</td><td>nan</td><td>89.5800</td><td>nan</td><td>0.4837</td><td>nan</td></tr>
+<tr><td>DPF</td><td>0.9500</td><td>88.9000</td><td>nan</td><td>88.5200</td><td>nan</td><td>0.4892</td><td>nan</td></tr>
+<tr><td>Dense</td><td>0.0000</td><td>92.4800</td><td>0.0849</td><td>92.3250</td><td>0.1061</td><td>0.4473</td><td>0.0009</td></tr>
+<tr><td>Static</td><td>0.5000</td><td>92.0400</td><td>nan</td><td>91.6500</td><td>nan</td><td>0.4785</td><td>nan</td></tr>
+<tr><td>Static</td><td>0.7000</td><td>91.0000</td><td>nan</td><td>90.5700</td><td>nan</td><td>0.4723</td><td>nan</td></tr>
+<tr><td>Static</td><td>0.8000</td><td>90.4700</td><td>nan</td><td>90.1400</td><td>nan</td><td>0.4705</td><td>nan</td></tr>
+<tr><td>Static</td><td>0.9000</td><td>88.1700</td><td>nan</td><td>88.1700</td><td>nan</td><td>0.5516</td><td>nan</td></tr>
+<tr><td>Static</td><td>0.9500</td><td>84.8500</td><td>nan</td><td>84.5500</td><td>nan</td><td>0.4850</td><td>nan</td></tr>
+
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Files</h2>
+        <ul>
+            <li><a href="summary_table.csv">Summary Table (CSV)</a></li>
+            <li><a href="comparison_table.tex">LaTeX Table</a></li>
+            <li><a href="accuracy_comparison.png">Accuracy Plots</a></li>
+
+        </ul>
+    </div>
+    
+</body>
+</html>

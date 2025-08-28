@@ -1,0 +1,12 @@
+model_type,sparsity,best_acc1_mean,best_acc1_std,final_acc1_mean,final_acc1_std,total_duration_hours_mean,total_duration_hours_std
+DPF,0.5,91.91,,91.34,,0.4862,
+DPF,0.7,91.09,,90.76,,0.4735,
+DPF,0.8,90.52,,90.17,,0.4698,
+DPF,0.9,89.82,,89.58,,0.4837,
+DPF,0.95,88.9,,88.52,,0.4892,
+Dense,0.0,92.48,0.0849,92.325,0.1061,0.4473,0.0009
+Static,0.5,92.04,,91.65,,0.4785,
+Static,0.7,91.0,,90.57,,0.4723,
+Static,0.8,90.47,,90.14,,0.4705,
+Static,0.9,88.17,,88.17,,0.5516,
+Static,0.95,84.85,,84.55,,0.485,
