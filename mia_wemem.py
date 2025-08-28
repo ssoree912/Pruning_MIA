@@ -264,18 +264,51 @@ def extract_model_info(runs_dir):
     """Extract information about all trained models"""
     models_info = {}
     
+    print(f"Scanning directory: {runs_dir}")
+    
     # Parse directory structure
     for model_dir in os.listdir(runs_dir):
-        if os.path.isdir(os.path.join(runs_dir, model_dir)):
+        model_path = os.path.join(runs_dir, model_dir)
+        if os.path.isdir(model_path):
+            print(f"Found directory: {model_dir}")
+            
             if model_dir.startswith('dense'):
                 models_info[model_dir] = {'type': 'dense', 'sparsity': 0.0}
             elif model_dir.startswith('static'):
-                sparsity = float(model_dir.split('sparsity')[1])
-                models_info[model_dir] = {'type': 'static', 'sparsity': sparsity}
+                # Handle formats like 'static_sparsity0.5' or 'static/sparsity0.5'
+                if 'sparsity' in model_dir:
+                    try:
+                        # Extract number after 'sparsity'
+                        sparsity_part = model_dir.split('sparsity')[1]
+                        # Remove any non-numeric suffixes
+                        sparsity_str = ''.join(c for c in sparsity_part if c.isdigit() or c == '.')
+                        sparsity = float(sparsity_str)
+                        models_info[model_dir] = {'type': 'static', 'sparsity': sparsity}
+                    except (IndexError, ValueError) as e:
+                        print(f"  Warning: Could not parse sparsity from {model_dir}: {e}")
+                        models_info[model_dir] = {'type': 'static', 'sparsity': 0.8}  # default
+                else:
+                    models_info[model_dir] = {'type': 'static', 'sparsity': 0.8}  # default
+                    
             elif model_dir.startswith('dpf'):
-                sparsity = float(model_dir.split('sparsity')[1])
-                models_info[model_dir] = {'type': 'dpf', 'sparsity': sparsity}
+                # Handle formats like 'dpf_sparsity0.5' or 'dpf/sparsity0.5'  
+                if 'sparsity' in model_dir:
+                    try:
+                        # Extract number after 'sparsity'
+                        sparsity_part = model_dir.split('sparsity')[1]
+                        # Remove any non-numeric suffixes
+                        sparsity_str = ''.join(c for c in sparsity_part if c.isdigit() or c == '.')
+                        sparsity = float(sparsity_str)
+                        models_info[model_dir] = {'type': 'dpf', 'sparsity': sparsity}
+                    except (IndexError, ValueError) as e:
+                        print(f"  Warning: Could not parse sparsity from {model_dir}: {e}")
+                        models_info[model_dir] = {'type': 'dpf', 'sparsity': 0.8}  # default
+                else:
+                    models_info[model_dir] = {'type': 'dpf', 'sparsity': 0.8}  # default
+            else:
+                print(f"  Skipping unknown directory: {model_dir}")
     
+    print(f"Parsed {len(models_info)} models: {list(models_info.keys())}")
     return models_info
 
 
