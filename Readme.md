@@ -73,17 +73,36 @@ python run_experiment.py --name dpf_80 --prune --prune-method dpf --sparsity 0.8
 - **Backward**: `grad = grad` (full gradient, weights can reactivate)
 - **Characteristic**: Dense gradient updates with selective reactivation
 
-## 📊 Results
+## 📊 Results & Analysis
 
-### Model Performance
+### Quick Analysis
+```bash
+# Complete analysis: Training + MIA + Visualization
+./create_complete_analysis.sh
+```
+
+### Training Performance
 Results saved in `runs/final_report/`:
 - `experiments_comparison.csv`: Accuracy vs Sparsity comparison
 - `comprehensive_report.json`: Detailed training metrics
 
-### MIA Vulnerability  
-Results saved in `results/wemem_mia/`:
-- `wemem_mia_summary.csv`: Attack success rates comparison
-- `wemem_mia_results.json`: Detailed attack results
+### MIA Vulnerability Analysis
+Results saved in `results/advanced_mia/`:
+- `advanced_mia_summary.csv`: Multiple attack success rates
+- `advanced_mia_results.json`: Detailed attack results (LiRA, Shokri-NN, etc.)
+
+### Comprehensive Visualization
+Generated plots in `results/`:
+- **Training Analysis** (`training_visualization/`):
+  - `accuracy_comparison.png`: Accuracy vs sparsity trends
+  - `efficiency_analysis.png`: Training time and efficiency
+  - `sparsity_analysis.png`: Static vs DPF detailed comparison
+  - `comprehensive_dashboard.png`: Complete performance dashboard
+
+- **MIA Analysis** (`mia_visualization/`):
+  - `privacy_utility_tradeoff.png`: Privacy vs utility analysis
+  - `mia_vulnerability_dashboard.png`: Comprehensive MIA dashboard
+  - `comparative_mia_analysis.png`: Attack-specific comparisons
 
 ## 🛠️ Dependencies
 
