@@ -1,0 +1,739 @@
+{
+  "experiment_info": {
+    "dataset": "cifar10",
+    "architecture": "resnet-18",
+    "seeds": [
+      42
+    ],
+    "sparsity_levels": [
+      0.5,
+      0.7,
+      0.8,
+      0.9,
+      0.95
+    ],
+    "total_experiments": 11,
+    "successful_experiments": 11,
+    "failed_experiments": 0,
+    "success_rate": 1.0,
+    "total_runtime_hours": 0.0,
+    "average_runtime_hours": 0.0
+  },
+  "results": [
+    {
+      "config": {
+        "name": "dense_seed42",
+        "description": "Dense resnet-18 baseline (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": false,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dense_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.5_seed42",
+        "description": "Static pruning 50% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.5_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.7_seed42",
+        "description": "Static pruning 70% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.7_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.8_seed42",
+        "description": "Static pruning 80% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.8_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.9_seed42",
+        "description": "Static pruning 90% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.9_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.95_seed42",
+        "description": "Static pruning 95% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.95_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.5_seed42",
+        "description": "DPF pruning 50% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.5_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.7_seed42",
+        "description": "DPF pruning 70% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.7_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.8_seed42",
+        "description": "DPF pruning 80% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.8_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.9_seed42",
+        "description": "DPF pruning 90% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.9_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.95_seed42",
+        "description": "DPF pruning 95% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 18,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.95_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 0,
+      "error": null
+    }
+  ]
+}

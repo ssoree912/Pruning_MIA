@@ -1,0 +1,12 @@
+experiment_name,model_type,sparsity,seed,success,runtime_hours,error
+dense_seed42,dense,0.0,42,True,0.0,
+static_sparsity0.5_seed42,static,0.5,42,True,0.0,
+static_sparsity0.7_seed42,static,0.7,42,True,0.0,
+static_sparsity0.8_seed42,static,0.8,42,True,0.0,
+static_sparsity0.9_seed42,static,0.9,42,True,0.0,
+static_sparsity0.95_seed42,static,0.95,42,True,0.0,
+dpf_sparsity0.5_seed42,dpf,0.5,42,True,0.0,
+dpf_sparsity0.7_seed42,dpf,0.7,42,True,0.0,
+dpf_sparsity0.8_seed42,dpf,0.8,42,True,0.0,
+dpf_sparsity0.9_seed42,dpf,0.9,42,True,0.0,
+dpf_sparsity0.95_seed42,dpf,0.95,42,True,0.0,

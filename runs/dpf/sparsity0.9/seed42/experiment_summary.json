@@ -1,0 +1,96 @@
+{
+  "experiment_name": "dpf_sparsity0.9",
+  "start_time": 1756328786.5934153,
+  "end_time": 1756330528.0466652,
+  "total_duration": 1741.4532113075256,
+  "hyperparameters": {
+    "name": "dpf_sparsity0.9",
+    "description": "",
+    "save_dir": "./runs",
+    "data": {
+      "dataset": "cifar10",
+      "datapath": "/home/20203168/Datasets/CIFAR",
+      "batch_size": 128,
+      "workers": 4
+    },
+    "model": {
+      "arch": "resnet",
+      "layers": 20,
+      "width_mult": 1.0,
+      "depth_mult": 1.0,
+      "model_mult": 0
+    },
+    "training": {
+      "epochs": 200,
+      "lr": 0.1,
+      "momentum": 0.9,
+      "weight_decay": 0.0005,
+      "nesterov": false,
+      "scheduler": "multistep",
+      "milestones": [
+        100,
+        150
+      ],
+      "gamma": 0.1,
+      "step_size": 30,
+      "warmup_lr": 0.1,
+      "warmup_lr_epoch": 0,
+      "warmup_loss_epoch": 70
+    },
+    "pruning": {
+      "enabled": true,
+      "method": "dpf",
+      "sparsity": 0.9,
+      "prune_freq": 16,
+      "target_epoch": 75,
+      "prune_type": "unstructured",
+      "importance_method": "L1"
+    },
+    "mia": {
+      "enabled": false,
+      "attack_type": "lira",
+      "num_shadow_models": 64,
+      "shadow_epochs": 200,
+      "recalibrate": false
+    },
+    "system": {
+      "gpu": 0,
+      "seed": 42,
+      "deterministic": true,
+      "benchmark": true,
+      "print_freq": 100,
+      "save_freq": 10
+    }
+  },
+  "system_info": {
+    "platform": "Linux-5.14.0-503.40.1.el9_5.x86_64-x86_64-with-glibc2.35",
+    "python_version": "3.9.18",
+    "pytorch_version": "2.1.0",
+    "cuda_available": true,
+    "cpu_count": 4,
+    "memory_total_gb": 11.0,
+    "timestamp": 1756328786.6442187,
+    "cuda_version": "11.8",
+    "gpu_count": 1,
+    "gpu_names": [
+      "NVIDIA GeForce RTX 3090"
+    ],
+    "model_info": {
+      "model_type": "pruned",
+      "total_parameters": 544948,
+      "trainable_parameters": 274692,
+      "sparsity": 0.9,
+      "timestamp": 1756328786.8405585
+    }
+  },
+  "final_metrics": {
+    "timestamp": 1756330528.027005,
+    "acc1": 89.57999420166016,
+    "acc5": 99.68999481201172,
+    "loss": 0.31675168337821963
+  },
+  "best_metrics": {
+    "best_acc1": 89.81999969482422,
+    "best_loss": 0.3082638479232788
+  }
+}

@@ -1,0 +1,2171 @@
+{
+  "experiment_info": {
+    "dataset": "cifar10",
+    "architecture": "resnet-20",
+    "seeds": [
+      42,
+      123,
+      456
+    ],
+    "sparsity_levels": [
+      0.5,
+      0.7,
+      0.8,
+      0.9,
+      0.95
+    ],
+    "total_experiments": 33,
+    "successful_experiments": 12,
+    "failed_experiments": 21,
+    "success_rate": 0.36363636363636365,
+    "total_runtime_hours": 5.633542802929878,
+    "average_runtime_hours": 0.17071341827060235
+  },
+  "results": [
+    {
+      "config": {
+        "name": "dense_seed42",
+        "description": "Dense resnet-20 baseline (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": false,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dense_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1595.2548143863678,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.5_seed42",
+        "description": "Static pruning 50% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.5_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1679.2839965820312,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.7_seed42",
+        "description": "Static pruning 70% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.7_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1731.755718946457,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.8_seed42",
+        "description": "Static pruning 80% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.8_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1731.831135749817,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.9_seed42",
+        "description": "Static pruning 90% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.9_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1638.9416325092316,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.95_seed42",
+        "description": "Static pruning 95% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.95_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1722.72416472435,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.5_seed42",
+        "description": "DPF pruning 50% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.5_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1728.0654916763306,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.7_seed42",
+        "description": "DPF pruning 70% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.7_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1696.391081571579,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.8_seed42",
+        "description": "DPF pruning 80% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.8_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1663.3634872436523,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.9_seed42",
+        "description": "DPF pruning 90% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.9_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1663.0899510383606,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.95_seed42",
+        "description": "DPF pruning 95% (seed=42)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 42,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.95_seed42_gpu0.yaml",
+      "success": true,
+      "runtime": 1733.6671380996704,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "dense_seed123",
+        "description": "Dense resnet-20 baseline (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": false,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dense_seed123_gpu0.yaml",
+      "success": true,
+      "runtime": 1635.641131401062,
+      "error": null
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.5_seed123",
+        "description": "Static pruning 50% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.5_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 11.317216396331787,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.7_seed123",
+        "description": "Static pruning 70% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.7_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.3487160205841064,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.8_seed123",
+        "description": "Static pruning 80% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.8_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.3328516483306885,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.9_seed123",
+        "description": "Static pruning 90% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.9_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.3455655574798584,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.95_seed123",
+        "description": "Static pruning 95% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.95_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.5208725929260254,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.5_seed123",
+        "description": "DPF pruning 50% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.5_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.4349467754364014,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.7_seed123",
+        "description": "DPF pruning 70% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.7_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.67657470703125,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.8_seed123",
+        "description": "DPF pruning 80% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.8_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.6051700115203857,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.9_seed123",
+        "description": "DPF pruning 90% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.9_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.496812105178833,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.95_seed123",
+        "description": "DPF pruning 95% (seed=123)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 123,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.95_seed123_gpu0.yaml",
+      "success": false,
+      "runtime": 2.529419422149658,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dense_seed456",
+        "description": "Dense resnet-20 baseline (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": false,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dense_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.4351508617401123,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.5_seed456",
+        "description": "Static pruning 50% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.5_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.6935503482818604,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.7_seed456",
+        "description": "Static pruning 70% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.7_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.3691470623016357,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.8_seed456",
+        "description": "Static pruning 80% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.8_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.405428409576416,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.9_seed456",
+        "description": "Static pruning 90% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.9_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.5722594261169434,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "static_sparsity0.95_seed456",
+        "description": "Static pruning 95% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "static",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/static_sparsity0.95_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.4798383712768555,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.5_seed456",
+        "description": "DPF pruning 50% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.5,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.5_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.478304862976074,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.7_seed456",
+        "description": "DPF pruning 70% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.7,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.7_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.5487871170043945,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.8_seed456",
+        "description": "DPF pruning 80% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.8,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.8_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.415250539779663,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.9_seed456",
+        "description": "DPF pruning 90% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.9,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.9_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.3211097717285156,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    },
+    {
+      "config": {
+        "name": "dpf_sparsity0.95_seed456",
+        "description": "DPF pruning 95% (seed=456)",
+        "save_dir": "./runs",
+        "data": {
+          "dataset": "cifar10",
+          "datapath": "~/Datasets/CIFAR",
+          "batch_size": 128,
+          "workers": 4
+        },
+        "model": {
+          "arch": "resnet",
+          "layers": 20,
+          "width_mult": 1.0,
+          "depth_mult": 1.0,
+          "model_mult": 0
+        },
+        "training": {
+          "epochs": 200,
+          "lr": 0.1,
+          "momentum": 0.9,
+          "weight_decay": 0.0005,
+          "nesterov": false,
+          "scheduler": "multistep",
+          "milestones": [
+            100,
+            150
+          ],
+          "gamma": 0.1,
+          "step_size": 30,
+          "warmup_lr": 0.1,
+          "warmup_lr_epoch": 0,
+          "warmup_loss_epoch": 70
+        },
+        "pruning": {
+          "enabled": true,
+          "method": "dpf",
+          "sparsity": 0.95,
+          "prune_freq": 16,
+          "target_epoch": 75,
+          "prune_type": "unstructured",
+          "importance_method": "L1"
+        },
+        "mia": {
+          "enabled": false,
+          "attack_type": "lira",
+          "num_shadow_models": 64,
+          "shadow_epochs": 200,
+          "recalibrate": false
+        },
+        "system": {
+          "gpu": 0,
+          "seed": 456,
+          "deterministic": true,
+          "benchmark": true,
+          "print_freq": 100,
+          "save_freq": 10
+        }
+      },
+      "command": "python run_experiment.py --config temp_configs/dpf_sparsity0.95_seed456_gpu0.yaml",
+      "success": false,
+      "runtime": 2.417374610900879,
+      "error": "Exit code 1: Traceback (most recent call last):\n  File \"/home/20203168/prunning/run_experiment.py\", line 22, in <module>\n    import pruning\n  File \"/home/20203168/prunning/pruning/__init__.py\", line 3, in <module>\n    from .dcil import *\n  File \"/home/20203168/prunning/pruning/dcil/__init__.py\", line 1, in <module>\n    from .mnn import *\n  File \"/home/20203168/prunning/pruning/dcil/mnn.py\", line 125\n    self.padding, self.dilation, self.groups)import torch\n                                             ^\nSyntaxError: invalid syntax\n"
+    }
+  ]
+}

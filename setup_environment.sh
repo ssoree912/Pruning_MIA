@@ -1,11 +1,11 @@
-#!/bin/bash
+d#!/bin/bash
 
 # DCIL-MIA Experiment Environment Setup Script
 # This script sets up the conda environment for Dense/Static/DPF pruning experiments with MIA evaluation
 
 set -e # Exit on any error
 
-echo "🚀 Setting up DCIL-MIA Experiment Environment"
+echo "🚀 Setting up DCIL-MIA Experiment Enviroddnment"
 echo "=============================================="
 
 # Check if conda is installed

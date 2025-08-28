@@ -1,0 +1,74 @@
+2025-08-27 17:01:10,923 - INFO - Starting experiment: test_static
+2025-08-27 17:01:10,923 - INFO - Save directory: ./runs/static/sparsity0.8/seed42
+2025-08-27 17:01:10,923 - INFO - Hyperparameters:
+2025-08-27 17:01:10,923 - INFO -   name: test_static
+2025-08-27 17:01:10,923 - INFO -   description: 
+2025-08-27 17:01:10,923 - INFO -   save_dir: ./runs
+2025-08-27 17:01:10,924 - INFO -   data: {'dataset': 'cifar10', 'datapath': '~/Datasets/CIFAR', 'batch_size': 128, 'workers': 4}
+2025-08-27 17:01:10,924 - INFO -   model: {'arch': 'resnet', 'layers': 20, 'width_mult': 1.0, 'depth_mult': 1.0, 'model_mult': 0}
+2025-08-27 17:01:10,924 - INFO -   training: {'epochs': 5, 'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0.0005, 'nesterov': False, 'scheduler': 'multistep', 'milestones': [100, 150], 'gamma': 0.1, 'step_size': 30, 'warmup_lr': 0.1, 'warmup_lr_epoch': 0, 'warmup_loss_epoch': 70}
+2025-08-27 17:01:10,924 - INFO -   pruning: {'enabled': True, 'method': 'static', 'sparsity': 0.8, 'prune_freq': 16, 'target_epoch': 75, 'prune_type': 'unstructured', 'importance_method': 'L1'}
+2025-08-27 17:01:10,924 - INFO -   mia: {'enabled': False, 'attack_type': 'lira', 'num_shadow_models': 64, 'shadow_epochs': 200, 'recalibrate': False}
+2025-08-27 17:01:10,924 - INFO -   system: {'gpu': 0, 'seed': 42, 'deterministic': True, 'benchmark': True, 'print_freq': 100, 'save_freq': 10}
+2025-08-27 17:01:10,954 - INFO - System Information:
+2025-08-27 17:01:10,955 - INFO -   platform: Linux-5.14.0-503.40.1.el9_5.x86_64-x86_64-with-glibc2.35
+2025-08-27 17:01:10,955 - INFO -   python_version: 3.9.18
+2025-08-27 17:01:10,955 - INFO -   pytorch_version: 2.1.0
+2025-08-27 17:01:10,955 - INFO -   cuda_available: True
+2025-08-27 17:01:10,955 - INFO -   cpu_count: 4
+2025-08-27 17:01:10,955 - INFO -   memory_total_gb: 11.0
+2025-08-27 17:01:10,955 - INFO -   timestamp: 1756281670.9548328
+2025-08-27 17:01:10,955 - INFO -   cuda_version: 11.8
+2025-08-27 17:01:10,955 - INFO -   gpu_count: 1
+2025-08-27 17:01:10,955 - INFO -   gpu_names: ['NVIDIA GeForce RTX 3090']
+2025-08-27 17:01:10,961 - INFO - Starting experiment: test_static
+2025-08-27 17:01:10,961 - INFO - Model: resnet-20
+2025-08-27 17:01:10,961 - INFO - Dataset: cifar10
+2025-08-27 17:01:10,961 - INFO - Pruning: static (80.00%)
+2025-08-27 17:01:11,634 - INFO - Model Information:
+2025-08-27 17:01:11,634 - INFO -   Type: pruned
+2025-08-27 17:01:11,634 - INFO -   Total parameters: 544,948
+2025-08-27 17:01:11,634 - INFO -   Trainable parameters: 274,692
+2025-08-27 17:01:11,634 - INFO -   Sparsity: 80.00%
+2025-08-27 17:01:11,634 - INFO - Applying static pruning with 80.00% sparsity
+2025-08-27 17:01:14,325 - INFO - Pruning info: sparsity=0.800
+2025-08-27 17:01:16,422 - INFO - Starting training...
+2025-08-27 17:01:16,422 - INFO - 
+Epoch: 0, lr = 0.1
+2025-08-27 17:29:10,876 - INFO - Starting experiment: test_static
+2025-08-27 17:29:10,876 - INFO - Save directory: ./runs/static/sparsity0.8/seed42
+2025-08-27 17:29:10,877 - INFO - Hyperparameters:
+2025-08-27 17:29:10,877 - INFO -   name: test_static
+2025-08-27 17:29:10,877 - INFO -   description: 
+2025-08-27 17:29:10,877 - INFO -   save_dir: ./runs
+2025-08-27 17:29:10,877 - INFO -   data: {'dataset': 'cifar10', 'datapath': '~/Datasets/CIFAR', 'batch_size': 128, 'workers': 4}
+2025-08-27 17:29:10,877 - INFO -   model: {'arch': 'resnet', 'layers': 20, 'width_mult': 1.0, 'depth_mult': 1.0, 'model_mult': 0}
+2025-08-27 17:29:10,877 - INFO -   training: {'epochs': 2, 'lr': 0.1, 'momentum': 0.9, 'weight_decay': 0.0005, 'nesterov': False, 'scheduler': 'multistep', 'milestones': [100, 150], 'gamma': 0.1, 'step_size': 30, 'warmup_lr': 0.1, 'warmup_lr_epoch': 0, 'warmup_loss_epoch': 70}
+2025-08-27 17:29:10,877 - INFO -   pruning: {'enabled': True, 'method': 'static', 'sparsity': 0.8, 'prune_freq': 16, 'target_epoch': 75, 'prune_type': 'unstructured', 'importance_method': 'L1'}
+2025-08-27 17:29:10,877 - INFO -   mia: {'enabled': False, 'attack_type': 'lira', 'num_shadow_models': 64, 'shadow_epochs': 200, 'recalibrate': False}
+2025-08-27 17:29:10,877 - INFO -   system: {'gpu': 0, 'seed': 42, 'deterministic': True, 'benchmark': True, 'print_freq': 100, 'save_freq': 10}
+2025-08-27 17:29:10,911 - INFO - System Information:
+2025-08-27 17:29:10,911 - INFO -   platform: Linux-5.14.0-503.40.1.el9_5.x86_64-x86_64-with-glibc2.35
+2025-08-27 17:29:10,911 - INFO -   python_version: 3.9.18
+2025-08-27 17:29:10,911 - INFO -   pytorch_version: 2.1.0
+2025-08-27 17:29:10,911 - INFO -   cuda_available: True
+2025-08-27 17:29:10,911 - INFO -   cpu_count: 4
+2025-08-27 17:29:10,911 - INFO -   memory_total_gb: 11.0
+2025-08-27 17:29:10,911 - INFO -   timestamp: 1756283350.9108753
+2025-08-27 17:29:10,911 - INFO -   cuda_version: 11.8
+2025-08-27 17:29:10,911 - INFO -   gpu_count: 1
+2025-08-27 17:29:10,911 - INFO -   gpu_names: ['NVIDIA GeForce RTX 3090']
+2025-08-27 17:29:10,917 - INFO - Starting experiment: test_static
+2025-08-27 17:29:10,917 - INFO - Model: resnet-20
+2025-08-27 17:29:10,917 - INFO - Dataset: cifar10
+2025-08-27 17:29:10,917 - INFO - Pruning: static (80.00%)
+2025-08-27 17:29:11,076 - INFO - Model Information:
+2025-08-27 17:29:11,076 - INFO -   Type: pruned
+2025-08-27 17:29:11,076 - INFO -   Total parameters: 544,948
+2025-08-27 17:29:11,076 - INFO -   Trainable parameters: 274,692
+2025-08-27 17:29:11,077 - INFO -   Sparsity: 80.00%
+2025-08-27 17:29:11,077 - INFO - Applying static pruning with 80.00% sparsity
+2025-08-27 17:29:11,191 - INFO - Pruning info: sparsity=0.800
+2025-08-27 17:29:12,174 - INFO - Starting training...
+2025-08-27 17:29:12,174 - INFO - 
+Epoch: 0, lr = 0.1
