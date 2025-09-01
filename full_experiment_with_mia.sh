@@ -9,7 +9,7 @@ echo "3단계: 종합 결과 분석"
 echo ""
 
 # 설정
-EPOCHS=5    # 테스트용 (실제는 200)
+EPOCHS=200  # 완전 훈련
 GPU=0
 
 echo "🕐 실험 시작: $(date)"
