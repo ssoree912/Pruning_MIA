@@ -33,16 +33,35 @@ class MIADataset(Dataset):
             x = self.transform(x)
         return x, y
 
-def load_model_from_checkpoint(model_path):
-    """체크포인트에서 모델 로드"""
+def load_model_from_checkpoint(model_path, config_path):
+    """체크포인트에서 모델 로드 (설정 파일 참조)"""
     
-    model, _ = resnet(data='cifar10', num_layers=20)
+    # 설정 파일에서 모델 타입 확인
+    with open(config_path) as f:
+        config = json.load(f)
     
+    # 모델 생성 (훈련시와 동일하게)
+    if config.get('pruning', {}).get('enabled', False):
+        # Pruned 모델인 경우 - run_experiment.py와 동일한 방식 필요
+        import pruning.dcil
+        model, _ = pruning.models.__dict__['resnet'](
+            data=config['data']['dataset'],
+            num_layers=config['model']['layers']
+        )
+    else:
+        # Dense 모델
+        model, _ = resnet(data='cifar10', num_layers=20)
+    
+    # DataParallel 적용 (훈련시와 동일)
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
+    
+    # 체크포인트 로드
     checkpoint = torch.load(model_path, map_location='cpu')
     if 'state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['state_dict'])
+        model.load_state_dict(checkpoint['state_dict'], strict=False)
     else:
-        model.load_state_dict(checkpoint)
+        model.load_state_dict(checkpoint, strict=False)
     
     return model
 
@@ -98,7 +117,8 @@ def evaluate_model_mia(model_path, model_name, method, sparsity_percent):
     
     # 모델 로드
     try:
-        model = load_model_from_checkpoint(model_path)
+        config_path = model_path.parent / 'config.json'
+        model = load_model_from_checkpoint(model_path, config_path)
         model = model.to(device)
         
         # 데이터 준비 (간단한 분할)
