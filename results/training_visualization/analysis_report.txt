@@ -1,0 +1,91 @@
+================================================================================
+DENSE vs STATIC vs DPF PRUNING: COMPREHENSIVE ANALYSIS REPORT
+================================================================================
+
+OVERALL EXPERIMENT STATISTICS:
+----------------------------------------
+Total experiments: 12
+Methods tested: Dense, Static, DPF
+Sparsity levels: 0%, 50%, 70%, 80%, 90%, 95%
+Total training time: 5.58 hours
+
+METHOD-WISE PERFORMANCE ANALYSIS:
+----------------------------------------
+
+Dense METHOD:
+  Models trained: 2
+  Average accuracy: 92.63% ± 0.13%
+  Best accuracy: 92.73%
+  Worst accuracy: 92.54%
+  Average training time: 0.44 hours
+  Average loss: 0.2543
+
+Static METHOD:
+  Models trained: 5
+  Average accuracy: 89.27% ± 2.76%
+  Best accuracy: 91.69%
+  Worst accuracy: 84.89%
+  Average training time: 0.47 hours
+  Average loss: 0.3285
+  Sparsity range: 50% - 95%
+
+DPF METHOD:
+  Models trained: 5
+  Average accuracy: 90.49% ± 0.99%
+  Best accuracy: 91.66%
+  Worst accuracy: 88.99%
+  Average training time: 0.47 hours
+  Average loss: 0.2921
+  Sparsity range: 50% - 95%
+
+
+COMPARATIVE ANALYSIS:
+----------------------------------------
+Dense baseline accuracy: 92.63%
+
+SPARSITY LEVEL COMPARISON:
+
+At 50% sparsity:
+  Static: 91.69% (drop: 0.95%)
+  DPF: 91.66% (drop: 0.98%)
+  DPF advantage: -0.03%
+
+At 70% sparsity:
+  Static: 91.04% (drop: 1.59%)
+  DPF: 90.94% (drop: 1.70%)
+  DPF advantage: -0.10%
+
+At 80% sparsity:
+  Static: 90.42% (drop: 2.22%)
+  DPF: 90.65% (drop: 1.99%)
+  DPF advantage: +0.23%
+
+At 90% sparsity:
+  Static: 88.29% (drop: 4.34%)
+  DPF: 90.23% (drop: 2.41%)
+  DPF advantage: +1.94%
+
+At 95% sparsity:
+  Static: 84.89% (drop: 7.74%)
+  DPF: 88.99% (drop: 3.65%)
+  DPF advantage: +4.10%
+
+
+KEY INSIGHTS:
+----------------------------------------
+1. DPF achieves +1.23% better average accuracy than Static
+2. Training time difference: DPF takes -0.001 hours more on average
+3. DPF outperforms Static at 3/5 sparsity levels
+4. Maximum accuracy drop from dense: Static 7.74%, DPF 3.65%
+
+5. Dense model serves as strong baseline with 92.63% accuracy
+6. Pruning enables significant parameter reduction with controlled accuracy loss
+
+
+RECOMMENDations:
+----------------------------------------
+1. Use DPF for applications requiring best accuracy-sparsity trade-off
+2. Consider Static pruning for resource-constrained training environments
+3. Dense models recommended when accuracy is paramount and resources allow
+4. For sparsity >80%, carefully evaluate accuracy degradation
+5. Consider training time constraints in method selection
