@@ -1,0 +1,11 @@
+name,method,sparsity,sparsity_percent,best_acc1,final_acc1,total_duration_hours,epochs,seed
+static_sparsity0.5_seed42,static,0.5,50.0,0.0,0.0,0.0,200,42
+static_sparsity0.7_seed42,static,0.7,70.0,0.0,0.0,0.0,200,42
+static_sparsity0.8_seed42,static,0.8,80.0,0.0,0.0,0.0,200,42
+static_sparsity0.9_seed42,static,0.9,90.0,0.0,0.0,0.0,200,42
+static_sparsity0.95_seed42,static,0.95,95.0,0.0,0.0,0.0,200,42
+dpf_sparsity0.5_seed42,dpf,0.5,50.0,0.0,0.0,0.0,200,42
+dpf_sparsity0.7_seed42,dpf,0.7,70.0,0.0,0.0,0.0,200,42
+dpf_sparsity0.8_seed42,dpf,0.8,80.0,0.0,0.0,0.0,200,42
+dpf_sparsity0.9_seed42,dpf,0.9,90.0,0.0,0.0,0.0,200,42
+dpf_sparsity0.95_seed42,dpf,0.95,95.0,0.0,0.0,0.0,200,42
