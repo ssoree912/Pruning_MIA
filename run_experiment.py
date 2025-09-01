@@ -123,7 +123,6 @@ def apply_static_pruning(model, config, logger):
             weights = module.weight.data.abs()
             mask = (weights > threshold).float()
             module.mask.data = mask
-            module.type_value = 5  # Use MaskerStatic
             
             total_params += module.weight.numel()
             pruned_params += (mask == 0).sum().item()
@@ -174,7 +173,6 @@ def apply_dynamic_pruning(model, config, epoch, iteration, logger):
         reactivations += ((old_mask == 0) & (new_mask == 1)).sum().item()
         
         module.mask.data = new_mask
-        module.type_value = 6  # Use MaskerDynamic
         
         total_params += module.weight.numel()
         pruned_params += (new_mask == 0).sum().item()
@@ -218,24 +216,13 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger
         
         # Forward pass
         if config.pruning.enabled:
-            if config.pruning.method == 'dcil':
-                # DCIL with dual outputs
-                output = model(input, 0)  # Sparse output
-                output_full = model(input, 1)  # Full output
-                
-                # DCIL loss with KL divergence
-                if epoch < config.training.warmup_loss_epoch:
-                    loss = criterion(output, target) + criterion(output_full, target)
-                else:
-                    # Simple KL loss implementation
-                    kl_loss = nn.KLDivLoss(reduction='batchmean')
-                    loss = (criterion(output, target) + criterion(output_full, target) + 
-                           kl_loss(torch.log_softmax(output, dim=1), torch.softmax(output_full, dim=1)) + 
-                           kl_loss(torch.log_softmax(output_full, dim=1), torch.softmax(output, dim=1)))
+            if config.pruning.method == 'static':
+                output = model(input, 5)  # MaskerStatic
+            elif config.pruning.method == 'dpf':
+                output = model(input, 6)  # MaskerDynamic
             else:
-                # Static or DPF - use sparse output (type_value=0)
-                output = model(input, 0)
-                loss = criterion(output, target)
+                output = model(input, 0)  # Default sparse
+            loss = criterion(output, target)
         else:
             # Dense model - no type_value needed
             output = model(input)
@@ -300,8 +287,12 @@ def validate(model, val_loader, criterion, config, logger):
             target = target.cuda()
             
             if config.pruning.enabled:
-                # All pruning methods use sparse output (type_value=0) for evaluation
-                output = model(input, 0)
+                if config.pruning.method == 'static':
+                    output = model(input, 5)  # MaskerStatic
+                elif config.pruning.method == 'dpf':
+                    output = model(input, 6)  # MaskerDynamic
+                else:
+                    output = model(input, 0)  # Default sparse
             else:
                 # Dense model - no type_value needed
                 output = model(input)
@@ -376,15 +367,11 @@ def main():
     # Apply static pruning if needed
     if config.pruning.enabled and config.pruning.method == 'static':
         apply_static_pruning(model, config, logger)
-    elif config.pruning.enabled and config.pruning.method in ['dpf', 'dcil']:
-        # Initialize all masks to 1 for dynamic methods
+    elif config.pruning.enabled and config.pruning.method == 'dpf':
+        # Initialize all masks to 1 for DPF
         for name, module in model.named_modules():
             if isinstance(module, pruning.dcil.mnn.MaskConv2d):
                 module.mask.data.fill_(1.0)
-                if config.pruning.method == 'dpf':
-                    module.type_value = 6  # MaskerDynamic
-                elif config.pruning.method == 'dcil':
-                    module.type_value = 0  # Original DCIL masking
     
     model = nn.DataParallel(model)
     cudnn.benchmark = config.system.benchmark

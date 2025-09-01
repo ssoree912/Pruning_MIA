@@ -5,17 +5,8 @@ from torch.nn.parameter import Parameter
 
 
 
-class Masker(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, mask):
-        return x * mask
-
-    @staticmethod
-    def backward(ctx, grad):
-        return grad, None
-
-
 class MaskerStatic(torch.autograd.Function):
+    """Static pruning: dead weights stay dead (gradient masking)"""
     @staticmethod
     def forward(ctx, x, mask):
         ctx.save_for_backward(mask)
@@ -28,6 +19,7 @@ class MaskerStatic(torch.autograd.Function):
 
 
 class MaskerDynamic(torch.autograd.Function):
+    """DPF: dead weights can reactivate (full gradient)"""
     @staticmethod
     def forward(ctx, x, mask):
         return x * mask
@@ -35,59 +27,6 @@ class MaskerDynamic(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_out):
         return grad_out, None
-
-
-class Masker_part(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, mask):
-        ctx.save_for_backward(mask)
-        return x * mask
-
-    @staticmethod
-    def backward(ctx, grad):
-        mask, = ctx.saved_tensors
-        return grad* mask, None
-
-
-
-class Masker_full(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx, x, mask):
-        ctx.save_for_backward(mask)
-        return x
-
-    @staticmethod
-    def backward(ctx, grad):
-        mask, = ctx.saved_tensors
-        return grad*(1-mask), None
-
-
-
-
-class Masker_dis(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, mask):
-        ctx.save_for_backward(mask)
-        return x*(1-mask)
-
-    @staticmethod
-    def backward(ctx, grad):
-        mask, = ctx.saved_tensors
-        return grad*(1-mask), None
-
-
-
-class Masker_full_use(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, mask):
-        ctx.save_for_backward(mask)
-        return x
-
-    @staticmethod
-    def backward(ctx, grad):
-        mask, = ctx.saved_tensors
-        return grad, None
 
 
 
@@ -103,21 +42,13 @@ class MaskConv2d(nn.Conv2d):
         self.type_value = 0
 
     def forward(self, input):
-
-        if self.type_value == 0:
-            masked_weight = Masker_part.apply(self.weight, self.mask)
-        elif self.type_value == 2:
-            masked_weight = Masker.apply(self.weight, self.mask)
-        elif self.type_value == 3:
-            masked_weight = Masker_dis.apply(self.weight, self.mask)
-        elif self.type_value == 4:
-            masked_weight = Masker_full_use.apply(self.weight, self.mask)
-        elif self.type_value == 5:
+        if self.type_value == 5:
             masked_weight = MaskerStatic.apply(self.weight, self.mask)
         elif self.type_value == 6:
             masked_weight = MaskerDynamic.apply(self.weight, self.mask)
         else:
-            masked_weight = Masker_full.apply(self.weight, self.mask)
+            # Default: sparse output (type_value=0)
+            masked_weight = self.weight * self.mask
 
         # PyTorch version compatibility
         return F.conv2d(input, masked_weight, self.bias, self.stride,
