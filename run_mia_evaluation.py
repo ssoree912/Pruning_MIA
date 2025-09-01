@@ -14,7 +14,7 @@ import sys
 # Add current directory to path
 sys.path.append('.')
 
-from utils.data_utils import get_dataset
+from data import cifar10_loader
 from models.resnet import ResNet
 
 class MIADataset(Dataset):
@@ -102,7 +102,8 @@ def evaluate_model_mia(model_path, model_name, method, sparsity_percent):
         model = model.to(device)
         
         # 데이터 준비 (간단한 분할)
-        train_dataset, test_dataset = get_dataset('cifar10', '/home/20203168/Datasets/CIFAR')
+        train_loader, test_loader = cifar10_loader(128, 4, '~/Datasets/CIFAR', cuda=torch.cuda.is_available())
+        train_dataset = train_loader.dataset
         
         # Member/Non-member 분할 (훈련셋의 절반씩)
         total_size = len(train_dataset)
