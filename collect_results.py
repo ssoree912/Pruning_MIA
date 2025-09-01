@@ -52,20 +52,35 @@ def collect_training_results():
                         else:
                             sparsity = config.get('pruning', {}).get('sparsity', 0.0)
                         
+                        # 정확도 필드 확인 (여러 가능성)
+                        best_acc = (summary.get('best_acc1', 0.0) or 
+                                   summary.get('acc1', 0.0) or 
+                                   summary.get('accuracy', 0.0))
+                        
+                        final_acc = (summary.get('final_acc1', 0.0) or
+                                    summary.get('acc1', 0.0))
+                        
+                        # 시간 계산 (초 → 시간)
+                        duration = summary.get('total_duration', 0.0)
+                        if duration > 100:  # 초 단위인 경우
+                            duration_hours = duration / 3600
+                        else:
+                            duration_hours = summary.get('total_duration_hours', 0.0)
+                        
                         result = {
                             'name': config['name'],
                             'method': method,
                             'sparsity': sparsity,
                             'sparsity_percent': sparsity * 100,
-                            'best_acc1': summary.get('best_acc1', 0.0),
-                            'final_acc1': summary.get('final_acc1', 0.0),
-                            'total_duration_hours': summary.get('total_duration_hours', 0.0),
+                            'best_acc1': best_acc,
+                            'final_acc1': final_acc,
+                            'total_duration_hours': duration_hours,
                             'epochs': config.get('training', {}).get('epochs', 0),
                             'seed': config.get('system', {}).get('seed', 42)
                         }
                         
                         results.append(result)
-                        print(f"    ✓ {config['name']}: {summary.get('best_acc1', 0.0):.2f}%")
+                        print(f"    ✓ {config['name']}: {best_acc:.2f}%")
                         
                     except Exception as e:
                         print(f"    ✗ Error processing {seed_dir}: {e}")
