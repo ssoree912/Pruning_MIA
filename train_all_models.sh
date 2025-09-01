@@ -111,63 +111,61 @@ from pathlib import Path
 runs_dir = Path('./runs')
 results = []
 
-for model_dir in runs_dir.iterdir():
-    if model_dir.is_dir() and (model_dir / 'config.json').exists():
-        config_path = model_dir / 'config.json'
-        
-        try:
-            with open(config_path) as f:
-                config = json.load(f)
+# 새로운 디렉토리 구조: runs/method/sparsity/seed/
+for method_dir in runs_dir.iterdir():
+    if not method_dir.is_dir():
+        continue
+    
+    for sparsity_dir in method_dir.iterdir():
+        if not sparsity_dir.is_dir():
+            continue
             
-            log_path = model_dir / 'experiment.log'
-            best_acc = 0.0
+        for seed_dir in sparsity_dir.iterdir():
+            if not seed_dir.is_dir():
+                continue
+                
+            config_path = seed_dir / 'config.json'
+            summary_path = seed_dir / 'experiment_summary.json'
             
-            if log_path.exists():
-                with open(log_path) as f:
-                    for line in f:
-                        if 'Best accuracy' in line:
-                            try:
-                                best_acc = float(line.split(':')[-1].strip())
-                            except:
-                                pass
-            
-            results.append({
-                'name': config['name'],
-                'method': config.get('pruning', {}).get('method', 'dense'),
-                'sparsity': config.get('pruning', {}).get('sparsity', 0.0),
-                'best_acc1': best_acc,
-                'epochs': config.get('training', {}).get('epochs', 0)
-            })
-        except Exception as e:
-            print(f'Error processing {model_dir}: {e}')
+            if config_path.exists() and summary_path.exists():
+                try:
+                    with open(config_path) as f:
+                        config = json.load(f)
+                    
+                    with open(summary_path) as f:
+                        summary = json.load(f)
+                    
+                    method = 'dense' if method_dir.name == 'dense' else method_dir.name
+                    
+                    results.append({
+                        'name': config['name'],
+                        'method': method,
+                        'sparsity': config.get('pruning', {}).get('sparsity', 0.0),
+                        'best_acc1': summary.get('best_acc1', 0.0),
+                        'total_duration_hours': summary.get('total_duration_hours', 0.0),
+                        'epochs': config.get('training', {}).get('epochs', 0)
+                    })
+                except Exception as e:
+                    print(f'Error processing {seed_dir}: {e}')
 
 os.makedirs('./runs/final_report', exist_ok=True)
 df = pd.DataFrame(results)
-df.to_csv('./runs/final_report/experiments_comparison.csv', index=False)
-print(f'✅ 결과 수집 완료: {len(results)}개 모델')
+if len(df) > 0:
+    df.to_csv('./runs/final_report/experiments_comparison.csv', index=False)
+    print(f'✅ 결과 수집 완료: {len(results)}개 모델')
+    
+    # 정확도 순위 출력
+    print()
+    print('🏆 정확도 순위:')
+    df_sorted = df.sort_values('best_acc1', ascending=False)
+    for _, row in df_sorted.head(10).iterrows():
+        sparsity_text = f'{row.sparsity*100:.0f}%' if row.sparsity > 0 else '0%'
+        print(f'  {row.name}: {row.best_acc1:.2f}% ({row.method.upper()} {sparsity_text})')
+else:
+    print('⚠️ 훈련 결과를 찾을 수 없습니다.')
+    print('디렉토리 구조를 확인하세요.')
 "
 
-echo ""
-echo "📈 모델별 최종 성능:"
-echo "------------------"
-if [ -f "runs/final_report/experiments_comparison.csv" ]; then
-    echo "정확도 순위:"
-    python -c "
-import pandas as pd
-import ast
-
-df = pd.read_csv('runs/final_report/experiments_comparison.csv')
-df['pruning_config'] = df['pruning'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else {})
-df['method'] = df['pruning_config'].apply(lambda x: 'Dense' if not x.get('enabled', False) else x.get('method', 'unknown').upper())
-df['sparsity'] = df['pruning_config'].apply(lambda x: x.get('sparsity', 0.0) if x.get('enabled', False) else 0.0)
-
-print('🏆 Top 5 모델:')
-top_models = df.nlargest(5, 'best_acc1')[['name', 'method', 'sparsity', 'best_acc1']]
-for _, row in top_models.iterrows():
-    sparsity_text = f'{row.sparsity*100:.0f}%' if row.sparsity > 0 else '0%'
-    print(f'  {row.name}: {row.best_acc1:.2f}% ({row.method} {sparsity_text})')
-"
-fi
 
 echo ""
 echo "📁 결과 위치:"
