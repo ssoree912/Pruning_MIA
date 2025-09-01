@@ -1,0 +1,33 @@
+🎯 Dense vs Static vs DPF 결과 정리
+==================================================
+📊 훈련 결과 수집 중...
+✓ dpf_sparsity0.9_seed42: 89.60% (dpf 90%)
+✓ dpf_sparsity0.7_seed42: 91.87% (dpf 70%)
+✓ dpf_sparsity0.8_seed42: 91.33% (dpf 80%)
+✓ dpf_sparsity0.5_seed42: 92.34% (dpf 50%)
+✓ dpf_sparsity0.95_seed42: 86.75% (dpf 95%)
+✓ static_sparsity0.9_seed42: 87.75% (static 90%)
+✓ static_sparsity0.7_seed42: 90.92% (static 70%)
+✓ static_sparsity0.8_seed42: 89.92% (static 80%)
+✓ static_sparsity0.5_seed42: 91.83% (static 50%)
+✓ static_sparsity0.95_seed42: 85.30% (static 95%)
+
+🏆 정확도 순위 (10개 모델):
+============================================================
+ 1. dpf_sparsity0.5_seed42     92.34% (DPF 50%)
+ 2. dpf_sparsity0.7_seed42     91.87% (DPF 70%)
+ 3. static_sparsity0.5_seed42  91.83% (STATIC 50%)
+ 4. dpf_sparsity0.8_seed42     91.33% (DPF 80%)
+ 5. static_sparsity0.7_seed42  90.92% (STATIC 70%)
+ 6. static_sparsity0.8_seed42  89.92% (STATIC 80%)
+ 7. dpf_sparsity0.9_seed42     89.60% (DPF 90%)
+ 8. static_sparsity0.9_seed42  87.75% (STATIC 90%)
+ 9. dpf_sparsity0.95_seed42    86.75% (DPF 95%)
+10. static_sparsity0.95_seed42  85.30% (STATIC 95%)
+
+📊 방법별 평균 성능:
+========================================
+DPF     :  90.38% (최고: 92.34%, 최저: 86.75%)
+STATIC  :  89.14% (최고: 91.83%, 최저: 85.30%)
+
+🏁 완료!
