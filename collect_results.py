@@ -9,7 +9,7 @@ import pandas as pd
 from pathlib import Path
 
 def collect_training_results():
-    """새로운 디렉토리 구조에서 훈련 결과 수집"""
+    """실제 디렉토리 구조에서 훈련 결과 수집"""
     
     runs_dir = Path('./runs')
     results = []
@@ -17,52 +17,73 @@ def collect_training_results():
     print("📊 훈련 결과 수집 중...")
     print(f"검색 디렉토리: {runs_dir.absolute()}")
     
-    # 새로운 디렉토리 구조: runs/method/sparsity/seed/
-    for method_dir in runs_dir.iterdir():
-        if not method_dir.is_dir():
+    # 실제 구조: runs/model_name/ (flat structure)
+    for model_dir in runs_dir.iterdir():
+        if not model_dir.is_dir() or model_dir.name == 'final_report':
             continue
         
-        print(f"  방법: {method_dir.name}")
+        print(f"  모델: {model_dir.name}")
         
-        for sparsity_dir in method_dir.iterdir():
-            if not sparsity_dir.is_dir():
-                continue
+        config_path = model_dir / 'config.json'
+        summary_path = model_dir / 'experiment_summary.json'
+        log_path = model_dir / f'{model_dir.name}.log'
+        
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    config = json.load(f)
                 
-            for seed_dir in sparsity_dir.iterdir():
-                if not seed_dir.is_dir():
-                    continue
-                    
-                config_path = seed_dir / 'config.json'
-                summary_path = seed_dir / 'experiment_summary.json'
+                # experiment_summary.json에서 정확도 읽기
+                best_acc = 0.0
+                total_time = 0.0
                 
-                if config_path.exists() and summary_path.exists():
-                    try:
-                        with open(config_path) as f:
-                            config = json.load(f)
-                        
-                        with open(summary_path) as f:
-                            summary = json.load(f)
-                        
-                        method = 'dense' if method_dir.name == 'dense' else method_dir.name
-                        sparsity = config.get('pruning', {}).get('sparsity', 0.0)
-                        
-                        result = {
-                            'name': config['name'],
-                            'method': method,
-                            'sparsity': sparsity,
-                            'sparsity_percent': sparsity * 100,
-                            'best_acc1': summary.get('best_acc1', 0.0),
-                            'final_acc1': summary.get('final_acc1', 0.0),
-                            'total_duration_hours': summary.get('total_duration_hours', 0.0),
-                            'epochs': config.get('training', {}).get('epochs', 0),
-                            'seed': config.get('system', {}).get('seed', 42)
-                        }
-                        
-                        results.append(result)
-                        print(f"    ✓ {config['name']}: {summary.get('best_acc1', 0.0):.2f}%")
-                        
-                    except Exception as e:
-                        print(f"    ✗ Error processing {seed_dir}: {e}")
+                if summary_path.exists():
+                    with open(summary_path) as f:
+                        summary = json.load(f)
+                    best_acc = summary.get('best_acc1', 0.0)
+                    total_time = summary.get('total_duration_hours', 0.0)
+                
+                # 로그 파일에서도 정확도 확인 (백업)
+                if best_acc == 0.0 and log_path.exists():
+                    with open(log_path) as f:
+                        for line in f:
+                            if 'Best accuracy' in line:
+                                try:
+                                    best_acc = float(line.split(':')[-1].strip())
+                                except:
+                                    pass
+                
+                # 모델 이름에서 정보 파싱
+                name = config['name']
+                if 'dense' in name.lower() and 'sparsity' not in name.lower():
+                    method = 'dense'
+                    sparsity = 0.0
+                elif 'static' in name.lower():
+                    method = 'static'
+                    sparsity = config.get('pruning', {}).get('sparsity', 0.0)
+                elif 'dpf' in name.lower():
+                    method = 'dpf'
+                    sparsity = config.get('pruning', {}).get('sparsity', 0.0)
+                else:
+                    method = 'unknown'
+                    sparsity = 0.0
+                
+                result = {
+                    'name': name,
+                    'method': method,
+                    'sparsity': sparsity,
+                    'sparsity_percent': sparsity * 100,
+                    'best_acc1': best_acc,
+                    'total_duration_hours': total_time,
+                    'epochs': config.get('training', {}).get('epochs', 0),
+                    'seed': config.get('system', {}).get('seed', 42)
+                }
+                
+                results.append(result)
+                print(f"    ✓ {name}: {best_acc:.2f}%")
+                
+            except Exception as e:
+                print(f"    ✗ Error processing {model_dir}: {e}")
     
     return results
 
