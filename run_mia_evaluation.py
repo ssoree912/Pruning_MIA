@@ -15,7 +15,7 @@ import sys
 sys.path.append('.')
 
 from data import cifar10_loader
-from models.resnet import ResNet
+from models.resnet import resnet
 
 class MIADataset(Dataset):
     """MIA용 데이터셋"""
@@ -33,10 +33,10 @@ class MIADataset(Dataset):
             x = self.transform(x)
         return x, y
 
-def load_model_from_checkpoint(model_path, arch='resnet', layers=20):
+def load_model_from_checkpoint(model_path):
     """체크포인트에서 모델 로드"""
     
-    model = ResNet(arch=arch, layers=layers, num_classes=10)
+    model, _ = resnet(data='cifar10', num_layers=20)
     
     checkpoint = torch.load(model_path, map_location='cpu')
     if 'state_dict' in checkpoint:
