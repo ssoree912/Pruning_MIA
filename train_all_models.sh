@@ -102,9 +102,50 @@ echo ""
 
 # 훈련 결과 수집
 echo "📊 훈련 결과 수집 중..."
-python scripts/collect_results.py \
-    --runs-dir ./runs \
-    --output-dir ./runs/final_report
+python -c "
+import os
+import json
+import pandas as pd
+from pathlib import Path
+
+runs_dir = Path('./runs')
+results = []
+
+for model_dir in runs_dir.iterdir():
+    if model_dir.is_dir() and (model_dir / 'config.json').exists():
+        config_path = model_dir / 'config.json'
+        
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+            
+            log_path = model_dir / 'experiment.log'
+            best_acc = 0.0
+            
+            if log_path.exists():
+                with open(log_path) as f:
+                    for line in f:
+                        if 'Best accuracy' in line:
+                            try:
+                                best_acc = float(line.split(':')[-1].strip())
+                            except:
+                                pass
+            
+            results.append({
+                'name': config['name'],
+                'method': config.get('pruning', {}).get('method', 'dense'),
+                'sparsity': config.get('pruning', {}).get('sparsity', 0.0),
+                'best_acc1': best_acc,
+                'epochs': config.get('training', {}).get('epochs', 0)
+            })
+        except Exception as e:
+            print(f'Error processing {model_dir}: {e}')
+
+os.makedirs('./runs/final_report', exist_ok=True)
+df = pd.DataFrame(results)
+df.to_csv('./runs/final_report/experiments_comparison.csv', index=False)
+print(f'✅ 결과 수집 완료: {len(results)}개 모델')
+"
 
 echo ""
 echo "📈 모델별 최종 성능:"
@@ -135,6 +176,5 @@ echo "  - 훈련 결과: ./runs/final_report/"
 echo ""
 echo "🎯 다음 단계:"
 echo "  - MIA 평가: ./run_mia_evaluation.sh"
-echo "  - 결과 분석: ./create_stable_analysis.sh"
 echo ""
 echo "🏁 훈련 완료!"
