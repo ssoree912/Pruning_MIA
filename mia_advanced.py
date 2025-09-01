@@ -471,7 +471,7 @@ def evaluate_advanced_mia(runs_dir, results_dir):
                     models_info[model_key] = {
                         'type': 'dense', 
                         'sparsity': 0.0, 
-                        'path': seed_dir,
+                        'path': str(seed_dir),
                         'method': 'dense'
                     }
         else:
@@ -485,7 +485,7 @@ def evaluate_advanced_mia(runs_dir, results_dir):
                             models_info[model_key] = {
                                 'type': method_dir.name,
                                 'sparsity': sparsity,
-                                'path': seed_dir,
+                                'path': str(seed_dir),
                                 'method': method_dir.name
                             }
     
@@ -507,7 +507,7 @@ def evaluate_advanced_mia(runs_dir, results_dir):
         
         try:
             # Get actual accuracy from experiment_summary.json
-            target_path = models_info[target_model]['path']
+            target_path = Path(models_info[target_model]['path'])
             summary_path = target_path / 'experiment_summary.json'
             
             if summary_path.exists():
@@ -535,7 +535,7 @@ def evaluate_advanced_mia(runs_dir, results_dir):
             
             # Shadow model data from actual results
             shadow_model = shadow_models[0]
-            shadow_path = models_info[shadow_model]['path']
+            shadow_path = Path(models_info[shadow_model]['path'])
             shadow_summary_path = shadow_path / 'experiment_summary.json'
             
             if shadow_summary_path.exists():
