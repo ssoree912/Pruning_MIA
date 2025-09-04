@@ -92,6 +92,16 @@ class MIAConfig:
             raise ValueError(f"Unsupported MIA type: {self.attack_type}")
 
 @dataclass
+class WandbConfig:
+    """Weights & Biases configuration"""
+    enabled: bool = False
+    project: str = 'dcil-pytorch'
+    entity: str = None
+    name: str = None
+    tags: List[str] = field(default_factory=list)
+    notes: str = ''
+
+@dataclass
 class SystemConfig:
     """System configuration"""
     gpu: int = 0
