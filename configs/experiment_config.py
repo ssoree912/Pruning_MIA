@@ -115,6 +115,7 @@ class ExperimentConfig:
     pruning: PruningConfig = field(default_factory=PruningConfig)
     mia: MIAConfig = field(default_factory=MIAConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
+    wandb: WandbConfig = field(default_factory=WandbConfig)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -140,10 +141,11 @@ class ExperimentConfig:
         pruning_config = PruningConfig(**config_dict.get('pruning', {}))
         mia_config = MIAConfig(**config_dict.get('mia', {}))
         system_config = SystemConfig(**config_dict.get('system', {}))
+        wandb_config = WandbConfig(**config_dict.get('wandb', {}))
         
         # Create main config
         main_config = {k: v for k, v in config_dict.items() 
-                      if k not in ['data', 'model', 'training', 'pruning', 'mia', 'system']}
+                      if k not in ['data', 'model', 'training', 'pruning', 'mia', 'system', 'wandb']}
         
         return cls(
             data=data_config,
@@ -152,6 +154,7 @@ class ExperimentConfig:
             pruning=pruning_config,
             mia=mia_config,
             system=system_config,
+            wandb=wandb_config,
             **main_config
         )
     
@@ -192,10 +195,10 @@ class ExperimentConfig:
         """Get full save path for this experiment"""
         if self.pruning.enabled:
             method_dir = self.pruning.method
-            sparsity_dir = f"sparsity{self.pruning.sparsity}"
-            return os.path.join(self.save_dir, method_dir, sparsity_dir, f"seed{self.system.seed}")
+            sparsity_dir = f"sparsity_{self.pruning.sparsity}"
+            return os.path.join(self.save_dir, method_dir, sparsity_dir, self.data.dataset)
         else:
-            return os.path.join(self.save_dir, "dense", f"seed{self.system.seed}")
+            return os.path.join(self.save_dir, "dense", self.data.dataset)
 
 class ConfigManager:
     """Manage experiment configurations"""
