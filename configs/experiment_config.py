@@ -337,6 +337,14 @@ def parse_config_args() -> ExperimentConfig:
                        help='Enable MIA evaluation')
     parser.add_argument('--num-shadows', type=int, default=64)
     
+    # Wandb parameters
+    parser.add_argument('--wandb', action='store_true', help='Enable wandb logging')
+    parser.add_argument('--wandb_project', default='dcil-pytorch', help='Wandb project name')
+    parser.add_argument('--wandb_entity', help='Wandb entity')
+    parser.add_argument('--wandb_name', help='Wandb run name')
+    parser.add_argument('--wandb_tags', help='Wandb tags (comma separated)')
+    parser.add_argument('--wandb_notes', default='', help='Wandb run notes')
+    
     # System parameters
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--seed', type=int, default=42)
@@ -393,6 +401,14 @@ def parse_config_args() -> ExperimentConfig:
                 gpu=args.gpu,
                 seed=args.seed,
                 print_freq=args.print_freq
+            ),
+            wandb=WandbConfig(
+                enabled=args.wandb,
+                project=args.wandb_project,
+                entity=args.wandb_entity,
+                name=args.wandb_name,
+                tags=[tag.strip() for tag in args.wandb_tags.split(',')] if args.wandb_tags else [],
+                notes=args.wandb_notes
             )
         )
     
