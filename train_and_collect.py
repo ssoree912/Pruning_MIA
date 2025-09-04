@@ -248,7 +248,7 @@ def main():
             # Prepare training config
             config_params = {
                 'name': exp_name,
-                'save_path': str(save_path),
+                'save-dir': str(save_path),
                 'dataset': args.dataset,
                 'arch': args.arch,
                 'epochs': args.epochs,
@@ -267,8 +267,8 @@ def main():
             
             if method != 'dense':
                 config_params.update({
-                    'pruning': True,
-                    'pruning_method': method,
+                    'prune': True,
+                    'prune-method': method,
                     'sparsity': sparsity,
                 })
             
