@@ -61,23 +61,23 @@ def run_training(config_params):
         print(f"Training failed with exception: {str(e)}")
         return False, str(e)
 
-def run_unified_mia_evaluation(runs_dir):
-    """Run unified MIA evaluation for all trained models"""
-    cmd = ['python', 'mia/unified_mia_evaluation.py', '--runs-dir', str(runs_dir), '--results-dir', 'results/mia']
+def run_mia_evaluation(runs_dir):
+    """Run MIA evaluation for all trained models"""
+    cmd = ['python', 'test_mia.py', '--runs-dir', str(runs_dir), '--output-dir', 'results/mia']
     
-    print(f"Running unified MIA evaluation: {' '.join(cmd)}")
+    print(f"Running MIA evaluation: {' '.join(cmd)}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)  # 30 minute timeout
         if result.returncode != 0:
-            print(f"Unified MIA evaluation failed: {result.stderr}")
+            print(f"MIA evaluation failed: {result.stderr}")
             return False, result.stderr
         return True, result.stdout
     except subprocess.TimeoutExpired:
-        print("Unified MIA evaluation timed out after 2 hours")
+        print("MIA evaluation timed out after 30 minutes")
         return False, "MIA timeout"
     except Exception as e:
-        print(f"Unified MIA evaluation failed: {str(e)}")
+        print(f"MIA evaluation failed: {str(e)}")
         return False, str(e)
 
 def collect_results(results_dir):
@@ -334,22 +334,22 @@ def main():
         print(f"Completed {len(all_results)} experiments")
         print(f"Training Summary:\n{summary_df.to_string()}")
     
-    # Run unified MIA evaluation on all trained models
+    # Run MIA evaluation on all trained models
     print(f"\n{'='*50}")
-    print("Running unified MIA evaluation...")
+    print("Running MIA evaluation...")
     print(f"{'='*50}")
     
     runs_dir = Path('./runs')
-    success, output = run_unified_mia_evaluation(runs_dir)
+    success, output = run_mia_evaluation(runs_dir)
     
     if success:
-        print("✅ Unified MIA evaluation completed successfully!")
+        print("✅ MIA evaluation completed successfully!")
         print("📊 MIA results saved in: results/mia/")
-        print("📁 Key metrics: results/mia/mia_key_metrics.csv")
-        print("📁 Detailed results: results/mia/unified_mia_summary.csv")
+        print("📁 Results: results/mia/test_mia_results.csv")
+        print("📁 Summary: results/mia/test_summary_stats.json")
     else:
-        print(f"❌ Unified MIA evaluation failed: {output}")
-        failed_experiments.append(('unified_mia_evaluation', 'mia', output))
+        print(f"❌ MIA evaluation failed: {output}")
+        failed_experiments.append(('mia_evaluation', 'mia', output))
     
     # Report failed experiments
     if failed_experiments:
