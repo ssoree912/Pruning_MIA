@@ -103,11 +103,11 @@ def confidence_based_mia(model, member_loader, non_member_loader, device):
         best_acc = max(best_acc, accuracy)
     
     return {
-        'member_conf_mean': np.mean(member_confidences),
-        'non_member_conf_mean': np.mean(non_member_confidences),
-        'attack_accuracy': best_acc,
-        'member_conf_std': np.std(member_confidences),
-        'non_member_conf_std': np.std(non_member_confidences)
+        'member_conf_mean': float(np.mean(member_confidences)),
+        'non_member_conf_mean': float(np.mean(non_member_confidences)),
+        'attack_accuracy': float(best_acc),
+        'member_conf_std': float(np.std(member_confidences)),
+        'non_member_conf_std': float(np.std(non_member_confidences))
     }
 
 def evaluate_model_mia(model_path, model_name, method, sparsity_percent):
@@ -143,15 +143,15 @@ def evaluate_model_mia(model_path, model_name, method, sparsity_percent):
         # MIA 수행
         mia_result = confidence_based_mia(model, member_loader, non_member_loader, device)
         
-        # 결과 반환
+        # 결과 반환 (NumPy 타입을 Python 기본 타입으로 변환)
         result = {
             'name': model_name,
             'method': method,
-            'sparsity_percent': sparsity_percent,
-            'attack_accuracy': mia_result['attack_accuracy'],
-            'member_confidence': mia_result['member_conf_mean'],
-            'non_member_confidence': mia_result['non_member_conf_mean'],
-            'confidence_gap': mia_result['member_conf_mean'] - mia_result['non_member_conf_mean']
+            'sparsity_percent': int(sparsity_percent),
+            'attack_accuracy': float(mia_result['attack_accuracy']),
+            'member_confidence': float(mia_result['member_conf_mean']),
+            'non_member_confidence': float(mia_result['non_member_conf_mean']),
+            'confidence_gap': float(mia_result['member_conf_mean'] - mia_result['non_member_conf_mean'])
         }
         
         print(f"✅ {model_name}: Attack Acc={mia_result['attack_accuracy']:.3f}, Gap={result['confidence_gap']:.3f}")
