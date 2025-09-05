@@ -339,7 +339,7 @@ def main():
     torch.cuda.set_device(0)
     
     # Initialize logger
-    logger = ExperimentLogger(config.name, save_path, config.wandb)
+    logger = ExperimentLogger(config.name, save_path)
     
     # Log configuration and system info
     logger.log_hyperparameters(config.to_dict())

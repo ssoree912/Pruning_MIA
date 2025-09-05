@@ -39,7 +39,12 @@ def run_training(config_params):
     # Add all config parameters to command
     for key, value in config_params.items():
         if value is not None:
-            cmd.extend([f'--{key}', str(value)])
+            if isinstance(value, bool):
+                # For boolean flags, only add the flag if True
+                if value:
+                    cmd.append(f'--{key}')
+            else:
+                cmd.extend([f'--{key}', str(value)])
     
     print(f"Running training command: {' '.join(cmd)}")
     
