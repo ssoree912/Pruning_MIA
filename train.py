@@ -61,28 +61,23 @@ def run_training(config_params):
         print(f"Training failed with exception: {str(e)}")
         return False, str(e)
 
-def run_mia_evaluation(model_path, method, sparsity=None):
-    """Run MIA evaluation for trained model"""
-    cmd = ['python', 'mia/run_mia_evaluation.py', '--model_path', str(model_path)]
+def run_unified_mia_evaluation(runs_dir):
+    """Run unified MIA evaluation for all trained models"""
+    cmd = ['python', 'mia/unified_mia_evaluation.py', '--runs-dir', str(runs_dir), '--results-dir', 'results/mia']
     
-    if method != 'dense':
-        cmd.extend(['--pruning_method', method])
-        if sparsity is not None:
-            cmd.extend(['--sparsity', str(sparsity)])
-    
-    print(f"Running MIA evaluation: {' '.join(cmd)}")
+    print(f"Running unified MIA evaluation: {' '.join(cmd)}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)  # 1 hour timeout
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
         if result.returncode != 0:
-            print(f"MIA evaluation failed: {result.stderr}")
+            print(f"Unified MIA evaluation failed: {result.stderr}")
             return False, result.stderr
         return True, result.stdout
     except subprocess.TimeoutExpired:
-        print("MIA evaluation timed out after 1 hour")
+        print("Unified MIA evaluation timed out after 2 hours")
         return False, "MIA timeout"
     except Exception as e:
-        print(f"MIA evaluation failed: {str(e)}")
+        print(f"Unified MIA evaluation failed: {str(e)}")
         return False, str(e)
 
 def collect_results(results_dir):
@@ -124,7 +119,7 @@ def collect_results(results_dir):
     
     return results
 
-def create_summary_csv(all_results, output_file='training_and_mia_results.csv'):
+def create_training_summary_csv(all_results, output_file='training_results.csv'):
     """Create summary CSV with all results"""
     summary_data = []
     
@@ -171,13 +166,7 @@ def create_summary_csv(all_results, output_file='training_and_mia_results.csv'):
                     'val_final_loss': final_val_loss,
                 })
         
-        # Add MIA results if available
-        if 'mia' in results:
-            mia = results['mia']
-            row.update({
-                'mia_advanced_auc': mia.get('advanced', {}).get('lira', {}).get('auc', None),
-                'mia_wemem_auc': mia.get('wemem', {}).get('threshold_entropy', {}).get('auc', None),
-            })
+        # MIA 결과는 별도 파일로 분리
         
         summary_data.append(row)
     
@@ -329,37 +318,38 @@ def main():
             
             print(f"Training completed for {exp_name}")
             
-            # Run MIA evaluation
-            print(f"Starting MIA evaluation for {exp_name}...")
-            best_model_path = save_path / 'best_model.pth'
-            
-            if best_model_path.exists():
-                success, output = run_mia_evaluation(best_model_path, method, sparsity)
-                
-                if not success:
-                    print(f"MIA evaluation failed for {exp_name}: {output}")
-                    failed_experiments.append((exp_name, 'mia', output))
-                else:
-                    print(f"MIA evaluation completed for {exp_name}")
-            else:
-                print(f"Best model not found for {exp_name}, skipping MIA evaluation")
-                failed_experiments.append((exp_name, 'mia', 'Best model not found'))
-            
             # Collect results
             results = collect_results(save_path)
             all_results[exp_name] = results
             
             print(f"Experiment {exp_name} completed")
     
-    # Create summary
+    # Create training results summary
     print(f"\n{'='*50}")
-    print("Creating summary...")
+    print("Creating training summary...")
     print(f"{'='*50}")
     
     if all_results:
-        summary_df = create_summary_csv(all_results)
+        summary_df = create_training_summary_csv(all_results)
         print(f"Completed {len(all_results)} experiments")
-        print(f"Summary:\n{summary_df.to_string()}")
+        print(f"Training Summary:\n{summary_df.to_string()}")
+    
+    # Run unified MIA evaluation on all trained models
+    print(f"\n{'='*50}")
+    print("Running unified MIA evaluation...")
+    print(f"{'='*50}")
+    
+    runs_dir = Path('./runs')
+    success, output = run_unified_mia_evaluation(runs_dir)
+    
+    if success:
+        print("✅ Unified MIA evaluation completed successfully!")
+        print("📊 MIA results saved in: results/mia/")
+        print("📁 Key metrics: results/mia/mia_key_metrics.csv")
+        print("📁 Detailed results: results/mia/unified_mia_summary.csv")
+    else:
+        print(f"❌ Unified MIA evaluation failed: {output}")
+        failed_experiments.append(('unified_mia_evaluation', 'mia', output))
     
     # Report failed experiments
     if failed_experiments:
