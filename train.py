@@ -17,16 +17,32 @@ from datetime import datetime
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-def create_organized_save_path(method, sparsity=None, dataset='cifar10'):
+def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_epoch=None, total_epochs=None):
     """Create organized save path structure"""
     base_path = Path('./runs')
     
     if method == 'dense':
         save_path = base_path / 'dense' / dataset
-    elif method in ['static', 'dpf']:
+    elif method == 'static':
         if sparsity is None:
             raise ValueError(f"Sparsity must be specified for {method} method")
         save_path = base_path / method / f'sparsity_{sparsity}' / dataset
+    elif method == 'dpf':
+        if sparsity is None:
+            raise ValueError(f"Sparsity must be specified for {method} method")
+        
+        # Add freeze info to path
+        if freeze_epoch is not None and total_epochs is not None:
+            if freeze_epoch >= 0 and freeze_epoch < total_epochs:
+                freeze_suffix = f'_freeze{freeze_epoch}'
+            elif freeze_epoch < 0:
+                freeze_suffix = '_nofreeze'
+            else:
+                freeze_suffix = ''
+        else:
+            freeze_suffix = ''
+            
+        save_path = base_path / method / f'sparsity_{sparsity}{freeze_suffix}' / dataset
     else:
         raise ValueError(f"Unknown method: {method}")
     
@@ -399,6 +415,14 @@ def main():
             exp_name = f"{method}"
             if sparsity is not None:
                 exp_name += f"_sparsity_{sparsity}"
+            
+            # Add freeze indicator to experiment name
+            if method == 'dpf':
+                if args.freeze_epoch >= 0 and args.freeze_epoch < args.epochs:
+                    exp_name += f"_freeze{args.freeze_epoch}"
+                elif args.freeze_epoch < 0:
+                    exp_name += "_nofreeze"
+            
             exp_name += f"_{args.dataset}_{args.arch}"
             
             print(f"\n{'='*50}")
@@ -406,7 +430,7 @@ def main():
             print(f"{'='*50}")
             
             # Create save path
-            save_path = create_organized_save_path(method, sparsity, args.dataset)
+            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs)
             
             # Skip if results already exist
             if args.skip_existing and save_path.exists():
