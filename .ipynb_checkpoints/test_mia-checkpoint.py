@@ -169,23 +169,22 @@ def create_test_summary(mia_results, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     
     # DataFrame 생성
-    df = pd.DataFrame(mia_results)
-    
-    summary_file = os.path.join(output_dir, 'test_mia_results.csv')
-    df.to_csv(summary_file, index=False)
-    methods_dict = {}
+    df = pd.DataFrame(mia_results)methods_dict = {}
     
     # 정렬 (method와 sparsity가 있는지 확인)
-    if 'method' in df.columns:
-        # 각 value를 파이썬 int로 변환
-        methods_dict = {k: int(v) for k, v in df['method'].value_counts().to_dict().items()}
-
+    if 'method' in df.columns and 'sparsity' in df.columns:
+        df = df.sort_values(['method', 'sparsity'])
+    
+    # CSV 저장
+    summary_file = os.path.join(output_dir, 'test_mia_results.csv')
+    df.to_csv(summary_file, index=False)
+    
+    # 요약 통계
     summary_stats = {
         'total_models': len(mia_results),
-        'methods': methods_dict,
-        'average_vulnerability': float(df['mia_vulnerability_score'].mean()) if 'mia_vulnerability_score' in df.columns else 0.0,
-        # sum 결과를 파이썬 int로 변환
-        'files_available_count': int(df['files_available'].sum()) if 'files_available' in df.columns else 0
+        'methods': df['method'].value_counts().to_dict() if 'method' in df.columns else {},
+        'average_vulnerability': df['mia_vulnerability_score'].mean() if 'mia_vulnerability_score' in df.columns else 0,
+        'files_available_count': df['files_available'].sum() if 'files_available' in df.columns else 0
     }
     
     stats_file = os.path.join(output_dir, 'test_summary_stats.json')

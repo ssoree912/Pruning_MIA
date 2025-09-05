@@ -1,0 +1,10 @@
+{
+  "total_models": 11,
+  "methods": {
+    "static": 5,
+    "dpf": 5,
+    "dense": 1
+  },
+  "average_vulnerability": 0.5942763604996422,
+  "files_available_count": 11
+}
