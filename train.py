@@ -101,6 +101,20 @@ def collect_results(results_dir):
     if log_files:
         results['log_file'] = str(log_files[0])
     
+    # Look for experiment summary (training results)
+    experiment_summary_file = results_dir / 'experiment_summary.json'
+    if experiment_summary_file.exists():
+        with open(experiment_summary_file, 'r') as f:
+            training_results = json.load(f)
+            results['training'] = training_results
+    
+    # Look for validation history
+    val_history_file = results_dir / 'validation_history.json'
+    if val_history_file.exists():
+        with open(val_history_file, 'r') as f:
+            val_history = json.load(f)
+            results['validation_history'] = val_history
+    
     # Look for MIA results
     mia_results_file = results_dir / 'mia_results.json'
     if mia_results_file.exists():
@@ -129,6 +143,33 @@ def create_summary_csv(all_results, output_file='training_and_mia_results.csv'):
                 'epochs': config.get('training', {}).get('epochs', 200),
                 'lr': config.get('training', {}).get('lr', 0.1),
             })
+        
+        # Add training results if available
+        if 'training' in results:
+            training = results['training']
+            row.update({
+                'best_acc1': training.get('best_metrics', {}).get('best_acc1', None),
+                'best_loss': training.get('best_metrics', {}).get('best_loss', None),
+                'final_acc1': training.get('final_metrics', {}).get('acc1', None),
+                'final_acc5': training.get('final_metrics', {}).get('acc5', None),
+                'final_loss': training.get('final_metrics', {}).get('loss', None),
+                'total_training_time_hours': training.get('total_duration', 0) / 3600 if training.get('total_duration') else None,
+            })
+        
+        # Add validation history summary if available
+        if 'validation_history' in results:
+            val_history = results['validation_history']
+            if val_history:
+                # Get best and final metrics from validation history
+                best_val_acc1 = max(epoch.get('acc1', 0) for epoch in val_history if 'acc1' in epoch) if val_history else None
+                final_val_acc1 = val_history[-1].get('acc1', None) if val_history else None
+                final_val_loss = val_history[-1].get('loss', None) if val_history else None
+                
+                row.update({
+                    'val_best_acc1': best_val_acc1,
+                    'val_final_acc1': final_val_acc1,
+                    'val_final_loss': final_val_loss,
+                })
         
         # Add MIA results if available
         if 'mia' in results:
