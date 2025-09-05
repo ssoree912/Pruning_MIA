@@ -13,6 +13,14 @@ import torch.backends.cudnn as cudnn
 import numpy as np
 from pathlib import Path
 
+# Import wandb for logging
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    print("Warning: wandb not available. Install with: pip install wandb")
+
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -338,6 +346,20 @@ def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = str(config.system.gpu)
     torch.cuda.set_device(0)
     
+    # Initialize wandb if enabled
+    if config.wandb.enabled and WANDB_AVAILABLE:
+        wandb.init(
+            project=config.wandb.project,
+            entity=config.wandb.entity,
+            name=config.wandb.name,
+            tags=config.wandb.tags,
+            notes=config.wandb.notes,
+            config=config.to_dict()
+        )
+        print(f"Initialized wandb: {config.wandb.project}/{config.wandb.name}")
+    elif config.wandb.enabled and not WANDB_AVAILABLE:
+        print("Warning: wandb logging requested but wandb not available")
+    
     # Initialize logger
     logger = ExperimentLogger(config.name, save_path)
     
@@ -410,6 +432,16 @@ def main():
         
         # Log epoch results
         logger.log_epoch(epoch, train_metrics, val_metrics, optimizer.param_groups[0]["lr"])
+        
+        # Log to wandb if enabled
+        if config.wandb.enabled and WANDB_AVAILABLE:
+            wandb_log = {
+                'epoch': epoch,
+                'learning_rate': optimizer.param_groups[0]["lr"],
+                **{f'train_{k}': v for k, v in train_metrics.items()},
+                **{f'val_{k}': v for k, v in val_metrics.items()}
+            }
+            wandb.log(wandb_log)
         
         # Save best model
         is_best = val_metrics['acc1'] > best_acc1
