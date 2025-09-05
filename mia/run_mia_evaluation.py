@@ -10,6 +10,8 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader, Dataset
 import sys
+import argparse
+import re
 
 # Add current directory to path
 sys.path.append('.')
@@ -160,6 +162,40 @@ def evaluate_model_mia(model_path, model_name, method, sparsity_percent):
         return None
 
 def main():
+    parser = argparse.ArgumentParser(description='MIA Evaluation')
+    parser.add_argument('--model_path', type=str, help='Path to model checkpoint')
+    parser.add_argument('--pruning_method', type=str, help='Pruning method (static/dpf)')  
+    parser.add_argument('--sparsity', type=float, help='Sparsity level')
+    
+    args = parser.parse_args()
+    
+    # If specific model path is provided, evaluate only that model
+    if args.model_path:
+        model_path = Path(args.model_path)
+        if model_path.exists():
+            # Extract method and sparsity from arguments or path
+            method = args.pruning_method if args.pruning_method else 'dense'
+            sparsity = args.sparsity if args.sparsity is not None else 0.0
+            sparsity_percent = int(sparsity * 100)
+            
+            config_path = model_path.parent / 'config.json'
+            if config_path.exists():
+                with open(config_path) as f:
+                    config = json.load(f)
+                model_name = config.get('name', 'unknown_model')
+            else:
+                model_name = model_path.stem
+            
+            result = evaluate_model_mia(model_path, model_name, method, sparsity_percent)
+            if result:
+                # Save individual result
+                result_path = model_path.parent / 'mia_results.json'
+                with open(result_path, 'w') as f:
+                    json.dump(result, f, indent=2)
+                print(f"MIA results saved to: {result_path}")
+            return
+    
+    # Otherwise, evaluate all models in runs directory
     runs_dir = Path('./runs')
     mia_results = []
     
@@ -187,7 +223,13 @@ def main():
         if method_dir.exists():
             for sparsity_dir in method_dir.iterdir():
                 if sparsity_dir.is_dir() and sparsity_dir.name.startswith('sparsity'):
-                    sparsity = float(sparsity_dir.name.replace('sparsity', ''))
+                    # Parse sparsity from folder name using regex
+                    name = sparsity_dir.name  # 예: 'sparsity_0.5'
+                    m = re.match(r'^sparsity[_-]?([0-9]*\.?[0-9]+)$', name)
+                    if not m:
+                        print(f"Warning: Unrecognized sparsity folder name: {name}, skipping")
+                        continue
+                    sparsity = float(m.group(1))
                     sparsity_percent = int(sparsity * 100)
                     
                     for seed_dir in sparsity_dir.iterdir():

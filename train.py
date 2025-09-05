@@ -63,7 +63,7 @@ def run_training(config_params):
 
 def run_mia_evaluation(model_path, method, sparsity=None):
     """Run MIA evaluation for trained model"""
-    cmd = ['python', 'run_mia_evaluation.py', '--model_path', str(model_path)]
+    cmd = ['python', 'mia/run_mia_evaluation.py', '--model_path', str(model_path)]
     
     if method != 'dense':
         cmd.extend(['--pruning_method', method])
