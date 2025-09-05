@@ -68,6 +68,7 @@ class PruningConfig:
     sparsity: float = 0.5
     prune_freq: int = 16
     target_epoch: int = 75
+    freeze_epoch: int = 180  # Epoch to freeze masks (default: 180)
     prune_type: str = 'unstructured'
     importance_method: str = 'L1'
     
@@ -327,6 +328,8 @@ def parse_config_args() -> ExperimentConfig:
     parser.add_argument('--sparsity', type=float, default=0.5)
     parser.add_argument('--prune-freq', type=int, default=16)
     parser.add_argument('--target-epoch', type=int, default=75)
+    parser.add_argument('--freeze-epoch', type=int, default=180,
+                       help='Epoch to freeze masks (default: 180)')    
     
     # MIA parameters
     parser.add_argument('--mia', action='store_true',
@@ -387,7 +390,8 @@ def parse_config_args() -> ExperimentConfig:
                 method=args.prune_method,
                 sparsity=args.sparsity,
                 prune_freq=args.prune_freq,
-                target_epoch=args.target_epoch
+                target_epoch=args.target_epoch,
+                freeze_epoch=args.freeze_epoch
             ),
             mia=MIAConfig(
                 enabled=args.mia,

@@ -496,3 +496,8 @@ def main():
             print(f"FAILED: {exp_name} ({stage}) - {error}")
     
     print("\nAll experiments completed!")
+
+if __name__ == '__main__':
+    main()#!/usr/bin/env python3
+"""
+통합 훈련 및 결과 수집 스크립트

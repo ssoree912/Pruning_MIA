@@ -210,9 +210,8 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger
     for i, (input, target) in enumerate(train_loader):
         data_time.update(time.time() - end)
         
-        # Dynamic pruning update (only if masks not frozen)
-        if (config.pruning.enabled and config.pruning.method == 'dpf' and 
-            (config.pruning.freeze_epoch < 0 or epoch < config.pruning.freeze_epoch)):
+        # Dynamic pruning update
+        if config.pruning.enabled and config.pruning.method == 'dpf':
             sparsity, reactivation = apply_dynamic_pruning(
                 model, config, epoch, iteration_counter[0], logger
             )
@@ -228,12 +227,7 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger
             if config.pruning.method == 'static':
                 output = model(input, 5)  # MaskerStatic
             elif config.pruning.method == 'dpf':
-                # Check if masks are frozen
-                net = model.module if hasattr(model, 'module') else model
-                if getattr(net, "_masks_frozen", False):
-                    output = model(input, 5)  # MaskerStatic (frozen)
-                else:
-                    output = model(input, 6)  # MaskerDynamic
+                output = model(input, 6)  # MaskerDynamic
             else:
                 output = model(input, 0)  # Default sparse
             loss = criterion(output, target)
@@ -304,12 +298,7 @@ def validate(model, val_loader, criterion, config, logger):
                 if config.pruning.method == 'static':
                     output = model(input, 5)  # MaskerStatic
                 elif config.pruning.method == 'dpf':
-                    # Check if masks are frozen
-                    net = model.module if hasattr(model, 'module') else model
-                    if getattr(net, "_masks_frozen", False):
-                        output = model(input, 5)  # MaskerStatic (frozen)
-                    else:
-                        output = model(input, 6)  # MaskerDynamic
+                    output = model(input, 6)  # MaskerDynamic
                 else:
                     output = model(input, 0)  # Default sparse
             else:
@@ -432,21 +421,6 @@ def main():
     for epoch in range(config.training.epochs):
         logger.logger.info(f'\nEpoch: {epoch}, lr = {optimizer.param_groups[0]["lr"]}')
         
-        # Check if masks should be frozen (freeze_epoch = -1 means no freezing)
-        net = model.module if hasattr(model, 'module') else model
-        if (config.pruning.enabled and config.pruning.method == 'dpf' and 
-            config.pruning.freeze_epoch >= 0 and epoch >= config.pruning.freeze_epoch and 
-            not getattr(net, "_masks_frozen", False)):
-            print(f"[Mask Freeze] Freezing masks at epoch {epoch}")
-            final_sparsity = freeze_masks(model, logger)
-            
-            # Log freeze event to wandb
-            if config.wandb.enabled and WANDB_AVAILABLE:
-                wandb.log({
-                    'mask_freeze_epoch': epoch,
-                    'mask_freeze_sparsity': final_sparsity
-                })
-        
         # Train
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, epoch, 
@@ -539,3 +513,22 @@ def freeze_masks(model, logger):
 
 if __name__ == '__main__':
     main()
+
+if __name__ == '__main__':
+    main()#!/usr/bin/env python3
+"""
+Main experiment runner with comprehensive configuration support
+"""
+
+import os
+import sys
+import time
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.backends.cudnn as cudnn
+import numpy as np
+from pathlib import Path
+
+# Import wandb for logging
+try:
