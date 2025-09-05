@@ -348,14 +348,18 @@ def main():
     
     # Initialize wandb if enabled
     if config.wandb.enabled and WANDB_AVAILABLE:
-        wandb.init(
-            project=config.wandb.project,
-            entity=config.wandb.entity,
-            name=config.wandb.name,
-            tags=config.wandb.tags,
-            notes=config.wandb.notes,
-            config=config.to_dict()
-        )
+        wandb_config = {
+            'project': config.wandb.project,
+            'name': config.wandb.name,
+            'tags': config.wandb.tags,
+            'notes': config.wandb.notes,
+            'config': config.to_dict()
+        }
+        # Only add entity if it's not the default placeholder
+        if config.wandb.entity and config.wandb.entity != 'your-username':
+            wandb_config['entity'] = config.wandb.entity
+        
+        wandb.init(**wandb_config)
         print(f"Initialized wandb: {config.wandb.project}/{config.wandb.name}")
     elif config.wandb.enabled and not WANDB_AVAILABLE:
         print("Warning: wandb logging requested but wandb not available")
