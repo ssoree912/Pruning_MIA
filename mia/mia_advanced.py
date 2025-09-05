@@ -478,10 +478,17 @@ def evaluate_advanced_mia(runs_dir, results_dir):
             # Static/DPF: runs/method/sparsity/seed/
             for sparsity_dir in method_dir.iterdir():
                 if sparsity_dir.is_dir() and sparsity_dir.name.startswith('sparsity'):
-                    sparsity = float(sparsity_dir.name.replace('sparsity_', ''))
+                    # Extract sparsity from names like 'sparsity_0.9' or 'sparsity_0.9_freeze20' or 'sparsity_0.9_nofreeze'
+                    sparsity_name = sparsity_dir.name.replace('sparsity_', '')
+                    # Split by underscore and take first part (the actual sparsity value)
+                    sparsity = float(sparsity_name.split('_')[0])
                     for seed_dir in sparsity_dir.iterdir():
                         if seed_dir.is_dir():
-                            model_key = f"{method_dir.name}_sparsity{sparsity}_{seed_dir.name}"
+                            # Include freeze info in model key
+                            if '_freeze' in sparsity_dir.name or '_nofreeze' in sparsity_dir.name:
+                                model_key = f"{method_dir.name}_{sparsity_dir.name}_{seed_dir.name}"
+                            else:
+                                model_key = f"{method_dir.name}_sparsity{sparsity}_{seed_dir.name}"
                             models_info[model_key] = {
                                 'type': method_dir.name,
                                 'sparsity': sparsity,
