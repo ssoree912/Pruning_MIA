@@ -516,8 +516,9 @@ def freeze_masks(model, logger):
     
     for name, module in net.named_modules():
         if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            # 1) Freeze the mask by detaching from computation graph
-            module.mask = module.mask.detach()
+            # 1) Freeze the mask by updating its data and setting requires_grad=False
+            module.mask.data = module.mask.data.detach()
+            module.mask.requires_grad = False
             
             # 2) Switch to static masking (type_value=5) for gradient blocking
             module.type_value = 5

@@ -496,3 +496,6 @@ def main():
             print(f"FAILED: {exp_name} ({stage}) - {error}")
     
     print("\nAll experiments completed!")
+
+if __name__ == '__main__':
+    main()
