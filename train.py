@@ -61,24 +61,159 @@ def run_training(config_params):
         print(f"Training failed with exception: {str(e)}")
         return False, str(e)
 
-def run_mia_evaluation(runs_dir):
-    """Run MIA evaluation for all trained models"""
-    cmd = ['python', 'test_mia.py', '--runs-dir', str(runs_dir), '--output-dir', 'results/mia']
+def run_comprehensive_mia_evaluation(runs_dir):
+    """Run comprehensive MIA evaluation using advanced and WeMeM methods"""
     
-    print(f"Running MIA evaluation: {' '.join(cmd)}")
+    results_dir = Path('results/mia')
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("🎯 Running Advanced MIA evaluation...")
+    
+    # 1. Run Advanced MIA (LiRA, Shokri-NN, Top3-NN, ClassLabel-NN, SAMIA)
+    cmd_advanced = ['python', 'mia/mia_advanced.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'advanced')]
+    print(f"Command: {' '.join(cmd_advanced)}")
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)  # 30 minute timeout
+        result = subprocess.run(cmd_advanced, capture_output=True, text=True, timeout=3600)
         if result.returncode != 0:
-            print(f"MIA evaluation failed: {result.stderr}")
-            return False, result.stderr
-        return True, result.stdout
+            print(f"Advanced MIA failed: {result.stderr}")
+            advanced_success = False
+        else:
+            print("✅ Advanced MIA completed")
+            advanced_success = True
     except subprocess.TimeoutExpired:
-        print("MIA evaluation timed out after 30 minutes")
-        return False, "MIA timeout"
+        print("❌ Advanced MIA timed out")
+        advanced_success = False
     except Exception as e:
-        print(f"MIA evaluation failed: {str(e)}")
-        return False, str(e)
+        print(f"❌ Advanced MIA error: {e}")
+        advanced_success = False
+    
+    print("\n🔍 Running WeMeM MIA evaluation...")
+    
+    # 2. Run WeMeM MIA (Confidence, Entropy, Modified Entropy, Neural Network)
+    cmd_wemem = ['python', 'mia/mia_wemem.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'wemem')]
+    print(f"Command: {' '.join(cmd_wemem)}")
+    
+    try:
+        result = subprocess.run(cmd_wemem, capture_output=True, text=True, timeout=3600)
+        if result.returncode != 0:
+            print(f"WeMeM MIA failed: {result.stderr}")
+            wemem_success = False
+        else:
+            print("✅ WeMeM MIA completed")
+            wemem_success = True
+    except subprocess.TimeoutExpired:
+        print("❌ WeMeM MIA timed out")
+        wemem_success = False
+    except Exception as e:
+        print(f"❌ WeMeM MIA error: {e}")
+        wemem_success = False
+    
+    # 3. Combine results
+    print("\n🔄 Combining MIA results...")
+    try:
+        combine_mia_results(results_dir, advanced_success, wemem_success)
+        return True, "MIA evaluation completed"
+    except Exception as e:
+        return False, f"Failed to combine results: {e}"
+
+def combine_mia_results(results_dir, advanced_success, wemem_success):
+    """Combine Advanced and WeMeM MIA results into unified CSV"""
+    
+    combined_data = []
+    
+    # Load Advanced MIA results
+    if advanced_success:
+        advanced_csv = results_dir / 'advanced' / 'advanced_mia_summary.csv'
+        if advanced_csv.exists():
+            import pandas as pd
+            advanced_df = pd.read_csv(advanced_csv)
+            
+            for _, row in advanced_df.iterrows():
+                entry = {
+                    'experiment': row['Model'],
+                    'method': row['Type'],
+                    'sparsity': float(row['Sparsity'].replace('%', '')) / 100 if isinstance(row['Sparsity'], str) else row['Sparsity'],
+                    
+                    # Advanced MIA results
+                    'lira_accuracy': float(row.get('LIRA_Acc', '0').replace('%', '')) if isinstance(row.get('LIRA_Acc', 0), str) else row.get('LIRA_Acc', 0),
+                    'lira_auc': float(row.get('LIRA_AUC', '0').replace('%', '')) if isinstance(row.get('LIRA_AUC', 0), str) else row.get('LIRA_AUC', 0),
+                    'shokri_nn_accuracy': float(row.get('SHOKRI_NN_Acc', '0').replace('%', '')) if isinstance(row.get('SHOKRI_NN_Acc', 0), str) else row.get('SHOKRI_NN_Acc', 0),
+                    'shokri_nn_auc': float(row.get('SHOKRI_NN_AUC', '0').replace('%', '')) if isinstance(row.get('SHOKRI_NN_AUC', 0), str) else row.get('SHOKRI_NN_AUC', 0),
+                    'top3_nn_accuracy': float(row.get('TOP3_NN_Acc', '0').replace('%', '')) if isinstance(row.get('TOP3_NN_Acc', 0), str) else row.get('TOP3_NN_Acc', 0),
+                    'top3_nn_auc': float(row.get('TOP3_NN_AUC', '0').replace('%', '')) if isinstance(row.get('TOP3_NN_AUC', 0), str) else row.get('TOP3_NN_AUC', 0),
+                    'class_label_nn_accuracy': float(row.get('CLASS_LABEL_NN_Acc', '0').replace('%', '')) if isinstance(row.get('CLASS_LABEL_NN_Acc', 0), str) else row.get('CLASS_LABEL_NN_Acc', 0),
+                    'class_label_nn_auc': float(row.get('CLASS_LABEL_NN_AUC', '0').replace('%', '')) if isinstance(row.get('CLASS_LABEL_NN_AUC', 0), str) else row.get('CLASS_LABEL_NN_AUC', 0),
+                    'samia_accuracy': float(row.get('SAMIA_Acc', '0').replace('%', '')) if isinstance(row.get('SAMIA_Acc', 0), str) else row.get('SAMIA_Acc', 0),
+                    'samia_auc': float(row.get('SAMIA_AUC', '0').replace('%', '')) if isinstance(row.get('SAMIA_AUC', 0), str) else row.get('SAMIA_AUC', 0),
+                }
+                combined_data.append(entry)
+    
+    # Load WeMeM MIA results  
+    if wemem_success:
+        wemem_csv = results_dir / 'wemem' / 'wemem_mia_summary.csv'
+        if wemem_csv.exists():
+            import pandas as pd
+            wemem_df = pd.read_csv(wemem_csv)
+            
+            # Match by experiment name and add WeMeM results
+            for _, row in wemem_df.iterrows():
+                model_name = row['Model']
+                
+                # Find matching entry in combined_data
+                matching_entry = None
+                for entry in combined_data:
+                    if entry['experiment'] == model_name:
+                        matching_entry = entry
+                        break
+                
+                if matching_entry is None:
+                    # Create new entry if not found
+                    matching_entry = {
+                        'experiment': model_name,
+                        'method': row['Type'],
+                        'sparsity': row['Sparsity'],
+                    }
+                    combined_data.append(matching_entry)
+                
+                # Add WeMeM results
+                matching_entry.update({
+                    'confidence_accuracy': float(row.get('Confidence_Accuracy', '0')) if row.get('Confidence_Accuracy', 0) != 0 else 0,
+                    'confidence_f1': float(row.get('Confidence_F1', '0')) if row.get('Confidence_F1', 0) != 0 else 0,
+                    'entropy_accuracy': float(row.get('Entropy_Accuracy', '0')) if row.get('Entropy_Accuracy', 0) != 0 else 0,
+                    'entropy_f1': float(row.get('Entropy_F1', '0')) if row.get('Entropy_F1', 0) != 0 else 0,
+                    'modified_entropy_accuracy': float(row.get('Modified_entropy_Accuracy', '0')) if row.get('Modified_entropy_Accuracy', 0) != 0 else 0,
+                    'modified_entropy_f1': float(row.get('Modified_entropy_F1', '0')) if row.get('Modified_entropy_F1', 0) != 0 else 0,
+                    'neural_network_accuracy': float(row.get('Neural_network_Accuracy', '0')) if row.get('Neural_network_Accuracy', 0) != 0 else 0,
+                    'neural_network_f1': float(row.get('Neural_network_F1', '0')) if row.get('Neural_network_F1', 0) != 0 else 0,
+                    'neural_network_auc': float(row.get('Neural_network_AUC', '0')) if row.get('Neural_network_AUC', 0) != 0 else 0,
+                })
+    
+    # Save combined results
+    if combined_data:
+        import pandas as pd
+        combined_df = pd.DataFrame(combined_data)
+        
+        # Sort by method and sparsity
+        if 'method' in combined_df.columns and 'sparsity' in combined_df.columns:
+            combined_df = combined_df.sort_values(['method', 'sparsity'])
+        
+        combined_file = results_dir / 'comprehensive_mia_results.csv'
+        combined_df.to_csv(combined_file, index=False)
+        
+        print(f"📊 Combined MIA results saved: {combined_file}")
+        print(f"📈 Total experiments: {len(combined_data)}")
+        
+        # Display summary
+        print(f"\n🎯 MIA Attack Results Summary:")
+        key_cols = ['experiment', 'method', 'sparsity', 'lira_auc', 'confidence_accuracy', 'neural_network_auc']
+        available_cols = [col for col in key_cols if col in combined_df.columns]
+        if available_cols:
+            print(combined_df[available_cols].to_string(index=False))
+    else:
+        print("⚠️ No combined data to save")
+
+    return True
 
 def collect_results(results_dir):
     """Collect training and MIA results from directory"""
