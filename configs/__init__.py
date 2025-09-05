@@ -2,7 +2,7 @@
 Configuration management package for DCIL-MIA experiments
 """
 
-from .experiment_config import (
+from .config import (
     ExperimentConfig,
     DataConfig,
     ModelConfig,

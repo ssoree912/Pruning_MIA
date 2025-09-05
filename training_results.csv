@@ -1,0 +1,2 @@
+experiment,method,sparsity,dataset,arch,layers,epochs,lr,best_acc1,best_loss,final_acc1,final_acc5,final_loss,total_training_time_hours,val_best_acc1,val_final_acc1,val_final_loss
+dense_cifar10_resnet,static,0.5,cifar10,resnet,20,2,0.1,54.63999938964844,1.337070097541809,54.63999938964844,94.97999572753906,1.337070097541809,0.00603232310877906,54.63999938964844,54.63999938964844,1.337070097541809
