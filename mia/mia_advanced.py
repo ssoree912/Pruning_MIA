@@ -478,7 +478,7 @@ def evaluate_advanced_mia(runs_dir, results_dir):
             # Static/DPF: runs/method/sparsity/seed/
             for sparsity_dir in method_dir.iterdir():
                 if sparsity_dir.is_dir() and sparsity_dir.name.startswith('sparsity'):
-                    sparsity = float(sparsity_dir.name.replace('sparsity', ''))
+                    sparsity = float(sparsity_dir.name.replace('sparsity_', ''))
                     for seed_dir in sparsity_dir.iterdir():
                         if seed_dir.is_dir():
                             model_key = f"{method_dir.name}_sparsity{sparsity}_{seed_dir.name}"
