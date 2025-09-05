@@ -112,6 +112,10 @@ def combine_mia_results(advanced_dir, wemem_dir, output_dir):
 def create_final_mia_summary(combined_results, output_dir):
     """Create comprehensive MIA summary table"""
     
+    if not combined_results:
+        print("Warning: No combined results to create summary")
+        return pd.DataFrame(), pd.DataFrame()
+    
     summary_data = []
     
     for model_name, results in combined_results.items():
@@ -146,13 +150,26 @@ def create_final_mia_summary(combined_results, output_dir):
         summary_data.append(row)
     
     # Create DataFrame and save
-    df = pd.DataFrame(summary_data)
-    
-    # Sort by method and sparsity for better readability
-    df = df.sort_values(['method', 'sparsity'])
+    if not summary_data:
+        print("Warning: No summary data to create DataFrame")
+        df = pd.DataFrame()
+        key_df = pd.DataFrame()
+    else:
+        df = pd.DataFrame(summary_data)
+        
+        # Sort by method and sparsity for better readability (if columns exist)
+        if 'method' in df.columns and 'sparsity' in df.columns and len(df) > 0:
+            df = df.sort_values(['method', 'sparsity'])
+        elif len(df) > 0:
+            print("Warning: Cannot sort by method/sparsity - columns not found")
+            print(f"Available columns: {list(df.columns)}")
     
     summary_file = os.path.join(output_dir, 'unified_mia_summary.csv')
     df.to_csv(summary_file, index=False)
+    
+    if df.empty:
+        print(f"📊 빈 결과: {summary_file}")
+        return df, pd.DataFrame()
     
     # Create simplified summary with key metrics
     key_metrics_data = []
