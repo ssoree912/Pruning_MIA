@@ -203,12 +203,8 @@ class ExperimentConfig:
     
     def get_save_path(self) -> str:
         """Get full save path for this experiment"""
-        if self.pruning.enabled:
-            method_dir = self.pruning.method
-            sparsity_dir = f"sparsity_{self.pruning.sparsity}"
-            return os.path.join(self.save_dir, method_dir, sparsity_dir, self.data.dataset)
-        else:
-            return os.path.join(self.save_dir, "dense", self.data.dataset)
+        # Return the save_dir as-is since train.py already creates the correct path
+        return self.save_dir
 
 class ConfigManager:
     """Manage experiment configurations"""
