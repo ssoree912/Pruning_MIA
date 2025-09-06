@@ -1,4 +1,4 @@
-name: dcil-mia-experiment
+name: pruning_mia
 channels:
   - pytorch
   - conda-forge
