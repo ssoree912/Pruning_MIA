@@ -344,6 +344,149 @@ def create_training_summary_csv(all_results, output_file='results/training_resul
     print(f"Summary results saved to {output_file}")
     return df
 
+def log_mia_results_to_wandb(args):
+    """Log MIA evaluation results to Weights & Biases"""
+    try:
+        import wandb
+        
+        # Check if MIA results file exists
+        mia_results_file = Path('results/mia/comprehensive_mia_results.csv')
+        if not mia_results_file.exists():
+            print("⚠️ MIA results file not found, skipping wandb logging")
+            return
+        
+        # Read MIA results
+        mia_df = pd.read_csv(mia_results_file)
+        
+        print("📊 Logging MIA results to Weights & Biases...")
+        
+        # Initialize wandb for MIA results
+        run = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            job_type="mia_evaluation",
+            name=f"MIA_Results_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            tags=args.wandb_tags + ['mia', 'evaluation'],
+            reinit=True
+        )
+        
+        # Create summary table
+        wandb_table = wandb.Table(dataframe=mia_df)
+        wandb.log({"MIA_Results_Table": wandb_table})
+        
+        # Log key metrics for each experiment
+        for _, row in mia_df.iterrows():
+            experiment_name = row['experiment']
+            method = row['method']
+            sparsity = row.get('sparsity', 0)
+            
+            # Create metrics dict
+            mia_metrics = {}
+            
+            # Advanced MIA metrics
+            for metric in ['lira_accuracy', 'lira_auc', 'shokri_nn_accuracy', 'shokri_nn_auc', 
+                          'top3_nn_accuracy', 'top3_nn_auc', 'class_label_nn_accuracy', 'class_label_nn_auc',
+                          'samia_accuracy', 'samia_auc']:
+                if metric in row and pd.notna(row[metric]):
+                    mia_metrics[f"mia/{metric}"] = float(row[metric])
+            
+            # WeMeM metrics
+            for metric in ['confidence_accuracy', 'confidence_f1', 'entropy_accuracy', 'entropy_f1',
+                          'modified_entropy_accuracy', 'modified_entropy_f1', 'neural_network_accuracy',
+                          'neural_network_f1', 'neural_network_auc']:
+                if metric in row and pd.notna(row[metric]):
+                    mia_metrics[f"mia/{metric}"] = float(row[metric])
+            
+            # Add experiment info
+            mia_metrics.update({
+                "mia/experiment": experiment_name,
+                "mia/method": method,
+                "mia/sparsity": float(sparsity) if sparsity else 0.0,
+            })
+            
+            # Log metrics
+            wandb.log(mia_metrics)
+        
+        # Create visualizations
+        if len(mia_df) > 1:
+            # Plot MIA attack success rates by method and sparsity
+            import matplotlib.pyplot as plt
+            
+            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+            fig.suptitle('MIA Attack Success Rates', fontsize=16)
+            
+            # LiRA AUC
+            if 'lira_auc' in mia_df.columns:
+                ax1 = axes[0, 0]
+                for method in mia_df['method'].unique():
+                    method_data = mia_df[mia_df['method'] == method]
+                    if len(method_data) > 1:
+                        ax1.plot(method_data['sparsity'], method_data['lira_auc'], 'o-', label=method)
+                    else:
+                        ax1.scatter(method_data['sparsity'], method_data['lira_auc'], label=method, s=100)
+                ax1.set_title('LiRA AUC')
+                ax1.set_xlabel('Sparsity')
+                ax1.set_ylabel('AUC')
+                ax1.legend()
+                ax1.grid(True, alpha=0.3)
+            
+            # Neural Network AUC (WeMeM)
+            if 'neural_network_auc' in mia_df.columns:
+                ax2 = axes[0, 1]
+                for method in mia_df['method'].unique():
+                    method_data = mia_df[mia_df['method'] == method]
+                    if len(method_data) > 1:
+                        ax2.plot(method_data['sparsity'], method_data['neural_network_auc'], 'o-', label=method)
+                    else:
+                        ax2.scatter(method_data['sparsity'], method_data['neural_network_auc'], label=method, s=100)
+                ax2.set_title('Neural Network AUC (WeMeM)')
+                ax2.set_xlabel('Sparsity')
+                ax2.set_ylabel('AUC')
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
+            
+            # Confidence Attack Accuracy
+            if 'confidence_accuracy' in mia_df.columns:
+                ax3 = axes[1, 0]
+                for method in mia_df['method'].unique():
+                    method_data = mia_df[mia_df['method'] == method]
+                    if len(method_data) > 1:
+                        ax3.plot(method_data['sparsity'], method_data['confidence_accuracy'], 'o-', label=method)
+                    else:
+                        ax3.scatter(method_data['sparsity'], method_data['confidence_accuracy'], label=method, s=100)
+                ax3.set_title('Confidence Attack Accuracy')
+                ax3.set_xlabel('Sparsity')
+                ax3.set_ylabel('Accuracy')
+                ax3.legend()
+                ax3.grid(True, alpha=0.3)
+            
+            # SAMIA AUC
+            if 'samia_auc' in mia_df.columns:
+                ax4 = axes[1, 1]
+                for method in mia_df['method'].unique():
+                    method_data = mia_df[mia_df['method'] == method]
+                    if len(method_data) > 1:
+                        ax4.plot(method_data['sparsity'], method_data['samia_auc'], 'o-', label=method)
+                    else:
+                        ax4.scatter(method_data['sparsity'], method_data['samia_auc'], label=method, s=100)
+                ax4.set_title('SAMIA AUC')
+                ax4.set_xlabel('Sparsity')
+                ax4.set_ylabel('AUC')
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            wandb.log({"MIA_Attack_Comparison": wandb.Image(fig)})
+            plt.close(fig)
+        
+        wandb.finish()
+        print("✅ MIA results logged to Weights & Biases successfully!")
+        
+    except ImportError:
+        print("⚠️ wandb not available, skipping MIA results logging")
+    except Exception as e:
+        print(f"❌ Error logging MIA results to wandb: {e}")
+
 def reorganize_existing_models():
     """Reorganize existing model folders into new structure"""
     runs_dir = Path('./runs')
@@ -525,8 +668,11 @@ def main():
     if success:
         print("✅ MIA evaluation completed successfully!")
         print("📊 MIA results saved in: results/mia/")
-        print("📁 Results: results/mia/test_mia_results.csv")
-        print("📁 Summary: results/mia/test_summary_stats.json")
+        print("📁 Results: results/mia/comprehensive_mia_results.csv")
+        
+        # Log MIA results to wandb if available
+        if args.wandb:
+            log_mia_results_to_wandb(args)
     else:
         print(f"❌ MIA evaluation failed: {output}")
         failed_experiments.append(('mia_evaluation', 'mia', output))
