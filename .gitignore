@@ -1,2 +1,30 @@
 /runs
 /wandb
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs & runs
+*.log
+logs/
+runs/
+wandb/
+
+# Checkpoints
+*.pth
+*.pt
+
+# Jupyter & test caches (있으면)
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual envs (있으면)
+.venv/
+env/
+venv/
+
+# macOS / editor
+.DS_Store
+.vscode/
