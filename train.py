@@ -107,7 +107,7 @@ def run_comprehensive_mia_evaluation(runs_dir):
     print("\n🔍 Running WeMeM MIA evaluation...")
     
     # 2. Run WeMeM MIA (Confidence, Entropy, Modified Entropy, Neural Network)
-    cmd_wemem = ['python', 'mia/mia_wemem.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'wemem')]
+    cmd_wemem = ['python', 'mia/mia_classic.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'wemem')]
     print(f"Command: {' '.join(cmd_wemem)}")
     
     try:
@@ -200,17 +200,23 @@ def combine_mia_results(results_dir, advanced_success, wemem_success):
                         }
                         combined_data.append(matching_entry)
                     
-                    # Add WeMeM results
+                    # Add WeMeM results - using correct column names
+                    def safe_float(value):
+                        try:
+                            return float(value) if value is not None and str(value).strip() != '' and str(value) != '0' else 0
+                        except (ValueError, TypeError):
+                            return 0
+                    
                     matching_entry.update({
-                        'confidence_accuracy': float(row.get('Confidence_Accuracy', '0')) if row.get('Confidence_Accuracy', 0) != 0 else 0,
-                        'confidence_f1': float(row.get('Confidence_F1', '0')) if row.get('Confidence_F1', 0) != 0 else 0,
-                        'entropy_accuracy': float(row.get('Entropy_Accuracy', '0')) if row.get('Entropy_Accuracy', 0) != 0 else 0,
-                        'entropy_f1': float(row.get('Entropy_F1', '0')) if row.get('Entropy_F1', 0) != 0 else 0,
-                        'modified_entropy_accuracy': float(row.get('Modified_entropy_Accuracy', '0')) if row.get('Modified_entropy_Accuracy', 0) != 0 else 0,
-                        'modified_entropy_f1': float(row.get('Modified_entropy_F1', '0')) if row.get('Modified_entropy_F1', 0) != 0 else 0,
-                        'neural_network_accuracy': float(row.get('Neural_network_Accuracy', '0')) if row.get('Neural_network_Accuracy', 0) != 0 else 0,
-                        'neural_network_f1': float(row.get('Neural_network_F1', '0')) if row.get('Neural_network_F1', 0) != 0 else 0,
-                        'neural_network_auc': float(row.get('Neural_network_AUC', '0')) if row.get('Neural_network_AUC', 0) != 0 else 0,
+                        'confidence_accuracy': safe_float(row.get('Confidence_Accuracy')),
+                        'confidence_f1': safe_float(row.get('Confidence_F1')),
+                        'entropy_accuracy': safe_float(row.get('Entropy_Accuracy')),
+                        'entropy_f1': safe_float(row.get('Entropy_F1')),
+                        'modified_entropy_accuracy': safe_float(row.get('Modified_Entropy_Accuracy')),
+                        'modified_entropy_f1': safe_float(row.get('Modified_Entropy_F1')),
+                        'neural_network_accuracy': safe_float(row.get('Neural_Network_Accuracy')),
+                        'neural_network_f1': safe_float(row.get('Neural_Network_F1')),
+                        'neural_network_auc': safe_float(row.get('Neural_Network_AUC')),
                     })
     
     # Save combined results
@@ -278,8 +284,12 @@ def collect_results(results_dir):
     
     return results
 
-def create_training_summary_csv(all_results, output_file='training_results.csv'):
+def create_training_summary_csv(all_results, output_file='results/training_results.csv'):
     """Create summary CSV with all results"""
+    # Ensure results directory exists
+    results_dir = Path('results')
+    results_dir.mkdir(exist_ok=True)
+    
     summary_data = []
     
     for exp_name, results in all_results.items():

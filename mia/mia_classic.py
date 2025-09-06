@@ -312,7 +312,7 @@ def extract_model_info(runs_dir):
     return models_info
 
 
-def evaluate_mia_wemem(runs_dir, results_dir):
+def evaluate_mia_classic(runs_dir, results_dir):
     """Evaluate MIA using WeMeM methodology on all trained models"""
     
     os.makedirs(results_dir, exist_ok=True)
@@ -515,7 +515,7 @@ def main():
     print("🔍 WeMeM-style MIA Evaluation")
     print("=" * 50)
     
-    summary_df = evaluate_mia_wemem(args.runs_dir, args.results_dir)
+    summary_df = evaluate_mia_classic(args.runs_dir, args.results_dir)
     
     print("\n📊 MIA Vulnerability Summary:")
     print(summary_df.to_string(index=False))

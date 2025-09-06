@@ -88,7 +88,7 @@ python test_mia.py --runs-dir ./runs
 │
 ├── mia/                          # MIA 평가 모듈
 │   ├── mia_advanced.py           # Advanced MIA 공격들
-│   ├── mia_wemem.py              # WeMeM MIA 공격들
+│   ├── mia_classic.py              # WeMeM MIA 공격들
 │   ├── unified_mia_evaluation.py # 통합 MIA 평가
 │   └── run_mia_evaluation.py     # 개별 모델 MIA 평가
 │

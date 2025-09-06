@@ -1,2 +1,0 @@
-experiment,method,sparsity,dataset,arch,layers,epochs,lr,best_acc1,best_loss,final_acc1,final_acc5,final_loss,total_training_time_hours,val_best_acc1,val_final_acc1,val_final_loss
-dpf_sparsity_0.95_freeze10_cifar10_resnet,dpf,0.95,cifar10,resnet,20,20,0.1,79.5,0.6007975779533387,78.44999694824219,98.86000061035156,0.6241045143127442,0.06984737111462487,79.5,78.44999694824219,0.6241045143127442

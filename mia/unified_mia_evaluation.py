@@ -19,7 +19,7 @@ sys.path.append('./mia')
 
 # Import MIA evaluation modules
 from mia_advanced import evaluate_advanced_mia
-from mia_wemem import evaluate_mia_wemem
+from mia.mia_classic import evaluate_mia_classic    
 
 def run_unified_mia_evaluation(runs_dir, results_dir):
     """Run both advanced and WeMeM MIA evaluations and combine results"""
@@ -47,7 +47,7 @@ def run_unified_mia_evaluation(runs_dir, results_dir):
     
     wemem_results_dir = os.path.join(results_dir, 'wemem')
     try:
-        wemem_df = evaluate_mia_wemem(runs_dir, wemem_results_dir)
+        wemem_df = evaluate_mia_classic(runs_dir, wemem_results_dir)
         print("✅ WeMeM MIA 평가 완료")
     except Exception as e:
         print(f"❌ WeMeM MIA 평가 실패: {e}")
@@ -264,7 +264,7 @@ sys.path.append('./mia')
 
 # Import MIA evaluation modules
 from mia_advanced import evaluate_advanced_mia
-from mia_wemem import evaluate_mia_wemem
+from mia.mia_classic import evaluate_mia_classic
 
 def run_unified_mia_evaluation(runs_dir, results_dir):
     """Run both advanced and WeMeM MIA evaluations and combine results"""
@@ -292,7 +292,7 @@ def run_unified_mia_evaluation(runs_dir, results_dir):
     
     wemem_results_dir = os.path.join(results_dir, 'wemem')
     try:
-        wemem_df = evaluate_mia_wemem(runs_dir, wemem_results_dir)
+        wemem_df = evaluate_mia_classic(runs_dir, wemem_results_dir)
         print("✅ WeMeM MIA 평가 완료")
     except Exception as e:
         print(f"❌ WeMeM MIA 평가 실패: {e}")
