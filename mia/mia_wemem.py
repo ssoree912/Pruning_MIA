@@ -325,6 +325,34 @@ def evaluate_mia_wemem(runs_dir, results_dir):
     models_info = extract_model_info(runs_dir)
     print(f"Found {len(models_info)} trained models")
     
+    if not models_info:
+        print("⚠️ No trained models found. Creating empty results files.")
+        # Create empty results file
+        results_file = os.path.join(results_dir, 'wemem_mia_results.json')
+        with open(results_file, 'w') as f:
+            json.dump({}, f, indent=2)
+        
+        # Create empty summary CSV with proper headers
+        summary_data = []
+        summary_df = pd.DataFrame(summary_data)
+        summary_file = os.path.join(results_dir, 'wemem_mia_summary.csv')
+        
+        # Create headers for empty CSV
+        headers = ['Model', 'Type', 'Sparsity', 
+                  'Confidence_Accuracy', 'Confidence_F1',
+                  'Entropy_Accuracy', 'Entropy_F1', 
+                  'Modified_entropy_Accuracy', 'Modified_entropy_F1',
+                  'Neural_network_Accuracy', 'Neural_network_F1', 'Neural_network_AUC']
+        empty_df = pd.DataFrame(columns=headers)
+        empty_df.to_csv(summary_file, index=False)
+        
+        print(f"\n✅ WeMeM MIA evaluation complete (no models found)!")
+        print(f"📁 Results saved to: {results_dir}")
+        print(f"📊 Summary: {summary_file}")
+        print(f"📋 Detailed results: {results_file}")
+        
+        return empty_df
+    
     all_results = {}
     
     # For WeMeM-style evaluation, we need shadow models

@@ -170,40 +170,48 @@ def combine_mia_results(results_dir, advanced_success, wemem_success):
         wemem_csv = results_dir / 'wemem' / 'wemem_mia_summary.csv'
         if wemem_csv.exists():
             import pandas as pd
-            wemem_df = pd.read_csv(wemem_csv)
+            try:
+                wemem_df = pd.read_csv(wemem_csv)
+                if wemem_df.empty:
+                    print("⚠️ WeMeM CSV is empty, skipping WeMeM results")
+                    wemem_df = None
+            except pd.errors.EmptyDataError:
+                print("⚠️ WeMeM CSV has no data, skipping WeMeM results")
+                wemem_df = None
             
             # Match by experiment name and add WeMeM results
-            for _, row in wemem_df.iterrows():
-                model_name = row['Model']
-                
-                # Find matching entry in combined_data
-                matching_entry = None
-                for entry in combined_data:
-                    if entry['experiment'] == model_name:
-                        matching_entry = entry
-                        break
-                
-                if matching_entry is None:
-                    # Create new entry if not found
-                    matching_entry = {
-                        'experiment': model_name,
-                        'method': row['Type'],
-                        'sparsity': row['Sparsity'],
-                    }
-                    combined_data.append(matching_entry)
-                
-                # Add WeMeM results
-                matching_entry.update({
-                    'confidence_accuracy': float(row.get('Confidence_Accuracy', '0')) if row.get('Confidence_Accuracy', 0) != 0 else 0,
-                    'confidence_f1': float(row.get('Confidence_F1', '0')) if row.get('Confidence_F1', 0) != 0 else 0,
-                    'entropy_accuracy': float(row.get('Entropy_Accuracy', '0')) if row.get('Entropy_Accuracy', 0) != 0 else 0,
-                    'entropy_f1': float(row.get('Entropy_F1', '0')) if row.get('Entropy_F1', 0) != 0 else 0,
-                    'modified_entropy_accuracy': float(row.get('Modified_entropy_Accuracy', '0')) if row.get('Modified_entropy_Accuracy', 0) != 0 else 0,
-                    'modified_entropy_f1': float(row.get('Modified_entropy_F1', '0')) if row.get('Modified_entropy_F1', 0) != 0 else 0,
-                    'neural_network_accuracy': float(row.get('Neural_network_Accuracy', '0')) if row.get('Neural_network_Accuracy', 0) != 0 else 0,
-                    'neural_network_f1': float(row.get('Neural_network_F1', '0')) if row.get('Neural_network_F1', 0) != 0 else 0,
-                    'neural_network_auc': float(row.get('Neural_network_AUC', '0')) if row.get('Neural_network_AUC', 0) != 0 else 0,
-                })
+            if wemem_df is not None:
+                for _, row in wemem_df.iterrows():
+                    model_name = row['Model']
+                    
+                    # Find matching entry in combined_data
+                    matching_entry = None
+                    for entry in combined_data:
+                        if entry['experiment'] == model_name:
+                            matching_entry = entry
+                            break
+                    
+                    if matching_entry is None:
+                        # Create new entry if not found
+                        matching_entry = {
+                            'experiment': model_name,
+                            'method': row['Type'],
+                            'sparsity': row['Sparsity'],
+                        }
+                        combined_data.append(matching_entry)
+                    
+                    # Add WeMeM results
+                    matching_entry.update({
+                        'confidence_accuracy': float(row.get('Confidence_Accuracy', '0')) if row.get('Confidence_Accuracy', 0) != 0 else 0,
+                        'confidence_f1': float(row.get('Confidence_F1', '0')) if row.get('Confidence_F1', 0) != 0 else 0,
+                        'entropy_accuracy': float(row.get('Entropy_Accuracy', '0')) if row.get('Entropy_Accuracy', 0) != 0 else 0,
+                        'entropy_f1': float(row.get('Entropy_F1', '0')) if row.get('Entropy_F1', 0) != 0 else 0,
+                        'modified_entropy_accuracy': float(row.get('Modified_entropy_Accuracy', '0')) if row.get('Modified_entropy_Accuracy', 0) != 0 else 0,
+                        'modified_entropy_f1': float(row.get('Modified_entropy_F1', '0')) if row.get('Modified_entropy_F1', 0) != 0 else 0,
+                        'neural_network_accuracy': float(row.get('Neural_network_Accuracy', '0')) if row.get('Neural_network_Accuracy', 0) != 0 else 0,
+                        'neural_network_f1': float(row.get('Neural_network_F1', '0')) if row.get('Neural_network_F1', 0) != 0 else 0,
+                        'neural_network_auc': float(row.get('Neural_network_AUC', '0')) if row.get('Neural_network_AUC', 0) != 0 else 0,
+                    })
     
     # Save combined results
     if combined_data:
