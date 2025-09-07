@@ -329,7 +329,18 @@ def parse_config_args() -> ExperimentConfig:
     parser.add_argument('--prune-freq', type=int, default=16)
     parser.add_argument('--target-epoch', type=int, default=75)
     parser.add_argument('--freeze-epoch', type=int, default=180,
-                       help='Epoch to freeze masks (default: 180)')    
+                       help='Epoch to freeze masks (default: 180)')
+    
+    # DWA parameters
+    parser.add_argument('--dwa-mode', type=str, default='reactivate_only',
+                       choices=['reactivate_only', 'kill_active_plain_dead', 'kill_and_reactivate'],
+                       help='DWA experiment mode')
+    parser.add_argument('--dwa-alpha', type=float, default=1.0,
+                       help='Alpha parameter for reactivation strength')
+    parser.add_argument('--dwa-beta', type=float, default=1.0,
+                       help='Beta parameter for kill strength') 
+    parser.add_argument('--dwa-threshold-percentile', type=int, default=50,
+                       help='Percentile for threshold calculation')    
     
     # MIA parameters
     parser.add_argument('--mia', action='store_true',
