@@ -1,0 +1,690 @@
+{
+  "dense_seed-cifar10": {
+    "model_info": {
+      "type": "dense",
+      "method": "dense",
+      "variant": "none",
+      "sparsity": 0.0,
+      "path": "runs/dense/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.213,
+        "precision": 0.8657894736842106,
+        "recall": 0.0658,
+        "f1": 0.12230483271375464,
+        "threshold": 0.44118465325431966
+      },
+      "entropy": {
+        "accuracy": 0.5736666666666667,
+        "precision": 0.8813241723922548,
+        "recall": 0.5644,
+        "f1": 0.6881248475981467,
+        "threshold": -1.6325074121822662
+      },
+      "modified_entropy": {
+        "accuracy": 0.19766666666666666,
+        "precision": 0.8907563025210085,
+        "recall": 0.0424,
+        "f1": 0.08094692630775105,
+        "threshold": -0.37819202376178945
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6378841000000001
+      }
+    },
+    "shadow_used": [
+      "dpf_s0.5_freeze180_seed-cifar10",
+      "dpf_s0.5_nofreeze_seed-cifar10"
+    ]
+  },
+  "dpf_s0.5_freeze180_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "freeze180",
+      "sparsity": 0.5,
+      "path": "runs/dpf/sparsity_0.5_freeze180/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22183333333333333,
+        "precision": 0.8528784648187633,
+        "recall": 0.08,
+        "f1": 0.14627902724446884,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5756666666666667,
+        "precision": 0.8727217496962333,
+        "recall": 0.5746,
+        "f1": 0.6929570670525809,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21683333333333332,
+        "precision": 0.8557919621749409,
+        "recall": 0.0724,
+        "f1": 0.13350543979347224,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8334444814938313,
+        "recall": 0.9998,
+        "f1": 0.9090743771594836,
+        "auc": 0.6254024
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_nofreeze_seed-cifar10"
+    ]
+  },
+  "dpf_s0.5_nofreeze_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "nofreeze",
+      "sparsity": 0.5,
+      "path": "runs/dpf/sparsity_0.5_nofreeze/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.228,
+        "precision": 0.8770491803278688,
+        "recall": 0.0856,
+        "f1": 0.15597667638483964,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5906666666666667,
+        "precision": 0.881981981981982,
+        "recall": 0.5874,
+        "f1": 0.7051620648259304,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.226,
+        "precision": 0.8903508771929824,
+        "recall": 0.0812,
+        "f1": 0.14882697947214074,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8334444814938313,
+        "recall": 0.9998,
+        "f1": 0.9090743771594836,
+        "auc": 0.6391192
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.7_freeze180_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "freeze180",
+      "sparsity": 0.7,
+      "path": "runs/dpf/sparsity_0.7_freeze180/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22316666666666668,
+        "precision": 0.8676789587852495,
+        "recall": 0.08,
+        "f1": 0.14649331624244644,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5876666666666667,
+        "precision": 0.8765652951699463,
+        "recall": 0.588,
+        "f1": 0.7038544409863539,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21716666666666667,
+        "precision": 0.8668280871670703,
+        "recall": 0.0716,
+        "f1": 0.13227415481248844,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8335,
+        "precision": 0.8335834583958646,
+        "recall": 0.9998,
+        "f1": 0.9091570428298628,
+        "auc": 0.6357258
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.7_nofreeze_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "nofreeze",
+      "sparsity": 0.7,
+      "path": "runs/dpf/sparsity_0.7_nofreeze/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.2215,
+        "precision": 0.8552915766738661,
+        "recall": 0.0792,
+        "f1": 0.14497528830313014,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5851666666666666,
+        "precision": 0.8824246116356991,
+        "recall": 0.5794,
+        "f1": 0.6995050102619824,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21716666666666667,
+        "precision": 0.8581560283687943,
+        "recall": 0.0726,
+        "f1": 0.13387423935091278,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.833,
+        "precision": 0.8337228714524207,
+        "recall": 0.9988,
+        "f1": 0.9088262056414922,
+        "auc": 0.6286551
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.8_freeze180_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "freeze180",
+      "sparsity": 0.8,
+      "path": "runs/dpf/sparsity_0.8_freeze180/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.2195,
+        "precision": 0.821501014198783,
+        "recall": 0.081,
+        "f1": 0.1474604041507373,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.571,
+        "precision": 0.8748454882571075,
+        "recall": 0.5662,
+        "f1": 0.6874696454589607,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21366666666666667,
+        "precision": 0.8105726872246696,
+        "recall": 0.0736,
+        "f1": 0.13494682801613495,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6228834000000001
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.8_nofreeze_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "nofreeze",
+      "sparsity": 0.8,
+      "path": "runs/dpf/sparsity_0.8_nofreeze/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22416666666666665,
+        "precision": 0.8693790149892934,
+        "recall": 0.0812,
+        "f1": 0.14852752880921893,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5858333333333333,
+        "precision": 0.8853815507201961,
+        "recall": 0.5778,
+        "f1": 0.6992617693331719,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.22133333333333333,
+        "precision": 0.8778801843317973,
+        "recall": 0.0762,
+        "f1": 0.1402281928597718,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8331666666666667,
+        "precision": 0.8334167083541771,
+        "recall": 0.9996,
+        "f1": 0.9089751750477403,
+        "auc": 0.6453408
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.95_freeze180_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "freeze180",
+      "sparsity": 0.95,
+      "path": "runs/dpf/sparsity_0.95_freeze180/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22266666666666668,
+        "precision": 0.8800904977375565,
+        "recall": 0.0778,
+        "f1": 0.14296214626975376,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5611666666666667,
+        "precision": 0.8876514903373731,
+        "recall": 0.542,
+        "f1": 0.673041102694648,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21816666666666668,
+        "precision": 0.885286783042394,
+        "recall": 0.071,
+        "f1": 0.13145713756711722,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6336918
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.95_nofreeze_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "nofreeze",
+      "sparsity": 0.95,
+      "path": "runs/dpf/sparsity_0.95_nofreeze/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22366666666666668,
+        "precision": 0.8733624454148472,
+        "recall": 0.08,
+        "f1": 0.14657383657017226,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5458333333333333,
+        "precision": 0.8765309500165508,
+        "recall": 0.5296,
+        "f1": 0.6602667996509163,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.22,
+        "precision": 0.8902439024390244,
+        "recall": 0.073,
+        "f1": 0.13493530499075787,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6349521
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.9_freeze180_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "freeze180",
+      "sparsity": 0.9,
+      "path": "runs/dpf/sparsity_0.9_freeze180/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.2245,
+        "precision": 0.8607068607068608,
+        "recall": 0.0828,
+        "f1": 0.1510673234811166,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5765,
+        "precision": 0.8779588072548417,
+        "recall": 0.5712,
+        "f1": 0.6921119592875318,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.22066666666666668,
+        "precision": 0.8698630136986302,
+        "recall": 0.0762,
+        "f1": 0.14012504597278413,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6381024
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "dpf_s0.9_nofreeze_seed-cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "method": "dpf",
+      "variant": "nofreeze",
+      "sparsity": 0.9,
+      "path": "runs/dpf/sparsity_0.9_nofreeze/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.216,
+        "precision": 0.834841628959276,
+        "recall": 0.0738,
+        "f1": 0.13561190738699008,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5586666666666666,
+        "precision": 0.8742838956078931,
+        "recall": 0.5494,
+        "f1": 0.6747727830999755,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21483333333333332,
+        "precision": 0.851581508515815,
+        "recall": 0.07,
+        "f1": 0.12936610608020702,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6150318
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "static_s0.5_none_seed-cifar10": {
+    "model_info": {
+      "type": "static",
+      "method": "static",
+      "variant": "none",
+      "sparsity": 0.5,
+      "path": "runs/static/sparsity_0.5/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22366666666666668,
+        "precision": 0.842,
+        "recall": 0.0842,
+        "f1": 0.1530909090909091,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5735,
+        "precision": 0.8749615975422427,
+        "recall": 0.5696,
+        "f1": 0.6900060569351908,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.2195,
+        "precision": 0.8453159041394336,
+        "recall": 0.0776,
+        "f1": 0.14215057702875986,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8336666666666667,
+        "precision": 0.8336112037345782,
+        "recall": 1.0,
+        "f1": 0.9092562284051646,
+        "auc": 0.6399149
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "static_s0.7_none_seed-cifar10": {
+    "model_info": {
+      "type": "static",
+      "method": "static",
+      "variant": "none",
+      "sparsity": 0.7,
+      "path": "runs/static/sparsity_0.7/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22166666666666668,
+        "precision": 0.8699551569506726,
+        "recall": 0.0776,
+        "f1": 0.14248990084465665,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5695,
+        "precision": 0.8775382692908467,
+        "recall": 0.5618,
+        "f1": 0.6850384099500061,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.2175,
+        "precision": 0.8728606356968215,
+        "recall": 0.0714,
+        "f1": 0.1320022185246811,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8335557038025351,
+        "recall": 0.9996,
+        "f1": 0.9090578392142598,
+        "auc": 0.6259932
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "static_s0.8_none_seed-cifar10": {
+    "model_info": {
+      "type": "static",
+      "method": "static",
+      "variant": "none",
+      "sparsity": 0.8,
+      "path": "runs/static/sparsity_0.8/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22833333333333333,
+        "precision": 0.8838174273858921,
+        "recall": 0.0852,
+        "f1": 0.15541773075519882,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5621666666666667,
+        "precision": 0.8804103879448542,
+        "recall": 0.5492,
+        "f1": 0.6764379849735189,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.2245,
+        "precision": 0.8881431767337807,
+        "recall": 0.0794,
+        "f1": 0.14576831283275196,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8335,
+        "precision": 0.833472245374229,
+        "recall": 1.0,
+        "f1": 0.9091735612328394,
+        "auc": 0.631203
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "static_s0.95_none_seed-cifar10": {
+    "model_info": {
+      "type": "static",
+      "method": "static",
+      "variant": "none",
+      "sparsity": 0.95,
+      "path": "runs/static/sparsity_0.95/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.22116666666666668,
+        "precision": 0.8562091503267973,
+        "recall": 0.0786,
+        "f1": 0.1439824143616047,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5313333333333333,
+        "precision": 0.8751714677640604,
+        "recall": 0.5104,
+        "f1": 0.6447700859019706,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.21766666666666667,
+        "precision": 0.8642857142857143,
+        "recall": 0.0726,
+        "f1": 0.13394833948339485,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6130783
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  },
+  "static_s0.9_none_seed-cifar10": {
+    "model_info": {
+      "type": "static",
+      "method": "static",
+      "variant": "none",
+      "sparsity": 0.9,
+      "path": "runs/static/sparsity_0.9/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.228,
+        "precision": 0.8739837398373984,
+        "recall": 0.086,
+        "f1": 0.15659140568099053,
+        "threshold": 0.39510034288278517
+      },
+      "entropy": {
+        "accuracy": 0.5591666666666667,
+        "precision": 0.8772829221403396,
+        "recall": 0.5476,
+        "f1": 0.674301194434183,
+        "threshold": -1.6332842285852287
+      },
+      "modified_entropy": {
+        "accuracy": 0.22266666666666668,
+        "precision": 0.8733333333333333,
+        "recall": 0.0786,
+        "f1": 0.14422018348623852,
+        "threshold": -0.5746994816654615
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6245407000000001
+      }
+    },
+    "shadow_used": [
+      "dense_seed-cifar10",
+      "dpf_s0.5_freeze180_seed-cifar10"
+    ]
+  }
+}

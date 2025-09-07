@@ -65,11 +65,19 @@ def run_training(config_params):
     print(f"Running training command: {' '.join(cmd)}")
     
     try:
+        # Show output in real-time instead of capturing
+        # result = subprocess.run(cmd, text=True, timeout=7200)  # 2 hour timeout
+        # if result.returncode != 0:
+        #     print(f"Training failed with return code: {result.returncode}")
+        #     return False, f"Return code: {result.returncode}"
+        # return True, "Training completed"
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
         if result.returncode != 0:
-            print(f"Training failed with error: {result.stderr}")
+                print(f"Training failed with error: {result.stderr}")
             return False, result.stderr
         return True, result.stdout
+
+
     except subprocess.TimeoutExpired:
         print("Training timed out after 2 hours")
         return False, "Training timeout"
@@ -658,24 +666,24 @@ def main():
         print(f"Training Summary:\n{summary_df.to_string()}")
     
     # Run MIA evaluation on all trained models
-    print(f"\n{'='*50}")
-    print("Running MIA evaluation...")
-    print(f"{'='*50}")
+    # print(f"\n{'='*50}")
+    # print("Running MIA evaluation...")
+    # print(f"{'='*50}")
     
-    runs_dir = Path('./runs')
-    success, output = run_comprehensive_mia_evaluation(runs_dir)
+    # runs_dir = Path('./runs')
+    # success, output = run_comprehensive_mia_evaluation(runs_dir)
     
-    if success:
-        print("✅ MIA evaluation completed successfully!")
-        print("📊 MIA results saved in: results/mia/")
-        print("📁 Results: results/mia/comprehensive_mia_results.csv")
+    # if success:
+    #     print("✅ MIA evaluation completed successfully!")
+    #     print("📊 MIA results saved in: results/mia/")
+    #     print("📁 Results: results/mia/comprehensive_mia_results.csv")
         
-        # Log MIA results to wandb if available
-        if args.wandb:
-            log_mia_results_to_wandb(args)
-    else:
-        print(f"❌ MIA evaluation failed: {output}")
-        failed_experiments.append(('mia_evaluation', 'mia', output))
+    #     # Log MIA results to wandb if available
+    #     if args.wandb:
+    #         log_mia_results_to_wandb(args)
+    # else:
+    #     print(f"❌ MIA evaluation failed: {output}")
+    #     failed_experiments.append(('mia_evaluation', 'mia', output))
     
     # Report failed experiments
     if failed_experiments:

@@ -83,29 +83,35 @@ def test_maskconv2d_typevalue():
 def create_training_monitor():
     """훈련 중 모니터링용 코드 생성"""
     monitor_code = '''
-# 훈련 루프에 추가할 모니터링 코드
-def monitor_masking_behavior(model, epoch, iteration):
-    """모델의 마스킹 동작 모니터링"""
-    if iteration % 100 == 0:  # 100 iteration마다 체크
-        mask_layers = []
-        for name, module in model.named_modules():
+# 훈련 루프에 추가할 모니터링 코드(교체 버전)
+def monitor_masking_behavior(model, epoch, iteration, max_layers=3):
+    net = model.module if hasattr(model, "module") else model
+    if iteration % 100 == 0:
+        printed = 0
+        print(f"\n[Epoch {epoch}, Iter {iteration}] Masking Status:")
+        for name, module in net.named_modules():
             if isinstance(module, MaskConv2d):
-                mask_layers.append({
-                    'name': name,
-                    'type_value': module.type_value,
-                    'mask_sparsity': (module.mask == 0).float().mean().item(),
-                    'weight_grad_nonzero': (module.weight.grad != 0).float().mean().item() if module.weight.grad is not None else 0
-                })
-        
-        if mask_layers:
-            print(f"\\n[Epoch {epoch}, Iter {iteration}] Masking Status:")
-            for layer_info in mask_layers[:3]:  # 처음 3개 레이어만 출력
-                print(f"  {layer_info['name']}: type_value={layer_info['type_value']}, "
-                      f"sparsity={layer_info['mask_sparsity']:.3f}, "
-                      f"grad_nonzero={layer_info['weight_grad_nonzero']:.3f}")
+                mask = module.mask
+                sparsity = (mask == 0).float().mean().item()
+                tv = getattr(module, "type_value", None)
+                if module.weight.grad is not None:
+                    g = module.weight.grad
+                    masked = (mask == 0)
+                    active = (mask == 1)
+                    # 분리된 grad 통계
+                    masked_nonzero = (g[masked] != 0).float().mean().item() if masked.any() else 0.0
+                    active_nonzero = (g[active] != 0).float().mean().item() if active.any() else 0.0
+                    masked_sum = g[masked].abs().sum().item() if masked.any() else 0.0
+                    active_sum = g[active].abs().sum().item() if active.any() else 0.0
+                else:
+                    masked_nonzero = active_nonzero = masked_sum = active_sum = 0.0
 
-# run_experiment.py의 train_one_epoch 함수에 추가:
-# monitor_masking_behavior(model, epoch, iteration)
+                print(f"  {name}: type_value={tv}, sparsity={sparsity:.3f}, "
+                      f"masked_grad_nonzero={masked_nonzero:.3f}, active_grad_nonzero={active_nonzero:.3f}, "
+                      f"masked_grad_sum={masked_sum:.2e}, active_grad_sum={active_sum:.2e}")
+                printed += 1
+                if printed >= max_layers:
+                    break
 '''
     
     print("\n📝 훈련 모니터링 코드")

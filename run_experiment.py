@@ -35,37 +35,65 @@ from common_utils import AverageMeter, ProgressMeter, accuracy, set_scheduler, s
 
 def monitor_masking_behavior(model, epoch, iteration, config):
     """모델의 마스킹 동작 모니터링"""
-    if iteration % 200 == 0 and config.pruning.enabled:  # 200 iteration마다 체크
+    if iteration % 100 == 0 and config.pruning.enabled:  # 100 iteration마다 체크
         from pruning.dcil.mnn import MaskConv2d
-        mask_layers = []
         
         # 실제 모델 가져오기 (DataParallel 고려)
         net = model.module if hasattr(model, 'module') else model
+        frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
         
+        print(f"\n[Epoch {epoch:3d}, Iter {iteration:4d}] {config.pruning.method.upper()} Masking ({frozen_status}):")
+        
+        layer_count = 0
         for name, module in net.named_modules():
-            if isinstance(module, MaskConv2d):
+            if isinstance(module, MaskConv2d) and layer_count < 3:  # 처음 3개만
                 mask_sparsity = (module.mask == 0).float().mean().item()
-                weight_grad_nonzero = 0
-                if module.weight.grad is not None:
-                    weight_grad_nonzero = (module.weight.grad != 0).float().mean().item()
                 
-                mask_layers.append({
-                    'name': name[:15],  # 이름 길이 제한
-                    'type_value': module.type_value,
-                    'mask_sparsity': mask_sparsity,
-                    'weight_grad_nonzero': weight_grad_nonzero
-                })
-        
-        if mask_layers:
-            frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
-            print(f"\n[Epoch {epoch:3d}, Iter {iteration:4d}] {config.pruning.method.upper()} Masking ({frozen_status}):")
-            for i, layer_info in enumerate(mask_layers[:3]):  # 처음 3개 레이어만 출력
-                print(f"  {layer_info['name']:<15}: type={layer_info['type_value']}, "
-                      f"sparsity={layer_info['mask_sparsity']:.3f}, "
-                      f"grad_nonzero={layer_info['weight_grad_nonzero']:.3f}")
-            if len(mask_layers) > 3:
-                print(f"  ... (and {len(mask_layers)-3} more layers)")
-            print()
+                # 그라디언트 분석
+                if module.weight.grad is not None:
+                    masked_indices = (module.mask == 0)
+                    active_indices = (module.mask == 1)
+                    
+                    if masked_indices.any():
+                        masked_grad_nonzero_ratio = (module.weight.grad[masked_indices] != 0).float().mean().item()
+                        masked_grad_abs_mean = module.weight.grad[masked_indices].abs().mean().item()
+                    else:
+                        masked_grad_nonzero_ratio = 0
+                        masked_grad_abs_mean = 0
+                    
+                    if active_indices.any():
+                        active_grad_abs_mean = module.weight.grad[active_indices].abs().mean().item()
+                    else:
+                        active_grad_abs_mean = 0
+                    
+                    print(f"  {name[:20]:<20}: type={module.type_value}, sparsity={mask_sparsity:.3f}")
+                    print(f"    {'':20} masked_grad_nonzero={masked_grad_nonzero_ratio:.3f}, "
+                          f"masked_grad_abs={masked_grad_abs_mean:.6f}, active_grad_abs={active_grad_abs_mean:.6f}")
+                else:
+                    print(f"  {name[:20]:<20}: type={module.type_value}, sparsity={mask_sparsity:.3f}, grad=None")
+                
+                layer_count += 1
+        print()
+
+def check_dpf_gradient_flow(model, config):
+    """DPF에서 마스크된 영역의 그라디언트 플로우 확인"""
+    if not (config.pruning.enabled and config.pruning.method == 'dpf'):
+        return
+    
+    from pruning.dcil.mnn import MaskConv2d
+    net = model.module if hasattr(model, 'module') else model
+    
+    # 프리즈 상태 확인
+    is_frozen = getattr(net, "_masks_frozen", False)
+    
+    for name, module in net.named_modules():
+        if isinstance(module, MaskConv2d) and module.weight.grad is not None:
+            masked = (module.mask == 0)
+            if masked.any():
+                masked_grad_nonzero = (module.weight.grad[masked] != 0).float().mean().item()
+                print(f"[DPF-Check] {name[:20]}: frozen={is_frozen}, type_value={module.type_value}, "
+                      f"masked_grad_nonzero={masked_grad_nonzero:.3f}")
+            break  # 첫 번째 레이어만 확인
 
 def create_model(config):
     """Create model based on configuration"""
@@ -288,6 +316,11 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
+        
+        # DPF 그라디언트 플로우 확인 (backward 직후)
+        if iteration_counter[0] % 100 == 0:
+            check_dpf_gradient_flow(model, config)
+        
         optimizer.step()
         
         # Measure elapsed time
@@ -339,16 +372,25 @@ def validate(model, val_loader, criterion, config, logger):
             
             if config.pruning.enabled:
                 if config.pruning.method == 'static':
-                    output = model(input, 5)  # MaskerStatic
+                    type_val = 5
+                    output = model(input, type_val)  # MaskerStatic
                 elif config.pruning.method == 'dpf':
                     # Check if masks are frozen
                     net = model.module if hasattr(model, 'module') else model
                     if getattr(net, "_masks_frozen", False):
-                        output = model(input, 5)  # MaskerStatic (frozen)
+                        type_val = 5
+                        output = model(input, type_val)  # MaskerStatic (frozen)
                     else:
-                        output = model(input, 6)  # MaskerDynamic
+                        type_val = 6
+                        output = model(input, type_val)  # MaskerDynamic
                 else:
-                    output = model(input, 0)  # Default sparse
+                    type_val = 0
+                    output = model(input, type_val)  # Default sparse
+                
+                # Validation type_value 로깅 (첫 번째 배치에서만)
+                if i == 0:
+                    frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
+                    print(f"[VAL] {config.pruning.method.upper()} using type_value={type_val} ({frozen_status})")
             else:
                 # Dense model - no type_value needed
                 output = model(input)
