@@ -1,0 +1,17 @@
+Model,Type,Sparsity,Confidence_Accuracy,Confidence_F1,Entropy_Accuracy,Entropy_F1,Modified_Entropy_Accuracy,Modified_Entropy_F1,Neural_Network_Accuracy,Neural_Network_F1,Neural_Network_AUC
+dense_cifar10,dense,0.0,0.198,0.082,0.534,0.645,0.198,0.080,0.833,0.909,0.625
+dpf_sparsity_0.7_freeze180_cifar10,dpf,0.7,0.198,0.082,0.536,0.647,0.198,0.080,0.833,0.909,0.624
+dpf_sparsity_0.8_freeze180_cifar10,dpf,0.8,0.198,0.081,0.533,0.644,0.198,0.079,0.833,0.909,0.625
+dpf_sparsity_0.8_nofreeze_cifar10,dpf,0.8,0.198,0.081,0.532,0.643,0.198,0.079,0.833,0.909,0.625
+dpf_sparsity_0.7_nofreeze_cifar10,dpf,0.7,0.198,0.081,0.534,0.646,0.198,0.080,0.833,0.909,0.625
+dpf_sparsity_0.95_freeze180_cifar10,dpf,0.95,0.196,0.075,0.512,0.619,0.195,0.073,0.833,0.909,0.624
+dpf_sparsity_0.9_nofreeze_cifar10,dpf,0.9,0.198,0.078,0.523,0.632,0.197,0.077,0.833,0.909,0.623
+dpf_sparsity_0.95_nofreeze_cifar10,dpf,0.95,0.195,0.072,0.506,0.611,0.194,0.070,0.833,0.909,0.624
+dpf_sparsity_0.5_nofreeze_cifar10,dpf,0.5,0.198,0.082,0.537,0.648,0.198,0.080,0.834,0.909,0.625
+dpf_sparsity_0.9_freeze180_cifar10,dpf,0.9,0.198,0.080,0.528,0.638,0.197,0.078,0.833,0.909,0.624
+dpf_sparsity_0.5_freeze180_cifar10,dpf,0.5,0.199,0.082,0.538,0.649,0.198,0.081,0.833,0.909,0.624
+static_sparsity0.5_cifar10,static,0.5,0.198,0.081,0.534,0.645,0.198,0.080,0.833,0.909,0.625
+static_sparsity0.8_cifar10,static,0.8,0.198,0.078,0.524,0.633,0.197,0.077,0.834,0.909,0.624
+static_sparsity0.9_cifar10,static,0.9,0.196,0.074,0.512,0.619,0.195,0.073,0.833,0.909,0.625
+static_sparsity0.7_cifar10,static,0.7,0.198,0.081,0.529,0.640,0.197,0.078,0.833,0.909,0.624
+static_sparsity0.95_cifar10,static,0.95,0.193,0.068,0.491,0.592,0.192,0.065,0.833,0.909,0.622

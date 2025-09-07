@@ -33,6 +33,40 @@ from data import DataLoader
 # Import common utilities
 from common_utils import AverageMeter, ProgressMeter, accuracy, set_scheduler, set_arch_name
 
+def monitor_masking_behavior(model, epoch, iteration, config):
+    """모델의 마스킹 동작 모니터링"""
+    if iteration % 200 == 0 and config.pruning.enabled:  # 200 iteration마다 체크
+        from pruning.dcil.mnn import MaskConv2d
+        mask_layers = []
+        
+        # 실제 모델 가져오기 (DataParallel 고려)
+        net = model.module if hasattr(model, 'module') else model
+        
+        for name, module in net.named_modules():
+            if isinstance(module, MaskConv2d):
+                mask_sparsity = (module.mask == 0).float().mean().item()
+                weight_grad_nonzero = 0
+                if module.weight.grad is not None:
+                    weight_grad_nonzero = (module.weight.grad != 0).float().mean().item()
+                
+                mask_layers.append({
+                    'name': name[:15],  # 이름 길이 제한
+                    'type_value': module.type_value,
+                    'mask_sparsity': mask_sparsity,
+                    'weight_grad_nonzero': weight_grad_nonzero
+                })
+        
+        if mask_layers:
+            frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
+            print(f"\n[Epoch {epoch:3d}, Iter {iteration:4d}] {config.pruning.method.upper()} Masking ({frozen_status}):")
+            for i, layer_info in enumerate(mask_layers[:3]):  # 처음 3개 레이어만 출력
+                print(f"  {layer_info['name']:<15}: type={layer_info['type_value']}, "
+                      f"sparsity={layer_info['mask_sparsity']:.3f}, "
+                      f"grad_nonzero={layer_info['weight_grad_nonzero']:.3f}")
+            if len(mask_layers) > 3:
+                print(f"  ... (and {len(mask_layers)-3} more layers)")
+            print()
+
 def create_model(config):
     """Create model based on configuration"""
     if config.pruning.enabled:
@@ -222,6 +256,9 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger
         
         input = input.cuda()
         target = target.cuda()
+        
+        # Monitor masking behavior
+        monitor_masking_behavior(model, epoch, iteration_counter[0], config)
         
         # Forward pass
         if config.pruning.enabled:
