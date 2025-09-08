@@ -53,13 +53,13 @@ def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_
 
 def run_training(config_params):
     """Run training with specified parameters"""
-    cmd = ['python', 'run_experiment_dwa.py']
+    # 현재 파이썬 실행기 사용 (가상환경 안전)
+    cmd = [sys.executable, 'run_experiment_dwa.py']
     
     # Add all config parameters to command
     for key, value in config_params.items():
         if value is not None:
             if isinstance(value, bool):
-                # For boolean flags, only add the flag if True
                 if value:
                     cmd.append(f'--{key}')
             else:
@@ -68,18 +68,11 @@ def run_training(config_params):
     print(f"Running training command: {' '.join(cmd)}")
     
     try:
-        # Show output in real-time instead of capturing
-        # result = subprocess.run(cmd, text=True, timeout=7200)  # 2 hour timeout
-        # if result.returncode != 0:
-        #     print(f"Training failed with return code: {result.returncode}")
-        #     return False, f"Return code: {result.returncode}"
-        # return True, "Training completed"
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
         if result.returncode != 0:
-                print(f"Training failed with error: {result.stderr}")
+            print(f"Training failed with error: {result.stderr}")
             return False, result.stderr
         return True, result.stdout
-
 
     except subprocess.TimeoutExpired:
         print("Training timed out after 2 hours")
@@ -96,8 +89,8 @@ def run_comprehensive_mia_evaluation(runs_dir):
     
     print("🎯 Running Advanced MIA evaluation...")
     
-    # 1. Run Advanced MIA (LiRA, Shokri-NN, Top3-NN, ClassLabel-NN, SAMIA)
-    cmd_advanced = ['python', 'mia/mia_advanced.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'advanced')]
+    # 1. Advanced MIA
+    cmd_advanced = [sys.executable, 'mia/mia_advanced.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'advanced')]
     print(f"Command: {' '.join(cmd_advanced)}")
     
     try:
@@ -117,8 +110,8 @@ def run_comprehensive_mia_evaluation(runs_dir):
     
     print("\n🔍 Running WeMeM MIA evaluation...")
     
-    # 2. Run WeMeM MIA (Confidence, Entropy, Modified Entropy, Neural Network)
-    cmd_wemem = ['python', 'mia/mia_classic.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'wemem')]
+    # 2. WeMeM MIA
+    cmd_wemem = [sys.executable, 'mia/mia_classic.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'wemem')]
     print(f"Command: {' '.join(cmd_wemem)}")
     
     try:
@@ -153,26 +146,22 @@ def combine_mia_results(results_dir, advanced_success, wemem_success):
     if advanced_success:
         advanced_csv = results_dir / 'advanced' / 'advanced_mia_summary.csv'
         if advanced_csv.exists():
-            import pandas as pd
             advanced_df = pd.read_csv(advanced_csv)
-            
             for _, row in advanced_df.iterrows():
                 entry = {
                     'experiment': row['Model'],
                     'method': row['Type'],
                     'sparsity': float(row['Sparsity'].replace('%', '')) / 100 if isinstance(row['Sparsity'], str) else row['Sparsity'],
-                    
-                    # Advanced MIA results
-                    'lira_accuracy': float(row.get('LIRA_Acc', '0').replace('%', '')) if isinstance(row.get('LIRA_Acc', 0), str) else row.get('LIRA_Acc', 0),
-                    'lira_auc': float(row.get('LIRA_AUC', '0').replace('%', '')) if isinstance(row.get('LIRA_AUC', 0), str) else row.get('LIRA_AUC', 0),
-                    'shokri_nn_accuracy': float(row.get('SHOKRI_NN_Acc', '0').replace('%', '')) if isinstance(row.get('SHOKRI_NN_Acc', 0), str) else row.get('SHOKRI_NN_Acc', 0),
-                    'shokri_nn_auc': float(row.get('SHOKRI_NN_AUC', '0').replace('%', '')) if isinstance(row.get('SHOKRI_NN_AUC', 0), str) else row.get('SHOKRI_NN_AUC', 0),
-                    'top3_nn_accuracy': float(row.get('TOP3_NN_Acc', '0').replace('%', '')) if isinstance(row.get('TOP3_NN_Acc', 0), str) else row.get('TOP3_NN_Acc', 0),
-                    'top3_nn_auc': float(row.get('TOP3_NN_AUC', '0').replace('%', '')) if isinstance(row.get('TOP3_NN_AUC', 0), str) else row.get('TOP3_NN_AUC', 0),
-                    'class_label_nn_accuracy': float(row.get('CLASS_LABEL_NN_Acc', '0').replace('%', '')) if isinstance(row.get('CLASS_LABEL_NN_Acc', 0), str) else row.get('CLASS_LABEL_NN_Acc', 0),
-                    'class_label_nn_auc': float(row.get('CLASS_LABEL_NN_AUC', '0').replace('%', '')) if isinstance(row.get('CLASS_LABEL_NN_AUC', 0), str) else row.get('CLASS_LABEL_NN_AUC', 0),
-                    'samia_accuracy': float(row.get('SAMIA_Acc', '0').replace('%', '')) if isinstance(row.get('SAMIA_Acc', 0), str) else row.get('SAMIA_Acc', 0),
-                    'samia_auc': float(row.get('SAMIA_AUC', '0').replace('%', '')) if isinstance(row.get('SAMIA_AUC', 0), str) else row.get('SAMIA_AUC', 0),
+                    'lira_accuracy': float(str(row.get('LIRA_Acc', 0)).replace('%', '')) if pd.notna(row.get('LIRA_Acc', None)) else 0,
+                    'lira_auc': float(str(row.get('LIRA_AUC', 0)).replace('%', '')) if pd.notna(row.get('LIRA_AUC', None)) else 0,
+                    'shokri_nn_accuracy': float(str(row.get('SHOKRI_NN_Acc', 0)).replace('%', '')) if pd.notna(row.get('SHOKRI_NN_Acc', None)) else 0,
+                    'shokri_nn_auc': float(str(row.get('SHOKRI_NN_AUC', 0)).replace('%', '')) if pd.notna(row.get('SHOKRI_NN_AUC', None)) else 0,
+                    'top3_nn_accuracy': float(str(row.get('TOP3_NN_Acc', 0)).replace('%', '')) if pd.notna(row.get('TOP3_NN_Acc', None)) else 0,
+                    'top3_nn_auc': float(str(row.get('TOP3_NN_AUC', 0)).replace('%', '')) if pd.notna(row.get('TOP3_NN_AUC', None)) else 0,
+                    'class_label_nn_accuracy': float(str(row.get('CLASS_LABEL_NN_Acc', 0)).replace('%', '')) if pd.notna(row.get('CLASS_LABEL_NN_Acc', None)) else 0,
+                    'class_label_nn_auc': float(str(row.get('CLASS_LABEL_NN_AUC', 0)).replace('%', '')) if pd.notna(row.get('CLASS_LABEL_NN_AUC', None)) else 0,
+                    'samia_accuracy': float(str(row.get('SAMIA_Acc', 0)).replace('%', '')) if pd.notna(row.get('SAMIA_Acc', None)) else 0,
+                    'samia_auc': float(str(row.get('SAMIA_AUC', 0)).replace('%', '')) if pd.notna(row.get('SAMIA_AUC', None)) else 0,
                 }
                 combined_data.append(entry)
     
@@ -180,7 +169,6 @@ def combine_mia_results(results_dir, advanced_success, wemem_success):
     if wemem_success:
         wemem_csv = results_dir / 'wemem' / 'wemem_mia_summary.csv'
         if wemem_csv.exists():
-            import pandas as pd
             try:
                 wemem_df = pd.read_csv(wemem_csv)
                 if wemem_df.empty:
@@ -203,39 +191,35 @@ def combine_mia_results(results_dir, advanced_success, wemem_success):
                             break
                     
                     if matching_entry is None:
-                        # Create new entry if not found
                         matching_entry = {
                             'experiment': model_name,
-                            'method': row['Type'],
-                            'sparsity': row['Sparsity'],
+                            'method': row.get('Type', None),
+                            'sparsity': row.get('Sparsity', None),
                         }
                         combined_data.append(matching_entry)
                     
-                    # Add WeMeM results - using correct column names
                     def safe_float(value):
                         try:
-                            return float(value) if value is not None and str(value).strip() != '' and str(value) != '0' else 0
+                            return float(value)
                         except (ValueError, TypeError):
-                            return 0
+                            return 0.0
                     
+                    # 컬럼명 케이스/스페이스 다를 수 있어 안전하게 접근
                     matching_entry.update({
-                        'confidence_accuracy': safe_float(row.get('Confidence_Accuracy')),
-                        'confidence_f1': safe_float(row.get('Confidence_F1')),
-                        'entropy_accuracy': safe_float(row.get('Entropy_Accuracy')),
-                        'entropy_f1': safe_float(row.get('Entropy_F1')),
-                        'modified_entropy_accuracy': safe_float(row.get('Modified_Entropy_Accuracy')),
-                        'modified_entropy_f1': safe_float(row.get('Modified_Entropy_F1')),
-                        'neural_network_accuracy': safe_float(row.get('Neural_Network_Accuracy')),
-                        'neural_network_f1': safe_float(row.get('Neural_Network_F1')),
-                        'neural_network_auc': safe_float(row.get('Neural_Network_AUC')),
+                        'confidence_accuracy': safe_float(row.get('Confidence_Accuracy') or row.get('confidence_accuracy')),
+                        'confidence_f1': safe_float(row.get('Confidence_F1') or row.get('confidence_f1')),
+                        'entropy_accuracy': safe_float(row.get('Entropy_Accuracy') or row.get('entropy_accuracy')),
+                        'entropy_f1': safe_float(row.get('Entropy_F1') or row.get('entropy_f1')),
+                        'modified_entropy_accuracy': safe_float(row.get('Modified_entropy_Accuracy') or row.get('Modified_Entropy_Accuracy') or row.get('modified_entropy_accuracy')),
+                        'modified_entropy_f1': safe_float(row.get('Modified_entropy_F1') or row.get('Modified_Entropy_F1') or row.get('modified_entropy_f1')),
+                        'neural_network_accuracy': safe_float(row.get('Neural_network_Accuracy') or row.get('Neural_Network_Accuracy') or row.get('neural_network_accuracy')),
+                        'neural_network_f1': safe_float(row.get('Neural_network_F1') or row.get('Neural_Network_F1') or row.get('neural_network_f1')),
+                        'neural_network_auc': safe_float(row.get('Neural_network_AUC') or row.get('Neural_Network_AUC') or row.get('neural_network_auc')),
                     })
     
     # Save combined results
     if combined_data:
-        import pandas as pd
         combined_df = pd.DataFrame(combined_data)
-        
-        # Sort by method and sparsity
         if 'method' in combined_df.columns and 'sparsity' in combined_df.columns:
             combined_df = combined_df.sort_values(['method', 'sparsity'])
         
@@ -260,44 +244,34 @@ def collect_results(results_dir):
     """Collect training and MIA results from directory"""
     results = {}
     
-    # Look for training results
     config_file = results_dir / 'config.json'
     if config_file.exists():
         with open(config_file, 'r') as f:
-            config = json.load(f)
-            results['config'] = config
+            results['config'] = json.load(f)
     
-    # Look for training logs
     log_files = list(results_dir.glob('*.log'))
     if log_files:
         results['log_file'] = str(log_files[0])
     
-    # Look for experiment summary (training results)
     experiment_summary_file = results_dir / 'experiment_summary.json'
     if experiment_summary_file.exists():
         with open(experiment_summary_file, 'r') as f:
-            training_results = json.load(f)
-            results['training'] = training_results
+            results['training'] = json.load(f)
     
-    # Look for validation history
     val_history_file = results_dir / 'validation_history.json'
     if val_history_file.exists():
         with open(val_history_file, 'r') as f:
-            val_history = json.load(f)
-            results['validation_history'] = val_history
+            results['validation_history'] = json.load(f)
     
-    # Look for MIA results
     mia_results_file = results_dir / 'mia_results.json'
     if mia_results_file.exists():
         with open(mia_results_file, 'r') as f:
-            mia_results = json.load(f)
-            results['mia'] = mia_results
+            results['mia'] = json.load(f)
     
     return results
 
 def create_training_summary_csv(all_results, output_file='results/training_results.csv'):
     """Create summary CSV with all results"""
-    # Ensure results directory exists
     results_dir = Path('results')
     results_dir.mkdir(exist_ok=True)
     
@@ -306,11 +280,10 @@ def create_training_summary_csv(all_results, output_file='results/training_resul
     for exp_name, results in all_results.items():
         row = {'experiment': exp_name}
         
-        # Add config info
         if 'config' in results:
             config = results['config']
             row.update({
-                'method': config.get('pruning', {}).get('method', 'dense'),
+                'method': config.get('pruning', {}).get('method', 'dpf'),
                 'sparsity': config.get('pruning', {}).get('sparsity', 0.0),
                 'dataset': config.get('data', {}).get('dataset', 'cifar10'),
                 'arch': config.get('model', {}).get('arch', 'resnet'),
@@ -319,7 +292,6 @@ def create_training_summary_csv(all_results, output_file='results/training_resul
                 'lr': config.get('training', {}).get('lr', 0.1),
             })
         
-        # Add training results if available
         if 'training' in results:
             training = results['training']
             row.update({
@@ -331,12 +303,10 @@ def create_training_summary_csv(all_results, output_file='results/training_resul
                 'total_training_time_hours': training.get('total_duration', 0) / 3600 if training.get('total_duration') else None,
             })
         
-        # Add validation history summary if available
         if 'validation_history' in results:
             val_history = results['validation_history']
             if val_history:
-                # Get best and final metrics from validation history
-                best_val_acc1 = max(epoch.get('acc1', 0) for epoch in val_history if 'acc1' in epoch) if val_history else None
+                best_val_acc1 = max((epoch.get('acc1', 0) for epoch in val_history if 'acc1' in epoch), default=None)
                 final_val_acc1 = val_history[-1].get('acc1', None) if val_history else None
                 final_val_loss = val_history[-1].get('loss', None) if val_history else None
                 
@@ -345,8 +315,6 @@ def create_training_summary_csv(all_results, output_file='results/training_resul
                     'val_final_acc1': final_val_acc1,
                     'val_final_loss': final_val_loss,
                 })
-        
-        # MIA 결과는 별도 파일로 분리
         
         summary_data.append(row)
     
@@ -359,19 +327,14 @@ def log_mia_results_to_wandb(args):
     """Log MIA evaluation results to Weights & Biases"""
     try:
         import wandb
-        
-        # Check if MIA results file exists
         mia_results_file = Path('results/mia/comprehensive_mia_results.csv')
         if not mia_results_file.exists():
             print("⚠️ MIA results file not found, skipping wandb logging")
             return
         
-        # Read MIA results
         mia_df = pd.read_csv(mia_results_file)
-        
         print("📊 Logging MIA results to Weights & Biases...")
         
-        # Initialize wandb for MIA results
         run = wandb.init(
             project=args.wandb_project,
             entity=args.wandb_entity,
@@ -381,111 +344,69 @@ def log_mia_results_to_wandb(args):
             reinit=True
         )
         
-        # Create summary table
         wandb_table = wandb.Table(dataframe=mia_df)
         wandb.log({"MIA_Results_Table": wandb_table})
         
-        # Log key metrics for each experiment
         for _, row in mia_df.iterrows():
             experiment_name = row['experiment']
             method = row['method']
             sparsity = row.get('sparsity', 0)
-            
-            # Create metrics dict
             mia_metrics = {}
-            
-            # Advanced MIA metrics
             for metric in ['lira_accuracy', 'lira_auc', 'shokri_nn_accuracy', 'shokri_nn_auc', 
-                          'top3_nn_accuracy', 'top3_nn_auc', 'class_label_nn_accuracy', 'class_label_nn_auc',
-                          'samia_accuracy', 'samia_auc']:
-                if metric in row and pd.notna(row[metric]):
+                           'top3_nn_accuracy', 'top3_nn_auc', 'class_label_nn_accuracy', 'class_label_nn_auc',
+                           'samia_accuracy', 'samia_auc',
+                           'confidence_accuracy', 'confidence_f1', 'entropy_accuracy', 'entropy_f1',
+                           'modified_entropy_accuracy', 'modified_entropy_f1', 'neural_network_accuracy',
+                           'neural_network_f1', 'neural_network_auc']:
+                if metric in mia_df.columns and pd.notna(row.get(metric, None)):
                     mia_metrics[f"mia/{metric}"] = float(row[metric])
-            
-            # WeMeM metrics
-            for metric in ['confidence_accuracy', 'confidence_f1', 'entropy_accuracy', 'entropy_f1',
-                          'modified_entropy_accuracy', 'modified_entropy_f1', 'neural_network_accuracy',
-                          'neural_network_f1', 'neural_network_auc']:
-                if metric in row and pd.notna(row[metric]):
-                    mia_metrics[f"mia/{metric}"] = float(row[metric])
-            
-            # Add experiment info
             mia_metrics.update({
                 "mia/experiment": experiment_name,
                 "mia/method": method,
                 "mia/sparsity": float(sparsity) if sparsity else 0.0,
             })
-            
-            # Log metrics
             wandb.log(mia_metrics)
         
-        # Create visualizations
         if len(mia_df) > 1:
-            # Plot MIA attack success rates by method and sparsity
             import matplotlib.pyplot as plt
-            
             fig, axes = plt.subplots(2, 2, figsize=(15, 10))
             fig.suptitle('MIA Attack Success Rates', fontsize=16)
-            
-            # LiRA AUC
             if 'lira_auc' in mia_df.columns:
                 ax1 = axes[0, 0]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax1.plot(method_data['sparsity'], method_data['lira_auc'], 'o-', label=method)
+                for m in mia_df['method'].unique():
+                    md = mia_df[mia_df['method'] == m]
+                    if len(md) > 1:
+                        ax1.plot(md['sparsity'], md['lira_auc'], 'o-', label=m)
                     else:
-                        ax1.scatter(method_data['sparsity'], method_data['lira_auc'], label=method, s=100)
-                ax1.set_title('LiRA AUC')
-                ax1.set_xlabel('Sparsity')
-                ax1.set_ylabel('AUC')
-                ax1.legend()
-                ax1.grid(True, alpha=0.3)
-            
-            # Neural Network AUC (WeMeM)
+                        ax1.scatter(md['sparsity'], md['lira_auc'], label=m, s=100)
+                ax1.set_title('LiRA AUC'); ax1.set_xlabel('Sparsity'); ax1.set_ylabel('AUC'); ax1.legend(); ax1.grid(True, alpha=0.3)
             if 'neural_network_auc' in mia_df.columns:
                 ax2 = axes[0, 1]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax2.plot(method_data['sparsity'], method_data['neural_network_auc'], 'o-', label=method)
+                for m in mia_df['method'].unique():
+                    md = mia_df[mia_df['method'] == m]
+                    if len(md) > 1:
+                        ax2.plot(md['sparsity'], md['neural_network_auc'], 'o-', label=m)
                     else:
-                        ax2.scatter(method_data['sparsity'], method_data['neural_network_auc'], label=method, s=100)
-                ax2.set_title('Neural Network AUC (WeMeM)')
-                ax2.set_xlabel('Sparsity')
-                ax2.set_ylabel('AUC')
-                ax2.legend()
-                ax2.grid(True, alpha=0.3)
-            
-            # Confidence Attack Accuracy
+                        ax2.scatter(md['sparsity'], md['neural_network_auc'], label=m, s=100)
+                ax2.set_title('Neural Network AUC (WeMeM)'); ax2.set_xlabel('Sparsity'); ax2.set_ylabel('AUC'); ax2.legend(); ax2.grid(True, alpha=0.3)
             if 'confidence_accuracy' in mia_df.columns:
                 ax3 = axes[1, 0]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax3.plot(method_data['sparsity'], method_data['confidence_accuracy'], 'o-', label=method)
+                for m in mia_df['method'].unique():
+                    md = mia_df[mia_df['method'] == m]
+                    if len(md) > 1:
+                        ax3.plot(md['sparsity'], md['confidence_accuracy'], 'o-', label=m)
                     else:
-                        ax3.scatter(method_data['sparsity'], method_data['confidence_accuracy'], label=method, s=100)
-                ax3.set_title('Confidence Attack Accuracy')
-                ax3.set_xlabel('Sparsity')
-                ax3.set_ylabel('Accuracy')
-                ax3.legend()
-                ax3.grid(True, alpha=0.3)
-            
-            # SAMIA AUC
+                        ax3.scatter(md['sparsity'], md['confidence_accuracy'], label=m, s=100)
+                ax3.set_title('Confidence Attack Accuracy'); ax3.set_xlabel('Sparsity'); ax3.set_ylabel('Accuracy'); ax3.legend(); ax3.grid(True, alpha=0.3)
             if 'samia_auc' in mia_df.columns:
                 ax4 = axes[1, 1]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax4.plot(method_data['sparsity'], method_data['samia_auc'], 'o-', label=method)
+                for m in mia_df['method'].unique():
+                    md = mia_df[mia_df['method'] == m]
+                    if len(md) > 1:
+                        ax4.plot(md['sparsity'], md['samia_auc'], 'o-', label=m)
                     else:
-                        ax4.scatter(method_data['sparsity'], method_data['samia_auc'], label=method, s=100)
-                ax4.set_title('SAMIA AUC')
-                ax4.set_xlabel('Sparsity')
-                ax4.set_ylabel('AUC')
-                ax4.legend()
-                ax4.grid(True, alpha=0.3)
-            
+                        ax4.scatter(md['sparsity'], md['samia_auc'], label=m, s=100)
+                ax4.set_title('SAMIA AUC'); ax4.set_xlabel('Sparsity'); ax4.set_ylabel('AUC'); ax4.legend(); ax4.grid(True, alpha=0.3)
             plt.tight_layout()
             wandb.log({"MIA_Attack_Comparison": wandb.Image(fig)})
             plt.close(fig)
@@ -505,8 +426,6 @@ def reorganize_existing_models():
         return
     
     print("Reorganizing existing model folders...")
-    
-    # Find folders to reorganize
     folders_to_move = []
     for folder in runs_dir.iterdir():
         if folder.is_dir():
@@ -517,28 +436,22 @@ def reorganize_existing_models():
             elif name.startswith('static_sparsity'):
                 sparsity = name.replace('static_sparsity', '')
                 folders_to_move.append((folder, 'static', sparsity))
-    
-    # Move folders
     for old_folder, method, sparsity in folders_to_move:
         new_path = runs_dir / method / f'sparsity_{sparsity}'
         new_path.parent.mkdir(parents=True, exist_ok=True)
-        
         if new_path.exists():
             print(f"Target path {new_path} already exists, skipping {old_folder}")
             continue
-            
         print(f"Moving {old_folder} -> {new_path}")
         shutil.move(str(old_folder), str(new_path))
 
 def main():
     parser = argparse.ArgumentParser(description='DWA (Dynamic Weight Adjustment) Experiments')
-    
     # DWA 실험 모드 - 3가지 중 선택
     parser.add_argument('--dwa-modes', nargs='+', 
                        default=['reactivate_only', 'kill_active_plain_dead', 'kill_and_reactivate'],
                        choices=['reactivate_only', 'kill_active_plain_dead', 'kill_and_reactivate'],
                        help='DWA modes to experiment with')
-    
     # DWA 하이퍼파라미터
     parser.add_argument('--dwa-alphas', nargs='+', type=float, default=[1.0],
                        help='Alpha values for reactivation strength')
@@ -546,7 +459,6 @@ def main():
                        help='Beta values for kill strength')
     parser.add_argument('--dwa-threshold-percentile', type=int, default=50,
                        help='Percentile for threshold calculation')
-    
     # 기본 실험 파라미터
     parser.add_argument('--sparsities', nargs='+', type=float, default=[0.5, 0.8, 0.9],
                        help='Sparsity levels for pruned methods')
@@ -558,7 +470,8 @@ def main():
                        help='Number of training epochs (shorter for DWA experiments)')
     parser.add_argument('--skip-existing', action='store_true',
                        help='Skip experiments if results already exist')
-    
+    parser.add_argument('--reorganize-only', action='store_true',
+                       help='Only reorganize existing runs folder and exit')
     # Wandb arguments
     parser.add_argument('--wandb', action='store_true',
                        help='Enable Weights & Biases logging')
@@ -568,12 +481,10 @@ def main():
                        help='Wandb entity (username or team)')
     parser.add_argument('--wandb-tags', nargs='*', default=[],
                        help='Wandb tags for experiment')
-    
     args = parser.parse_args()
     
     # Reorganize existing folders first
     reorganize_existing_models()
-    
     if args.reorganize_only:
         print("Reorganization complete. Exiting.")
         return
@@ -625,13 +536,11 @@ def main():
                         'dataset': args.dataset,
                         'arch': args.arch,
                         'epochs': args.epochs,
-                        
                         # Pruning 설정 (DWA는 dpf 기반으로 작동)
                         'prune': True,
                         'prune-method': 'dpf',
                         'sparsity': sparsity,
                         'freeze-epoch': -1,  # DWA는 프리즈하지 않음
-                        
                         # DWA 파라미터 전달
                         'dwa-mode': dwa_mode,
                         'dwa-alpha': alpha,
@@ -666,63 +575,6 @@ def main():
                     all_results[exp_name] = results
                     
                     print(f"Experiment {exp_name} completed")
-            
-            # Create save path
-            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs)
-            
-            # Skip if results already exist
-            if args.skip_existing and save_path.exists():
-                best_model = save_path / 'best_model.pth'
-                if best_model.exists():
-                    print(f"Results already exist for {exp_name}, skipping...")
-                    results = collect_results(save_path)
-                    all_results[exp_name] = results
-                    continue
-            
-            # Prepare training config
-            config_params = {
-                'name': exp_name,
-                'save-dir': str(save_path),
-                'dataset': args.dataset,
-                'arch': args.arch,
-                'epochs': args.epochs,
-                'freeze-epoch': args.freeze_epoch,
-            }
-            
-            # Add wandb config if enabled
-            if args.wandb:
-                config_params.update({
-                    'wandb': True,
-                    'wandb_project': args.wandb_project,
-                    'wandb_entity': args.wandb_entity,
-                    'wandb_name': exp_name,
-                })
-                if args.wandb_tags:
-                    config_params['wandb_tags'] = ','.join(args.wandb_tags + [method, args.dataset, args.arch])
-            
-            if method != 'dense':
-                config_params.update({
-                    'prune': True,
-                    'prune-method': method,
-                    'sparsity': sparsity,
-                })
-            
-            # Run training
-            print(f"Starting training for {exp_name}...")
-            success, output = run_training(config_params)
-            
-            if not success:
-                print(f"Training failed for {exp_name}: {output}")
-                failed_experiments.append((exp_name, 'training', output))
-                continue
-            
-            print(f"Training completed for {exp_name}")
-            
-            # Collect results
-            results = collect_results(save_path)
-            all_results[exp_name] = results
-            
-            print(f"Experiment {exp_name} completed")
     
     # Create training results summary
     print(f"\n{'='*50}")
@@ -734,27 +586,19 @@ def main():
         print(f"Completed {len(all_results)} experiments")
         print(f"Training Summary:\n{summary_df.to_string()}")
     
-    # Run MIA evaluation on all trained models
-    # print(f"\n{'='*50}")
-    # print("Running MIA evaluation...")
-    # print(f"{'='*50}")
-    
+    # (선택) MIA 평가를 돌리고 싶으면 아래 주석 해제
     # runs_dir = Path('./runs')
     # success, output = run_comprehensive_mia_evaluation(runs_dir)
-    
     # if success:
     #     print("✅ MIA evaluation completed successfully!")
     #     print("📊 MIA results saved in: results/mia/")
     #     print("📁 Results: results/mia/comprehensive_mia_results.csv")
-        
-    #     # Log MIA results to wandb if available
     #     if args.wandb:
     #         log_mia_results_to_wandb(args)
     # else:
     #     print(f"❌ MIA evaluation failed: {output}")
     #     failed_experiments.append(('mia_evaluation', 'mia', output))
     
-    # Report failed experiments
     if failed_experiments:
         print(f"\n{'='*20} FAILED EXPERIMENTS {'='*20}")
         for exp_name, stage, error in failed_experiments:

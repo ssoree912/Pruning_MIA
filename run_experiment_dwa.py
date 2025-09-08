@@ -36,6 +36,14 @@ from data import DataLoader
 
 # Import common utilities
 from common_utils import AverageMeter, ProgressMeter, accuracy, set_scheduler, set_arch_name
+import torch.nn as nn
+
+def _iter_mask_convs(model):
+    """DataParallel unwrap + 마스크 달린 Conv2d만 골라서 iterate"""
+    net = model.module if hasattr(model, 'module') else model
+    for name, module in net.named_modules():
+        if isinstance(module, nn.Conv2d) and hasattr(module, 'mask'):
+            yield name, module
 
 def monitor_masking_behavior(model, epoch, iteration, config):
     """DWA 모델의 마스킹 동작 모니터링"""
@@ -84,24 +92,18 @@ def monitor_masking_behavior(model, epoch, iteration, config):
         print()
 
 def check_dpf_gradient_flow(model, config):
-    """DPF에서 마스크된 영역의 그라디언트 플로우 확인"""
     if not (config.pruning.enabled and config.pruning.method == 'dpf'):
         return
-    
-    from pruning.dcil.mnn import MaskConv2d
     net = model.module if hasattr(model, 'module') else model
-    
-    # 프리즈 상태 확인
-    is_frozen = getattr(net, "_masks_frozen", False)
-    
-    for name, module in net.named_modules():
-        if isinstance(module, MaskConv2d) and module.weight.grad is not None:
+    for name, module in _iter_mask_convs(model):
+        if module.weight.grad is not None:
             masked = (module.mask == 0)
             if masked.any():
                 masked_grad_nonzero = (module.weight.grad[masked] != 0).float().mean().item()
-                print(f"[DPF-Check] {name[:20]}: frozen={is_frozen}, type_value={module.type_value}, "
-                      f"masked_grad_nonzero={masked_grad_nonzero:.3f}")
-            break  # 첫 번째 레이어만 확인
+                tval = getattr(module, "type_value", None)
+                print(f"[DPF-Check] {name[:20]}: frozen={getattr(net, '_masks_frozen', False)}, "
+                      f"type_value={tval}, masked_grad_nonzero={masked_grad_nonzero:.3f}")
+            break
 
 def create_model(config):
     """Create model based on configuration"""
@@ -197,91 +199,82 @@ def setup_training(model, config):
     return criterion, optimizer, scheduler
 
 def apply_static_pruning(model, config, logger):
-    """Apply static pruning to model"""
     logger.logger.info(f"Applying static pruning with {config.pruning.sparsity:.2%} sparsity")
-    
-    # Magnitude-based pruning
+
+    # 1) 모든 가중치 수집
     all_weights = []
-    
-    # Collect all weights
-    for name, module in model.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            weights = module.weight.data.abs().view(-1)
-            all_weights.append(weights)
-    
-    # Calculate threshold
+    for _, module in _iter_mask_convs(model):
+        all_weights.append(module.weight.data.abs().view(-1))
+
+    if not all_weights:
+        logger.logger.warning("No masked Conv2d layers found for static pruning — skipping.")
+        return 0.0
+
+    # 2) 임계값 계산
     all_weights = torch.cat(all_weights)
     threshold = torch.quantile(all_weights, config.pruning.sparsity)
-    
-    # Apply masks
+
+    # 3) 마스크 적용
     total_params = 0
     pruned_params = 0
-    
-    for name, module in model.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            weights = module.weight.data.abs()
-            mask = (weights > threshold).float()
-            module.mask.data = mask
-            
-            total_params += module.weight.numel()
-            pruned_params += (mask == 0).sum().item()
-    
-    actual_sparsity = pruned_params / total_params
+    for _, module in _iter_mask_convs(model):
+        weights = module.weight.data.abs()
+        mask = (weights > threshold).float()
+        module.mask.data = mask
+        total_params += module.weight.numel()
+        pruned_params += (mask == 0).sum().item()
+
+    actual_sparsity = pruned_params / total_params if total_params > 0 else 0.0
     logger.log_pruning_info(actual_sparsity)
-    
     return actual_sparsity
 
 def apply_dynamic_pruning(model, config, epoch, iteration, logger):
-    """Apply dynamic pruning during training"""
-    
     if iteration % config.pruning.prune_freq != 0:
         return 0.0, 0.0
-    
-    # Calculate current target sparsity using polynomial schedule
+
+    # 스케줄
     if epoch >= config.pruning.target_epoch:
         current_sparsity = config.pruning.sparsity
     else:
         progress = epoch / config.pruning.target_epoch
         current_sparsity = config.pruning.sparsity * (1 - (1 - progress) ** 3)
-    
-    # Collect all weights
+
+    # 1) 모든 가중치 수집
     all_weights = []
     modules_to_prune = []
-    
-    for name, module in model.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            weights = module.weight.data.abs().view(-1)
-            all_weights.append(weights)
-            modules_to_prune.append(module)
-    
-    # Calculate threshold
+    for _, module in _iter_mask_convs(model):
+        all_weights.append(module.weight.data.abs().view(-1))
+        modules_to_prune.append(module)
+
+    if not all_weights:
+        # 마스크 레이어가 없으면 조용히 스킵
+        if iteration % (config.pruning.prune_freq * 10) == 0:
+            logger.logger.warning("No masked Conv2d layers found for dynamic pruning — skipping.")
+        return 0.0, 0.0
+
+    # 2) 임계값 계산
     all_weights = torch.cat(all_weights)
     threshold = torch.quantile(all_weights, current_sparsity)
-    
-    # Update masks
+
+    # 3) 마스크 업데이트
     total_params = 0
     pruned_params = 0
     reactivations = 0
-    
     for module in modules_to_prune:
         weights = module.weight.data.abs()
         old_mask = module.mask.data.clone()
         new_mask = (weights > threshold).float()
-        
-        # Count reactivations (0 -> 1 transitions)
         reactivations += ((old_mask == 0) & (new_mask == 1)).sum().item()
-        
         module.mask.data = new_mask
-        
         total_params += module.weight.numel()
         pruned_params += (new_mask == 0).sum().item()
-    
+
     actual_sparsity = pruned_params / total_params
     reactivation_rate = reactivations / total_params
-    
-    if iteration % (config.pruning.prune_freq * 10) == 0:  # Log less frequently
+
+    if iteration % (config.pruning.prune_freq * 10) == 0:
         logger.log_pruning_info(actual_sparsity, reactivation_rate)
-    
+
     return actual_sparsity, reactivation_rate
 
 def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger, iteration_counter):
@@ -637,35 +630,25 @@ def main():
     return best_acc1
 
 def freeze_masks(model, logger):
-    """Freeze masks and switch to static gradient masking"""
-    # Get the original model (unwrap DataParallel if needed)
     net = model.module if hasattr(model, 'module') else model
-    
     total_params = 0
     pruned_params = 0
-    
-    for name, module in net.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            # 1) Freeze the mask by updating its data and setting requires_grad=False
-            module.mask.data = module.mask.data.detach()
-            module.mask.requires_grad = False
-            
-            # 2) Switch to static masking (type_value=5) for gradient blocking
+
+    for _, module in _iter_mask_convs(model):
+        module.mask.data = module.mask.data.detach()
+        module.mask.requires_grad = False
+        # legacy static gradient 차단 경로 사용하려면 type_value=5 유지
+        if hasattr(module, "type_value"):
             module.type_value = 5
-            
-            # Count parameters for logging
-            total_params += module.weight.numel()
-            pruned_params += (module.mask == 0).sum().item()
-    
+        total_params += module.weight.numel()
+        pruned_params += (module.mask == 0).sum().item()
+
     actual_sparsity = pruned_params / total_params if total_params > 0 else 0.0
-    
-    # Set flag to indicate masks are frozen
     setattr(net, "_masks_frozen", True)
-    
+
     if logger:
         logger.logger.info(f"[Mask Freeze] Masks frozen with sparsity: {actual_sparsity:.4f}")
         logger.logger.info(f"[Mask Freeze] Switched to static gradient masking (type_value=5)")
-    
     return actual_sparsity
 
 if __name__ == '__main__':
