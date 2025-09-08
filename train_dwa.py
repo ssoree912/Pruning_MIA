@@ -116,6 +116,9 @@ def main():
     p.add_argument('--dwa-alphas', nargs='+', type=float, default=[1.0])
     p.add_argument('--dwa-betas', nargs='+', type=float, default=[1.0])
     p.add_argument('--dwa-threshold-percentile', type=int, default=50)
+    p.add_argument('--target-epoch', type=int, default=75)
+    p.add_argument('--prune-freq', type=int, default=16)
+    p.add_argument('--freeze-epoch', type=int, default=-1)
     p.add_argument('--sparsities', nargs='+', type=float, default=[0.5,0.8,0.9])
     p.add_argument('--dataset', default='cifar10', choices=['cifar10','cifar100'])
     p.add_argument('--arch', default='resnet', choices=['resnet','wideresnet'])
@@ -165,19 +168,24 @@ def main():
                         continue
 
                     cfg_kwargs = {
-                        # meta
                         'name': exp_name,
                         'save-dir': str(save_path),
-                        # data/model
+
                         'dataset': args.dataset,
                         'arch': args.arch,
                         'epochs': args.epochs,
-                        # pruning: dpf 기반
+
+                        # ✅ DWA는 dcil 백엔드 사용 (dpf 말고 dcil)
                         'prune': True,
-                        'prune-method': 'dpf',
+                        'prune-method': 'dcil',
                         'sparsity': sp,
-                        'freeze-epoch': -1,  # DWA는 프리즈 안함
-                        # DWA params
+
+                        # ✅ 스케줄/빈도 전달 (오케스트레이터 인자에서 받아와야 함)
+                        'target-epoch': args.target_epoch,
+                        'prune-freq': args.prune_freq,
+                        'freeze-epoch': getattr(args, 'freeze_epoch', -1),
+
+                        # DWA
                         'dwa-mode': mode,
                         'dwa-alpha': alpha,
                         'dwa-beta': beta,
@@ -186,7 +194,7 @@ def main():
                     if args.wandb:
                         cfg_kwargs.update({
                             'wandb': True,
-                            'wandb_project': args.wandb-project if hasattr(args,'wandb-project') else args.wandb_project,
+                            'wandb_project': args.wandb_project,  # 하이픈 접근 버그 수정
                             'wandb_entity': args.wandb_entity,
                             'wandb_name': exp_name,
                             'wandb_tags': args.wandb_tags + ['dwa', mode, args.dataset, args.arch],
