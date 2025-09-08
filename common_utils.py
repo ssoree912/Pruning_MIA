@@ -2,7 +2,8 @@
 Common utilities extracted from utils.py to avoid import conflicts
 """
 import torch
-
+from torch.utils.tensorboard import SummaryWriter
+import pathlib
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -89,3 +90,36 @@ def set_arch_name(args):
         return f"{args.arch}{args.layers}"
     else:
         return "model"
+
+class SummaryLogger(SummaryWriter):
+    def __init__(self, path):
+        super().__init__()
+        file_path = "./logs/" + path
+        self.logger = SummaryWriter(file_path)
+
+    def add_scalar_group(self, main_tag, tag_scalar_dict, global_step):
+        for sub_tag, scalar in tag_scalar_dict.items():
+            self.logger.add_scalar(
+                main_tag + "/{}".format(sub_tag), scalar, global_step
+            )
+
+    def add_max_acc(self, main_tag, tag_scalar_dict):
+        for sub_tag, scalar in tag_scalar_dict.items():
+            variable_name = main_tag.split("/")[0] + "_{}".format(sub_tag)
+            if not hasattr(self, variable_name):
+                setattr(self, variable_name, -1)
+
+            current_max_acc = getattr(self, variable_name)
+            if current_max_acc <= scalar:
+                self.logger.add_scalar(main_tag + "/{}".format(sub_tag), scalar, 0)
+                setattr(self, variable_name, scalar)
+def save_model(arch_name, dataset, state, ckpt_name="ckpt_best.pth"):
+    r"""Save the model (checkpoint) at the training time"""
+    dir_ckpt = pathlib.Path("checkpoint")
+    dir_path = dir_ckpt / arch_name / dataset
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+    if ckpt_name is None:
+        ckpt_name = "ckpt_best.pth"
+    model_file = dir_path / ckpt_name
+    torch.save(state, model_file)
