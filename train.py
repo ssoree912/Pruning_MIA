@@ -292,7 +292,7 @@ def collect_results(results_dir):
     
     return results
 
-def create_training_summary_csv(all_results, output_file='results/training_results.csv'):
+def create_training_summary_csv(all_results, experiment_prefix='experiments'):
     """Create summary CSV with all results"""
     # Ensure results directory exists
     results_dir = Path('results')
@@ -346,6 +346,31 @@ def create_training_summary_csv(all_results, output_file='results/training_resul
         # MIA 결과는 별도 파일로 분리
         
         summary_data.append(row)
+    
+    # 실험 설정 기반으로 파일명 생성
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # 첫 번째 실험의 설정으로 파일명 생성
+    if all_results:
+        first_result = next(iter(all_results.values()))
+        if 'config' in first_result:
+            config = first_result['config']
+            dataset = config.get('data', {}).get('dataset', 'cifar10')
+            arch = config.get('model', {}).get('arch', 'resnet')
+            epochs = config.get('training', {}).get('epochs', 200)
+            methods = set()
+            for result in all_results.values():
+                if 'config' in result:
+                    method = result['config'].get('pruning', {}).get('method', 'dense')
+                    methods.add(method)
+            methods_str = '-'.join(sorted(methods))
+            file_suffix = f"{methods_str}_{dataset}_{arch}_e{epochs}_{timestamp}"
+        else:
+            file_suffix = f"{experiment_prefix}_{timestamp}"
+    else:
+        file_suffix = f"{experiment_prefix}_{timestamp}"
+    
+    output_file = f"results/training_results_{file_suffix}.csv"
     
     df = pd.DataFrame(summary_data)
     df.to_csv(output_file, index=False)
@@ -661,7 +686,9 @@ def main():
     print(f"{'='*50}")
     
     if all_results:
-        summary_df = create_training_summary_csv(all_results)
+        # 실험 정보를 포함한 파일명으로 저장
+        methods_info = f"{'-'.join(args.methods)}"
+        summary_df = create_training_summary_csv(all_results, experiment_prefix=methods_info)
         print(f"Completed {len(all_results)} experiments")
         print(f"Training Summary:\n{summary_df.to_string()}")
     
