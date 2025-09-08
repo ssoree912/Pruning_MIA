@@ -117,7 +117,8 @@ def apply_dynamic_pruning(model, config, epoch, iteration, logger):
             log_payload['dwa/threshold_mean'] = tau_mean
             log_payload['dwa/threshold_std']  = tau_std
         try:
-            wandb.log(log_payload, step=iteration)
+            # Step-level logging: use iteration as custom step
+            wandb.log(log_payload, step=iteration, commit=False)  # Don't auto-increment
         except Exception:
             pass
 
@@ -318,7 +319,7 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
                 'prune/epoch_avg_reactivation_rate': train_metrics.get('reactivation_rate', 0.0),
             }
             try:
-                wandb.log(wandb_log, step=iterations)
+                wandb.log(wandb_log, step=epoch, commit=True)  # Commit epoch-level logs
             except Exception as e:
                 print(f"Warning: wandb logging failed: {e}")
         
