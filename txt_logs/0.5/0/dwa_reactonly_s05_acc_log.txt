@@ -1,2 +1,0 @@
-epoch	acc1_train	acc1_valid	best_acc1
-1	39.022	51.11	0.0

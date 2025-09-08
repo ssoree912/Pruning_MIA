@@ -1,30 +1,159 @@
-/runs
-/wandb
 # Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Logs & runs
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Machine Learning specific
+# Model checkpoints and weights
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+checkpoint/
+checkpoints/
+saved_models/
+models/
+
+# Logs and experiment outputs
 *.log
 logs/
 runs/
 wandb/
+mlruns/
+outputs/
+results/
+txt_logs/
 
-# Checkpoints
-*.pth
-*.pt
+# Datasets (usually large, stored separately)
+data/
+datasets/
+Data/
+Datasets/
+*.zip
+*.tar.gz
+*.tar
+*.rar
 
-# Jupyter & test caches (있으면)
-.ipynb_checkpoints/
-.pytest_cache/
-.mypy_cache/
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
 
-# Virtual envs (있으면)
-.venv/
-env/
-venv/
-
-# macOS / editor
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor files
 .vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.atom/
+.spyderproject/
+
+# Conda
+*.conda
+.conda/
+
+# CUDA cache
+.nv/
+
+# TensorBoard logs
+tb_logs/
+tensorboard_logs/

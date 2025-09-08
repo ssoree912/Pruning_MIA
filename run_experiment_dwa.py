@@ -134,17 +134,54 @@ def main():
     if cfg.system.gpu is not None and torch.cuda.is_available():
         torch.cuda.set_device(cfg.system.gpu)
 
-    # logger
+    # Create experiment directory structure (like existing runs)
     arch_name = set_arch_name(argize(cfg))  # util이 요구하는 형태로 변환
-    logger = SummaryLogger(os.path.join(str(cfg.pruning.sparsity), cfg.name))
+    
+    # Use save_dir from config (set by train_dwa.py orchestrator)
+    if hasattr(cfg, 'save_dir') and cfg.save_dir:
+        experiment_dir = pathlib.Path(cfg.save_dir)
+    else:
+        # Fallback to default structure
+        experiment_dir = pathlib.Path("runs") / "dwa" / f"sparsity_{cfg.pruning.sparsity}" / cfg.data.dataset
+    
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    print(f"📁 Experiment directory: {experiment_dir}")
+    
+    # logger (tensorboard logs go to experiment_dir/logs)
+    logs_dir = experiment_dir / "logs"
+    logger = SummaryLogger(str(logs_dir))
+    
+    # Initialize wandb if enabled
+    if WANDB_AVAILABLE and cfg.wandb.enabled:
+        try:
+            wandb.init(
+                project=cfg.wandb.project,
+                entity=cfg.wandb.entity,
+                name=cfg.wandb.name or cfg.name,
+                tags=cfg.wandb.tags,
+                notes=cfg.wandb.notes,
+                config=cfg.to_dict()
+            )
+            print(f"✅ Wandb initialized: project={cfg.wandb.project}, name={cfg.wandb.name or cfg.name}")
+        except Exception as e:
+            print(f"❌ Wandb initialization failed: {e}")
+            cfg.wandb.enabled = False
+    else:
+        if not WANDB_AVAILABLE:
+            print("⚠️ Wandb not available - install with: pip install wandb")
+        else:
+            print("ℹ️ Wandb disabled")
+        cfg.wandb.enabled = False
 
-    # txt log
-    log_file_path = os.path.join("txt_logs", str(cfg.pruning.sparsity),
-                                 str(cfg.training.warmup_lr_epoch), f"{cfg.name}_acc_log.txt")
-    os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-    if not os.path.exists(log_file_path):
+    # txt log (goes to experiment_dir)
+    log_file_path = experiment_dir / f"{cfg.name}_acc_log.txt"
+    if not log_file_path.exists():
         with open(log_file_path, "w") as f:
             f.write("epoch\tacc1_train\tacc1_valid\tbest_acc1\n")
+    
+    # Save config files to experiment directory
+    cfg.to_json(str(experiment_dir / "config.json"))
+    cfg.to_yaml(str(experiment_dir / "config.yaml"))
 
     # model
     print("\n=> creating model '{}'".format(arch_name))
@@ -155,12 +192,25 @@ def main():
             model_mult=cfg.model.model_mult,
         )
     else:
-        pruner = pruning.__dict__['dcil'] if cfg.pruning.method == 'dcil' else pruning.__dict__[cfg.pruning.method]
-        # pruner.mnn 안에 MaskConv2d 가 있고, forward_type 문자열을 인식해야 함
+        pruner_key = (cfg.pruning.method or '').lower()
+        # dpf/dwa/static 모두 dcil 백엔드의 MaskConv2d를 공유해도 무방 (forward_type으로 동작 분기)
+        if pruner_key in ('dpf', 'dwa', 'static'):
+            pruner_key = 'dcil'
+        try:
+            pruner = pruning.__dict__[pruner_key]
+        except KeyError as e:
+            raise KeyError(
+                f"Unknown pruner '{cfg.pruning.method}'. "
+                f"Use one of: {', '.join(sorted(k for k in pruning.__dict__.keys() if not k.startswith('_')))}"
+            ) from e
+
         model, image_size = pruning.models.__dict__[cfg.model.arch](
-            data=cfg.data.dataset, num_layers=cfg.model.layers,
-            width_mult=cfg.model.width_mult, depth_mult=cfg.model.depth_mult,
-            model_mult=cfg.model.model_mult, mnn=pruner.mnn
+            data=cfg.data.dataset,
+            num_layers=cfg.model.layers,
+            width_mult=cfg.model.width_mult,
+            depth_mult=cfg.model.depth_mult,
+            model_mult=cfg.model.model_mult,
+            mnn=pruner.mnn,   # 여기로 dcil의 mnn 주입
         )
     assert model is not None, "Unavailable model parameters!! exit...\n"
 
@@ -194,10 +244,19 @@ def main():
     # train
     if True:
         best_acc1 = _run_train(cfg, model, train_loader, val_loader,
-                               criterion, optimizer, scheduler, arch_name, logger, log_file_path)
+                               criterion, optimizer, scheduler, arch_name, logger, log_file_path, experiment_dir)
+        
+        # Finish wandb run
+        if WANDB_AVAILABLE and cfg.wandb.enabled:
+            try:
+                wandb.finish()
+                print("✅ Wandb run finished")
+            except Exception as e:
+                print(f"⚠️ Wandb finish failed: {e}")
+        
         return best_acc1
 
-def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, scheduler, arch_name, logger, log_file_path):
+def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, scheduler, arch_name, logger, log_file_path, experiment_dir):
     start_epoch = 0
     best_acc1 = 0.0
     train_time = 0.0
@@ -233,7 +292,10 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
 
         if acc1_valid > best_acc1 and (epoch >= cfg.pruning.target_epoch or cfg.pruning.sparsity == 0):
             best_acc1 = acc1_valid
-            save_model(arch_name, cfg.data.dataset, model.state_dict(), cfg.name)
+            # Save model to experiment directory
+            model_path = experiment_dir / "best_model.pth"
+            torch.save(model.state_dict(), model_path)
+            print(f"💾 Best model saved: {model_path}")
 
         train_log = {"acc1": acc1_train, "acc5": acc5_train}
         valid_log = {"best": best_acc1, "acc1": acc1_valid, "acc5": acc5_valid, "lr": optimizer.param_groups[0]["lr"]}
@@ -277,6 +339,25 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
     print("====> training time: {}h {}m {:.2f}s".format(int(train_time//3600), int((train_time%3600)//60), train_time%60))
     print("====> validation time: {}h {}m {:.2f}s".format(int(validate_time//3600), int((validate_time%3600)//60), validate_time%60))
     print("====> total training time: {}h {}m {:.2f}s".format(int(total_train_time//3600), int((total_train_time%3600)//60), total_train_time%60))
+    
+    # Save experiment summary
+    summary = {
+        "best_accuracy": float(best_acc1),
+        "total_epochs": cfg.training.epochs,
+        "total_training_time_seconds": float(total_train_time),
+        "avg_epoch_time_seconds": float(avg_train_time + avg_valid_time),
+        "experiment_name": cfg.name,
+        "dataset": cfg.data.dataset,
+        "architecture": arch_name,
+        "sparsity": cfg.pruning.sparsity if cfg.pruning.enabled else 0.0,
+        "dwa_mode": getattr(cfg.pruning, 'dwa_mode', None),
+    }
+    
+    import json
+    with open(experiment_dir / "experiment_summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+    
+    print(f"📊 Experiment summary saved: {experiment_dir / 'experiment_summary.json'}")
     return best_acc1
 
 def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logger):
