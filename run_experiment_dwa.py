@@ -10,6 +10,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
+import numpy as np
+
+# Import wandb for logging
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
 
 import models
 import pruning
@@ -25,6 +33,98 @@ def _iter_mask_convs(model):
     for name, module in net.named_modules():
         if isinstance(module, nn.Conv2d) and hasattr(module, 'mask'):
             yield name, module
+
+def apply_dynamic_pruning(model, config, epoch, iteration, logger):
+    """
+    Dynamic pruning during training
+    Returns:
+        actual_sparsity, reactivation_rate, global_threshold(float), target_sparsity
+    Also logs step-level metrics to wandb (if enabled).
+    """
+    if iteration % config.pruning.prune_freq != 0:
+        return 0.0, 0.0, None, None
+
+    # Gradual (polynomial) sparsity schedule (Algorithm 1의 pe)
+    if epoch >= config.pruning.target_epoch:
+        target_sparsity = config.pruning.sparsity
+    else:
+        progress = epoch / max(1, config.pruning.target_epoch)
+        target_sparsity = config.pruning.sparsity * (1 - (1 - progress) ** 3)
+
+    # 1) 모든 가중치 수집
+    all_weights = []
+    modules_to_prune = []
+    net = model.module if hasattr(model, 'module') else model
+    for name, module in net.named_modules():
+        if isinstance(module, torch.nn.Conv2d) and hasattr(module, 'mask'):
+            all_weights.append(module.weight.data.abs().view(-1))
+            modules_to_prune.append(module)
+
+    if not all_weights:
+        if iteration % (config.pruning.prune_freq * 10) == 0:
+            logger.logger.warning("No masked Conv2d layers found for dynamic pruning — skipping.")
+        return 0.0, 0.0, None, target_sparsity
+
+    # 2) Global threshold 계산 (Eq.2 의 τ_t 역할; 여기서는 전-모듈 기준 quantile)
+    all_weights = torch.cat(all_weights)
+    global_threshold = torch.quantile(all_weights, target_sparsity)
+
+    # 3) 마스크 업데이트 (Eq.4)
+    total_params = 0
+    pruned_params = 0
+    reactivations = 0
+
+    for module in modules_to_prune:
+        weights = module.weight.data.abs()
+        old_mask = module.mask.data.clone()
+        new_mask = (weights > global_threshold).float()  # magnitude 기준
+        reactivations += ((old_mask == 0) & (new_mask == 1)).sum().item()
+        module.mask.data = new_mask
+        total_params += module.weight.numel()
+        pruned_params += (new_mask == 0).sum().item()
+
+    actual_sparsity = pruned_params / total_params
+    reactivation_rate = reactivations / total_params
+
+    # (선택) DWA threshold(τ)도 주기적으로 갱신: 각 레이어 퍼센타일 기반
+    try:
+        from pruning.dcil.mnn_dwa import MaskConv2dDWA
+        tau_list = []
+        for name, module in net.named_modules():
+            if isinstance(module, MaskConv2dDWA):
+                # 논문식 weight alignment에 쓰일 τ는 레이어별 percentile로 갱신
+                module.update_threshold(config.pruning.dwa_threshold_percentile)
+                tau_list.append(module.threshold.item())
+        # 평균/표준편차도 참고용으로 남길 수 있음(원하면 wandb에 추가)
+        tau_mean = float(np.mean(tau_list)) if tau_list else None
+        tau_std  = float(np.std(tau_list)) if tau_list else None
+    except Exception:
+        tau_mean = None
+        tau_std  = None
+
+    # 로그 (너무 자주 찍지 않게, prune step에서만)
+    if WANDB_AVAILABLE and hasattr(config, 'wandb') and getattr(config.wandb, 'enabled', False):
+        log_payload = {
+            'prune/iteration': iteration,
+            'prune/target_sparsity': float(target_sparsity),   # 스케줄 값(pe)
+            'prune/actual_sparsity': float(actual_sparsity),   # 실제 적용 결과
+            'prune/global_threshold': float(global_threshold.item()),
+            'prune/reactivation_rate': float(reactivation_rate),
+            'prune/reactivated_params': int(reactivations),
+            'prune/total_params_masked_layers': int(total_params),
+        }
+        if tau_mean is not None:
+            log_payload['dwa/threshold_mean'] = tau_mean
+            log_payload['dwa/threshold_std']  = tau_std
+        try:
+            wandb.log(log_payload, step=iteration)
+        except Exception:
+            pass
+
+    if iteration % (config.pruning.prune_freq * 10) == 0:
+        print(f"Dynamic pruning: actual_sparsity={actual_sparsity:.3f}, reactivation_rate={reactivation_rate:.3f}")
+
+    return actual_sparsity, reactivation_rate, float(global_threshold.item()), float(target_sparsity)
 
 # --------- core ---------
 def main():
@@ -112,14 +212,14 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
         # ---- Train ----
         print("===> [ Training ]")
         t0 = time.time()
-        acc1_train, acc5_train = train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer)
+        train_metrics = train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logger)
         train_time += (time.time() - t0)
         print("====> {:.2f} seconds to train this epoch\n".format(time.time()-t0))
 
         # ---- Validate ----
         print("===> [ Validation ]")
         t0 = time.time()
-        acc1_valid, acc5_valid = validate(cfg, val_loader, epoch, model, criterion)
+        val_metrics = validate(cfg, val_loader, epoch, model, criterion)
         validate_time += (time.time() - t0)
         print("====> {:.2f} seconds to validate this epoch".format(time.time()-t0))
 
@@ -128,8 +228,8 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
             scheduler.step()
 
         # ---- Logging / Save ----
-        acc1_train, acc5_train = round(acc1_train.item(),4), round(acc5_train.item(),4)
-        acc1_valid, acc5_valid = round(acc1_valid.item(),4), round(acc5_valid.item(),4)
+        acc1_train, acc5_train = round(train_metrics['acc1'],4), round(train_metrics['acc5'],4)
+        acc1_valid, acc5_valid = round(val_metrics['acc1'],4), round(val_metrics['acc5'],4)
 
         if acc1_valid > best_acc1 and (epoch >= cfg.pruning.target_epoch or cfg.pruning.sparsity == 0):
             best_acc1 = acc1_valid
@@ -139,6 +239,27 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
         valid_log = {"best": best_acc1, "acc1": acc1_valid, "acc5": acc5_valid, "lr": optimizer.param_groups[0]["lr"]}
         logger.add_scalar_group("train", train_log, epoch)
         logger.add_scalar_group("test", valid_log, epoch)
+        
+        # ---- Wandb logging ----
+        if hasattr(cfg, 'wandb') and getattr(cfg.wandb, 'enabled', False) and WANDB_AVAILABLE:
+            wandb_log = {
+                'epoch': epoch,
+                'learning_rate': optimizer.param_groups[0]["lr"],
+                # 학습/검증
+                **{f'train/{k}': v for k, v in train_metrics.items()},
+                **{f'val/{k}': v for k, v in val_metrics.items()},
+                # prune 관련 에폭 평균(가독성 위해 별도 네임스페이스도 추가)
+                'prune/epoch_avg_actual_sparsity': train_metrics.get('sparsity', 0.0),
+                'prune/epoch_avg_target_sparsity': train_metrics.get('target_sparsity', 0.0),
+                'prune/epoch_avg_threshold': train_metrics.get('global_threshold', 0.0),
+                'prune/epoch_avg_sparsity_delta': train_metrics.get('sparsity_delta', 0.0),
+                'prune/epoch_avg_reactivation_rate': train_metrics.get('reactivation_rate', 0.0),
+            }
+            try:
+                wandb.log(wandb_log, step=iterations)
+            except Exception as e:
+                print(f"Warning: wandb logging failed: {e}")
+        
         with open(log_file_path, "a") as f:
             f.write(f"{epoch + 1}\t{acc1_train}\t{acc1_valid}\t{best_acc1}\n")
 
@@ -158,7 +279,7 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
     print("====> total training time: {}h {}m {:.2f}s".format(int(total_train_time//3600), int((total_train_time%3600)//60), total_train_time%60))
     return best_acc1
 
-def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer):
+def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logger):
     global iterations
     th = None
 
@@ -172,10 +293,37 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer):
     model.train()
     end = time.time()
 
+    # prune step 관측값 축적
+    sparsity_updates = []
+    sparsity_deltas = []
+    reactivation_updates = []
+    threshold_updates = []
+    target_sparsity_updates = []
+    
+    last_actual_sparsity = None
+
     for i, (inp, tgt) in enumerate(train_loader):
         data_time.update(time.time() - end)
         if torch.cuda.is_available():
             tgt = tgt.cuda(non_blocking=True)
+
+        # ---- Dynamic pruning update (마스크 미-프리즈 시) ----
+        if (cfg.pruning.enabled and 
+            (cfg.pruning.freeze_epoch < 0 or epoch < cfg.pruning.freeze_epoch)):
+
+            actual_sparsity, reactivation, g_thr, tgt_s = apply_dynamic_pruning(
+                model, cfg, epoch, iterations, logger
+            )
+            if tgt_s is not None:
+                target_sparsity_updates.append(tgt_s)
+            if g_thr is not None:
+                threshold_updates.append(g_thr)
+            if actual_sparsity > 0:
+                sparsity_updates.append(actual_sparsity)
+                reactivation_updates.append(reactivation)
+                if last_actual_sparsity is not None:
+                    sparsity_deltas.append(actual_sparsity - last_actual_sparsity)
+                last_actual_sparsity = actual_sparsity
 
         # ---- pruning schedule + frequency (공식) ----
         if cfg.pruning.enabled:
@@ -232,8 +380,26 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer):
         end = time.time()
         iterations += 1
 
+    # 에폭 요약(평균)
+    avg_sparsity = float(np.mean(sparsity_updates)) if sparsity_updates else 0.0
+    avg_reactivation = float(np.mean(reactivation_updates)) if reactivation_updates else 0.0
+    avg_threshold = float(np.mean(threshold_updates)) if threshold_updates else 0.0
+    avg_target_sparsity = float(np.mean(target_sparsity_updates)) if target_sparsity_updates else 0.0
+    avg_sparsity_delta = float(np.mean(sparsity_deltas)) if sparsity_deltas else 0.0
+
+    metrics = {
+        'acc1': top1.avg.item(),
+        'acc5': top5.avg.item(),
+        'loss': losses.avg,
+        'sparsity': avg_sparsity,
+        'reactivation_rate': avg_reactivation,
+        'global_threshold': avg_threshold,
+        'target_sparsity': avg_target_sparsity,
+        'sparsity_delta': avg_sparsity_delta,
+    }
+
     print("====> Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}".format(top1=top1, top5=top5))
-    return top1.avg, top5.avg
+    return metrics
 
 def validate(cfg, val_loader, epoch, model, criterion):
     batch_time = AverageMeter("Time", ":6.3f")
@@ -260,7 +426,12 @@ def validate(cfg, val_loader, epoch, model, criterion):
                 progress.print(i)
             end = time.time()
         print("====> Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}".format(top1=top1, top5=top5))
-    return top1.avg, top5.avg
+    
+    return {
+        'acc1': top1.avg.item(),
+        'acc5': top5.avg.item(),
+        'loss': losses.avg
+    }
 
 # ---- utils: 기존 utils.*가 argparse.Namespace를 기대하므로 간단 변환 ----
 class _NS:
