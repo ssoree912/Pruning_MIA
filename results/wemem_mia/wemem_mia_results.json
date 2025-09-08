@@ -1,690 +1,647 @@
 {
-  "dense_seed-cifar10": {
+  "dwa_kill_active_plain_dead_s0.5_cifar10": {
     "model_info": {
-      "type": "dense",
-      "method": "dense",
-      "variant": "none",
-      "sparsity": 0.0,
-      "path": "runs/dense/cifar10"
+      "type": "dwa",
+      "method": "dwa_kill_active_plain_dead",
+      "variant": "kill_active_plain_dead",
+      "sparsity": 0.5,
+      "path": "runs/dwa/kill_active_plain_dead/sparsity_0.5/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.21866666666666668,
+        "precision": 0.8679245283018868,
+        "recall": 0.0736,
+        "f1": 0.13569321533923304,
+        "threshold": 0.43343341215870346
+      },
+      "entropy": {
+        "accuracy": 0.6566666666666666,
+        "precision": 0.8693467336683417,
+        "recall": 0.692,
+        "f1": 0.7706013363028954,
+        "threshold": -1.7008491431267432
+      },
+      "modified_entropy": {
+        "accuracy": 0.22033333333333333,
+        "precision": 0.8642533936651584,
+        "recall": 0.0764,
+        "f1": 0.14038956266078645,
+        "threshold": -0.5691271942640818
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6370286000000001
+      }
+    },
+    "shadow_used": [
+      "dwa_kill_active_plain_dead_s0.7_cifar10",
+      "dwa_kill_active_plain_dead_s0.8_cifar10"
+    ]
+  },
+  "dwa_kill_active_plain_dead_s0.7_cifar10": {
+    "model_info": {
+      "type": "dwa",
+      "method": "dwa_kill_active_plain_dead",
+      "variant": "kill_active_plain_dead",
+      "sparsity": 0.7,
+      "path": "runs/dwa/kill_active_plain_dead/sparsity_0.7/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.20366666666666666,
+        "precision": 0.9051094890510949,
+        "recall": 0.0496,
+        "f1": 0.09404626469472885,
+        "threshold": 0.5090211089737408
+      },
+      "entropy": {
+        "accuracy": 0.5913333333333334,
+        "precision": 0.8729508196721312,
+        "recall": 0.5964,
+        "f1": 0.7086501901140685,
+        "threshold": -1.64852078086838
+      },
+      "modified_entropy": {
+        "accuracy": 0.21283333333333335,
+        "precision": 0.899135446685879,
+        "recall": 0.0624,
+        "f1": 0.11670095380587245,
+        "threshold": -0.45450787182807656
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6282623
+      }
+    },
+    "shadow_used": [
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.8_cifar10"
+    ]
+  },
+  "dwa_kill_active_plain_dead_s0.8_cifar10": {
+    "model_info": {
+      "type": "dwa",
+      "method": "dwa_kill_active_plain_dead",
+      "variant": "kill_active_plain_dead",
+      "sparsity": 0.8,
+      "path": "runs/dwa/kill_active_plain_dead/sparsity_0.8/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.202,
+        "precision": 0.8785714285714286,
+        "recall": 0.0492,
+        "f1": 0.09318181818181817,
+        "threshold": 0.5090211089737408
+      },
+      "entropy": {
+        "accuracy": 0.5993333333333334,
+        "precision": 0.8784256559766764,
+        "recall": 0.6026,
+        "f1": 0.7148279952550415,
+        "threshold": -1.64852078086838
+      },
+      "modified_entropy": {
+        "accuracy": 0.21,
+        "precision": 0.8591160220994475,
+        "recall": 0.0622,
+        "f1": 0.11600149198060425,
+        "threshold": -0.45450787182807656
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6434827999999999
+      }
+    },
+    "shadow_used": [
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
+    ]
+  },
+  "dwa_kill_active_plain_dead_s0.95_cifar10": {
+    "model_info": {
+      "type": "dwa",
+      "method": "dwa_kill_active_plain_dead",
+      "variant": "kill_active_plain_dead",
+      "sparsity": 0.95,
+      "path": "runs/dwa/kill_active_plain_dead/sparsity_0.95/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.19933333333333333,
+        "precision": 0.8828125,
+        "recall": 0.0452,
+        "f1": 0.08599695585996955,
+        "threshold": 0.5090211089737408
+      },
+      "entropy": {
+        "accuracy": 0.5896666666666667,
+        "precision": 0.8712697483908719,
+        "recall": 0.5956,
+        "f1": 0.7075314801615586,
+        "threshold": -1.64852078086838
+      },
+      "modified_entropy": {
+        "accuracy": 0.207,
+        "precision": 0.8666666666666667,
+        "recall": 0.0572,
+        "f1": 0.1073170731707317,
+        "threshold": -0.45450787182807656
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6240293
+      }
+    },
+    "shadow_used": [
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
+    ]
+  },
+  "dwa_kill_active_plain_dead_s0.9_cifar10": {
+    "model_info": {
+      "type": "dwa",
+      "method": "dwa_kill_active_plain_dead",
+      "variant": "kill_active_plain_dead",
+      "sparsity": 0.9,
+      "path": "runs/dwa/kill_active_plain_dead/sparsity_0.9/cifar10"
+    },
+    "mia_results": {
+      "confidence": {
+        "accuracy": 0.20066666666666666,
+        "precision": 0.8617021276595744,
+        "recall": 0.0486,
+        "f1": 0.09201060204468005,
+        "threshold": 0.5090211089737408
+      },
+      "entropy": {
+        "accuracy": 0.6045,
+        "precision": 0.8773340993967251,
+        "recall": 0.6108,
+        "f1": 0.7201980898478954,
+        "threshold": -1.64852078086838
+      },
+      "modified_entropy": {
+        "accuracy": 0.21,
+        "precision": 0.8693181818181818,
+        "recall": 0.0612,
+        "f1": 0.11434977578475336,
+        "threshold": -0.45450787182807656
+      },
+      "neural_network": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6335136
+      }
+    },
+    "shadow_used": [
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
+    ]
+  },
+  "dwa_kill_and_reactivate_s0.5_cifar10": {
+    "model_info": {
+      "type": "dwa",
+      "method": "dwa_kill_and_reactivate",
+      "variant": "kill_and_reactivate",
+      "sparsity": 0.5,
+      "path": "runs/dwa/kill_and_reactivate/sparsity_0.5/cifar10"
     },
     "mia_results": {
       "confidence": {
         "accuracy": 0.213,
-        "precision": 0.8657894736842106,
-        "recall": 0.0658,
-        "f1": 0.12230483271375464,
-        "threshold": 0.44118465325431966
+        "precision": 0.9371069182389937,
+        "recall": 0.0596,
+        "f1": 0.11207220759684092,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5736666666666667,
-        "precision": 0.8813241723922548,
-        "recall": 0.5644,
-        "f1": 0.6881248475981467,
-        "threshold": -1.6325074121822662
+        "accuracy": 0.6011666666666666,
+        "precision": 0.8761904761904762,
+        "recall": 0.6072,
+        "f1": 0.7173065564087419,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.19766666666666666,
-        "precision": 0.8907563025210085,
-        "recall": 0.0424,
-        "f1": 0.08094692630775105,
-        "threshold": -0.37819202376178945
+        "accuracy": 0.22283333333333333,
+        "precision": 0.9079903147699758,
+        "recall": 0.075,
+        "f1": 0.13855532976168483,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
         "precision": 0.8333333333333334,
         "recall": 1.0,
         "f1": 0.9090909090909091,
-        "auc": 0.6378841000000001
+        "auc": 0.6268078
       }
     },
     "shadow_used": [
-      "dpf_s0.5_freeze180_seed-cifar10",
-      "dpf_s0.5_nofreeze_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "dpf_s0.5_freeze180_seed-cifar10": {
+  "dwa_kill_and_reactivate_s0.7_cifar10": {
     "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "freeze180",
-      "sparsity": 0.5,
-      "path": "runs/dpf/sparsity_0.5_freeze180/cifar10"
-    },
-    "mia_results": {
-      "confidence": {
-        "accuracy": 0.22183333333333333,
-        "precision": 0.8528784648187633,
-        "recall": 0.08,
-        "f1": 0.14627902724446884,
-        "threshold": 0.39510034288278517
-      },
-      "entropy": {
-        "accuracy": 0.5756666666666667,
-        "precision": 0.8727217496962333,
-        "recall": 0.5746,
-        "f1": 0.6929570670525809,
-        "threshold": -1.6332842285852287
-      },
-      "modified_entropy": {
-        "accuracy": 0.21683333333333332,
-        "precision": 0.8557919621749409,
-        "recall": 0.0724,
-        "f1": 0.13350543979347224,
-        "threshold": -0.5746994816654615
-      },
-      "neural_network": {
-        "accuracy": 0.8333333333333334,
-        "precision": 0.8334444814938313,
-        "recall": 0.9998,
-        "f1": 0.9090743771594836,
-        "auc": 0.6254024
-      }
-    },
-    "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_nofreeze_seed-cifar10"
-    ]
-  },
-  "dpf_s0.5_nofreeze_seed-cifar10": {
-    "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "nofreeze",
-      "sparsity": 0.5,
-      "path": "runs/dpf/sparsity_0.5_nofreeze/cifar10"
-    },
-    "mia_results": {
-      "confidence": {
-        "accuracy": 0.228,
-        "precision": 0.8770491803278688,
-        "recall": 0.0856,
-        "f1": 0.15597667638483964,
-        "threshold": 0.39510034288278517
-      },
-      "entropy": {
-        "accuracy": 0.5906666666666667,
-        "precision": 0.881981981981982,
-        "recall": 0.5874,
-        "f1": 0.7051620648259304,
-        "threshold": -1.6332842285852287
-      },
-      "modified_entropy": {
-        "accuracy": 0.226,
-        "precision": 0.8903508771929824,
-        "recall": 0.0812,
-        "f1": 0.14882697947214074,
-        "threshold": -0.5746994816654615
-      },
-      "neural_network": {
-        "accuracy": 0.8333333333333334,
-        "precision": 0.8334444814938313,
-        "recall": 0.9998,
-        "f1": 0.9090743771594836,
-        "auc": 0.6391192
-      }
-    },
-    "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
-    ]
-  },
-  "dpf_s0.7_freeze180_seed-cifar10": {
-    "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "freeze180",
+      "type": "dwa",
+      "method": "dwa_kill_and_reactivate",
+      "variant": "kill_and_reactivate",
       "sparsity": 0.7,
-      "path": "runs/dpf/sparsity_0.7_freeze180/cifar10"
+      "path": "runs/dwa/kill_and_reactivate/sparsity_0.7/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.22316666666666668,
-        "precision": 0.8676789587852495,
-        "recall": 0.08,
-        "f1": 0.14649331624244644,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.2015,
+        "precision": 0.8827838827838828,
+        "recall": 0.0482,
+        "f1": 0.09140906504835956,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
         "accuracy": 0.5876666666666667,
-        "precision": 0.8765652951699463,
-        "recall": 0.588,
-        "f1": 0.7038544409863539,
-        "threshold": -1.6332842285852287
+        "precision": 0.8669378268448577,
+        "recall": 0.5968,
+        "f1": 0.7069414830608861,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.21716666666666667,
-        "precision": 0.8668280871670703,
-        "recall": 0.0716,
-        "f1": 0.13227415481248844,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.2085,
+        "precision": 0.8680351906158358,
+        "recall": 0.0592,
+        "f1": 0.1108406665418461,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
-        "accuracy": 0.8335,
-        "precision": 0.8335834583958646,
-        "recall": 0.9998,
-        "f1": 0.9091570428298628,
-        "auc": 0.6357258
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6078739
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "dpf_s0.7_nofreeze_seed-cifar10": {
+  "dwa_kill_and_reactivate_s0.8_cifar10": {
     "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "nofreeze",
-      "sparsity": 0.7,
-      "path": "runs/dpf/sparsity_0.7_nofreeze/cifar10"
-    },
-    "mia_results": {
-      "confidence": {
-        "accuracy": 0.2215,
-        "precision": 0.8552915766738661,
-        "recall": 0.0792,
-        "f1": 0.14497528830313014,
-        "threshold": 0.39510034288278517
-      },
-      "entropy": {
-        "accuracy": 0.5851666666666666,
-        "precision": 0.8824246116356991,
-        "recall": 0.5794,
-        "f1": 0.6995050102619824,
-        "threshold": -1.6332842285852287
-      },
-      "modified_entropy": {
-        "accuracy": 0.21716666666666667,
-        "precision": 0.8581560283687943,
-        "recall": 0.0726,
-        "f1": 0.13387423935091278,
-        "threshold": -0.5746994816654615
-      },
-      "neural_network": {
-        "accuracy": 0.833,
-        "precision": 0.8337228714524207,
-        "recall": 0.9988,
-        "f1": 0.9088262056414922,
-        "auc": 0.6286551
-      }
-    },
-    "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
-    ]
-  },
-  "dpf_s0.8_freeze180_seed-cifar10": {
-    "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "freeze180",
+      "type": "dwa",
+      "method": "dwa_kill_and_reactivate",
+      "variant": "kill_and_reactivate",
       "sparsity": 0.8,
-      "path": "runs/dpf/sparsity_0.8_freeze180/cifar10"
+      "path": "runs/dwa/kill_and_reactivate/sparsity_0.8/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.2195,
-        "precision": 0.821501014198783,
-        "recall": 0.081,
-        "f1": 0.1474604041507373,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20216666666666666,
+        "precision": 0.8929889298892989,
+        "recall": 0.0484,
+        "f1": 0.09182318345664958,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.571,
-        "precision": 0.8748454882571075,
-        "recall": 0.5662,
-        "f1": 0.6874696454589607,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5965,
+        "precision": 0.8725801791389771,
+        "recall": 0.604,
+        "f1": 0.7138636095024228,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.21366666666666667,
-        "precision": 0.8105726872246696,
-        "recall": 0.0736,
-        "f1": 0.13494682801613495,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.21,
+        "precision": 0.8869047619047619,
+        "recall": 0.0596,
+        "f1": 0.11169415292353824,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
         "precision": 0.8333333333333334,
         "recall": 1.0,
         "f1": 0.9090909090909091,
-        "auc": 0.6228834000000001
+        "auc": 0.6261728
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "dpf_s0.8_nofreeze_seed-cifar10": {
+  "dwa_kill_and_reactivate_s0.95_cifar10": {
     "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "nofreeze",
-      "sparsity": 0.8,
-      "path": "runs/dpf/sparsity_0.8_nofreeze/cifar10"
-    },
-    "mia_results": {
-      "confidence": {
-        "accuracy": 0.22416666666666665,
-        "precision": 0.8693790149892934,
-        "recall": 0.0812,
-        "f1": 0.14852752880921893,
-        "threshold": 0.39510034288278517
-      },
-      "entropy": {
-        "accuracy": 0.5858333333333333,
-        "precision": 0.8853815507201961,
-        "recall": 0.5778,
-        "f1": 0.6992617693331719,
-        "threshold": -1.6332842285852287
-      },
-      "modified_entropy": {
-        "accuracy": 0.22133333333333333,
-        "precision": 0.8778801843317973,
-        "recall": 0.0762,
-        "f1": 0.1402281928597718,
-        "threshold": -0.5746994816654615
-      },
-      "neural_network": {
-        "accuracy": 0.8331666666666667,
-        "precision": 0.8334167083541771,
-        "recall": 0.9996,
-        "f1": 0.9089751750477403,
-        "auc": 0.6453408
-      }
-    },
-    "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
-    ]
-  },
-  "dpf_s0.95_freeze180_seed-cifar10": {
-    "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "freeze180",
+      "type": "dwa",
+      "method": "dwa_kill_and_reactivate",
+      "variant": "kill_and_reactivate",
       "sparsity": 0.95,
-      "path": "runs/dpf/sparsity_0.95_freeze180/cifar10"
+      "path": "runs/dwa/kill_and_reactivate/sparsity_0.95/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.22266666666666668,
-        "precision": 0.8800904977375565,
-        "recall": 0.0778,
-        "f1": 0.14296214626975376,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20016666666666666,
+        "precision": 0.8821292775665399,
+        "recall": 0.0464,
+        "f1": 0.08816264487934637,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5611666666666667,
-        "precision": 0.8876514903373731,
-        "recall": 0.542,
-        "f1": 0.673041102694648,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5938333333333333,
+        "precision": 0.8799288467239846,
+        "recall": 0.5936,
+        "f1": 0.7089454198017437,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.21816666666666668,
-        "precision": 0.885286783042394,
-        "recall": 0.071,
-        "f1": 0.13145713756711722,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.20866666666666667,
+        "precision": 0.8662790697674418,
+        "recall": 0.0596,
+        "f1": 0.11152694610778444,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
         "precision": 0.8333333333333334,
         "recall": 1.0,
         "f1": 0.9090909090909091,
-        "auc": 0.6336918
+        "auc": 0.6327297000000001
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "dpf_s0.95_nofreeze_seed-cifar10": {
+  "dwa_kill_and_reactivate_s0.9_cifar10": {
     "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "nofreeze",
-      "sparsity": 0.95,
-      "path": "runs/dpf/sparsity_0.95_nofreeze/cifar10"
-    },
-    "mia_results": {
-      "confidence": {
-        "accuracy": 0.22366666666666668,
-        "precision": 0.8733624454148472,
-        "recall": 0.08,
-        "f1": 0.14657383657017226,
-        "threshold": 0.39510034288278517
-      },
-      "entropy": {
-        "accuracy": 0.5458333333333333,
-        "precision": 0.8765309500165508,
-        "recall": 0.5296,
-        "f1": 0.6602667996509163,
-        "threshold": -1.6332842285852287
-      },
-      "modified_entropy": {
-        "accuracy": 0.22,
-        "precision": 0.8902439024390244,
-        "recall": 0.073,
-        "f1": 0.13493530499075787,
-        "threshold": -0.5746994816654615
-      },
-      "neural_network": {
-        "accuracy": 0.8333333333333334,
-        "precision": 0.8333333333333334,
-        "recall": 1.0,
-        "f1": 0.9090909090909091,
-        "auc": 0.6349521
-      }
-    },
-    "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
-    ]
-  },
-  "dpf_s0.9_freeze180_seed-cifar10": {
-    "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "freeze180",
+      "type": "dwa",
+      "method": "dwa_kill_and_reactivate",
+      "variant": "kill_and_reactivate",
       "sparsity": 0.9,
-      "path": "runs/dpf/sparsity_0.9_freeze180/cifar10"
+      "path": "runs/dwa/kill_and_reactivate/sparsity_0.9/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.2245,
-        "precision": 0.8607068607068608,
-        "recall": 0.0828,
-        "f1": 0.1510673234811166,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20083333333333334,
+        "precision": 0.8897338403041825,
+        "recall": 0.0468,
+        "f1": 0.0889226676800304,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5765,
-        "precision": 0.8779588072548417,
-        "recall": 0.5712,
-        "f1": 0.6921119592875318,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5955,
+        "precision": 0.8760596316866414,
+        "recall": 0.5994,
+        "f1": 0.7117919486996794,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.22066666666666668,
-        "precision": 0.8698630136986302,
-        "recall": 0.0762,
-        "f1": 0.14012504597278413,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.20766666666666667,
+        "precision": 0.884375,
+        "recall": 0.0566,
+        "f1": 0.10639097744360902,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
         "precision": 0.8333333333333334,
         "recall": 1.0,
         "f1": 0.9090909090909091,
-        "auc": 0.6381024
+        "auc": 0.6408145
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "dpf_s0.9_nofreeze_seed-cifar10": {
+  "dwa_reactivate_only_s0.5_cifar10": {
     "model_info": {
-      "type": "dpf",
-      "method": "dpf",
-      "variant": "nofreeze",
-      "sparsity": 0.9,
-      "path": "runs/dpf/sparsity_0.9_nofreeze/cifar10"
-    },
-    "mia_results": {
-      "confidence": {
-        "accuracy": 0.216,
-        "precision": 0.834841628959276,
-        "recall": 0.0738,
-        "f1": 0.13561190738699008,
-        "threshold": 0.39510034288278517
-      },
-      "entropy": {
-        "accuracy": 0.5586666666666666,
-        "precision": 0.8742838956078931,
-        "recall": 0.5494,
-        "f1": 0.6747727830999755,
-        "threshold": -1.6332842285852287
-      },
-      "modified_entropy": {
-        "accuracy": 0.21483333333333332,
-        "precision": 0.851581508515815,
-        "recall": 0.07,
-        "f1": 0.12936610608020702,
-        "threshold": -0.5746994816654615
-      },
-      "neural_network": {
-        "accuracy": 0.8333333333333334,
-        "precision": 0.8333333333333334,
-        "recall": 1.0,
-        "f1": 0.9090909090909091,
-        "auc": 0.6150318
-      }
-    },
-    "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
-    ]
-  },
-  "static_s0.5_none_seed-cifar10": {
-    "model_info": {
-      "type": "static",
-      "method": "static",
-      "variant": "none",
+      "type": "dwa",
+      "method": "dwa_reactivate_only",
+      "variant": "reactivate_only",
       "sparsity": 0.5,
-      "path": "runs/static/sparsity_0.5/cifar10"
+      "path": "runs/dwa/reactivate_only/sparsity_0.5/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.22366666666666668,
-        "precision": 0.842,
-        "recall": 0.0842,
-        "f1": 0.1530909090909091,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20816666666666667,
+        "precision": 0.9055374592833876,
+        "recall": 0.0556,
+        "f1": 0.10476728848690409,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5735,
-        "precision": 0.8749615975422427,
-        "recall": 0.5696,
-        "f1": 0.6900060569351908,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5958333333333333,
+        "precision": 0.8748180494905385,
+        "recall": 0.601,
+        "f1": 0.7125074096028452,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.2195,
-        "precision": 0.8453159041394336,
-        "recall": 0.0776,
-        "f1": 0.14215057702875986,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.21833333333333332,
+        "precision": 0.9078947368421053,
+        "recall": 0.069,
+        "f1": 0.12825278810408922,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
-        "accuracy": 0.8336666666666667,
-        "precision": 0.8336112037345782,
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
         "recall": 1.0,
-        "f1": 0.9092562284051646,
-        "auc": 0.6399149
+        "f1": 0.9090909090909091,
+        "auc": 0.6265777
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "static_s0.7_none_seed-cifar10": {
+  "dwa_reactivate_only_s0.7_cifar10": {
     "model_info": {
-      "type": "static",
-      "method": "static",
-      "variant": "none",
+      "type": "dwa",
+      "method": "dwa_reactivate_only",
+      "variant": "reactivate_only",
       "sparsity": 0.7,
-      "path": "runs/static/sparsity_0.7/cifar10"
+      "path": "runs/dwa/reactivate_only/sparsity_0.7/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.22166666666666668,
-        "precision": 0.8699551569506726,
-        "recall": 0.0776,
-        "f1": 0.14248990084465665,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.2,
+        "precision": 0.8846153846153846,
+        "recall": 0.046,
+        "f1": 0.08745247148288972,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5695,
-        "precision": 0.8775382692908467,
-        "recall": 0.5618,
-        "f1": 0.6850384099500061,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5855,
+        "precision": 0.8720758069292271,
+        "recall": 0.589,
+        "f1": 0.7031156738689268,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.2175,
-        "precision": 0.8728606356968215,
-        "recall": 0.0714,
-        "f1": 0.1320022185246811,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.207,
+        "precision": 0.878125,
+        "recall": 0.0562,
+        "f1": 0.1056390977443609,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
-        "precision": 0.8335557038025351,
-        "recall": 0.9996,
-        "f1": 0.9090578392142598,
-        "auc": 0.6259932
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6339262999999999
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "static_s0.8_none_seed-cifar10": {
+  "dwa_reactivate_only_s0.8_cifar10": {
     "model_info": {
-      "type": "static",
-      "method": "static",
-      "variant": "none",
+      "type": "dwa",
+      "method": "dwa_reactivate_only",
+      "variant": "reactivate_only",
       "sparsity": 0.8,
-      "path": "runs/static/sparsity_0.8/cifar10"
+      "path": "runs/dwa/reactivate_only/sparsity_0.8/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.22833333333333333,
-        "precision": 0.8838174273858921,
-        "recall": 0.0852,
-        "f1": 0.15541773075519882,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20466666666666666,
+        "precision": 0.9014084507042254,
+        "recall": 0.0512,
+        "f1": 0.09689629068887207,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5621666666666667,
-        "precision": 0.8804103879448542,
-        "recall": 0.5492,
-        "f1": 0.6764379849735189,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5878333333333333,
+        "precision": 0.8741486526502813,
+        "recall": 0.5904,
+        "f1": 0.70478691655724,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.2245,
-        "precision": 0.8881431767337807,
-        "recall": 0.0794,
-        "f1": 0.14576831283275196,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.2115,
+        "precision": 0.892128279883382,
+        "recall": 0.0612,
+        "f1": 0.11454239191465468,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
-        "accuracy": 0.8335,
-        "precision": 0.833472245374229,
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
         "recall": 1.0,
-        "f1": 0.9091735612328394,
-        "auc": 0.631203
+        "f1": 0.9090909090909091,
+        "auc": 0.6294212
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "static_s0.95_none_seed-cifar10": {
+  "dwa_reactivate_only_s0.95_cifar10": {
     "model_info": {
-      "type": "static",
-      "method": "static",
-      "variant": "none",
+      "type": "dwa",
+      "method": "dwa_reactivate_only",
+      "variant": "reactivate_only",
       "sparsity": 0.95,
-      "path": "runs/static/sparsity_0.95/cifar10"
+      "path": "runs/dwa/reactivate_only/sparsity_0.95/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.22116666666666668,
-        "precision": 0.8562091503267973,
-        "recall": 0.0786,
-        "f1": 0.1439824143616047,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20316666666666666,
+        "precision": 0.9101123595505618,
+        "recall": 0.0486,
+        "f1": 0.09227264097209037,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5313333333333333,
-        "precision": 0.8751714677640604,
-        "recall": 0.5104,
-        "f1": 0.6447700859019706,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5975,
+        "precision": 0.879811930649427,
+        "recall": 0.5988,
+        "f1": 0.7126026419136023,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.21766666666666667,
-        "precision": 0.8642857142857143,
-        "recall": 0.0726,
-        "f1": 0.13394833948339485,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.21116666666666667,
+        "precision": 0.8961424332344213,
+        "recall": 0.0604,
+        "f1": 0.11317219411654487,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
         "precision": 0.8333333333333334,
         "recall": 1.0,
         "f1": 0.9090909090909091,
-        "auc": 0.6130783
+        "auc": 0.6397851999999999
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   },
-  "static_s0.9_none_seed-cifar10": {
+  "dwa_reactivate_only_s0.9_cifar10": {
     "model_info": {
-      "type": "static",
-      "method": "static",
-      "variant": "none",
+      "type": "dwa",
+      "method": "dwa_reactivate_only",
+      "variant": "reactivate_only",
       "sparsity": 0.9,
-      "path": "runs/static/sparsity_0.9/cifar10"
+      "path": "runs/dwa/reactivate_only/sparsity_0.9/cifar10"
     },
     "mia_results": {
       "confidence": {
-        "accuracy": 0.228,
-        "precision": 0.8739837398373984,
-        "recall": 0.086,
-        "f1": 0.15659140568099053,
-        "threshold": 0.39510034288278517
+        "accuracy": 0.20233333333333334,
+        "precision": 0.8848920863309353,
+        "recall": 0.0492,
+        "f1": 0.09321712769988631,
+        "threshold": 0.5090211089737408
       },
       "entropy": {
-        "accuracy": 0.5591666666666667,
-        "precision": 0.8772829221403396,
-        "recall": 0.5476,
-        "f1": 0.674301194434183,
-        "threshold": -1.6332842285852287
+        "accuracy": 0.5865,
+        "precision": 0.8709867452135494,
+        "recall": 0.5914,
+        "f1": 0.7044669446098869,
+        "threshold": -1.64852078086838
       },
       "modified_entropy": {
-        "accuracy": 0.22266666666666668,
-        "precision": 0.8733333333333333,
-        "recall": 0.0786,
-        "f1": 0.14422018348623852,
-        "threshold": -0.5746994816654615
+        "accuracy": 0.20883333333333334,
+        "precision": 0.8645533141210374,
+        "recall": 0.06,
+        "f1": 0.11221245558256966,
+        "threshold": -0.45450787182807656
       },
       "neural_network": {
         "accuracy": 0.8333333333333334,
         "precision": 0.8333333333333334,
         "recall": 1.0,
         "f1": 0.9090909090909091,
-        "auc": 0.6245407000000001
+        "auc": 0.6139136000000001
       }
     },
     "shadow_used": [
-      "dense_seed-cifar10",
-      "dpf_s0.5_freeze180_seed-cifar10"
+      "dwa_kill_active_plain_dead_s0.5_cifar10",
+      "dwa_kill_active_plain_dead_s0.7_cifar10"
     ]
   }
 }
