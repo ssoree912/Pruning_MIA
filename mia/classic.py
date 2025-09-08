@@ -255,6 +255,7 @@ def extract_model_info(runs_dir):
       static/sparsity_0.9/seed42/
       static/sparsity0.9_freeze180/seed42/
       dpf/sparsity_0.9_nofreeze/seed42/
+      dwa/{mode}/sparsity_{X}/{dataset}/
     """
     models_info = {}
     base = Path(runs_dir)
@@ -274,6 +275,33 @@ def extract_model_info(runs_dir):
                     'sparsity': 0.0,
                     'path': str(seed_dir)
                 }
+        elif method_dir.name == 'dwa':
+            # DWA structure: runs/dwa/{mode}/sparsity_{X}/{dataset}/
+            for dwa_mode_dir in sorted_dirs(method_dir):
+                dwa_mode = dwa_mode_dir.name  # reactivate_only, kill_active_plain_dead, etc.
+                for sparsity_dir in sorted_dirs(dwa_mode_dir):
+                    if sparsity_dir.name.startswith('sparsity_'):
+                        try:
+                            sparsity_str = sparsity_dir.name.replace('sparsity_', '')
+                            # Handle alpha/beta variants
+                            if '_alpha' in sparsity_str or '_beta' in sparsity_str:
+                                sparsity_str = sparsity_str.split('_')[0]
+                            sparsity = float(sparsity_str)
+                        except ValueError:
+                            print(f"[WARN] skip DWA (cannot parse sparsity): {sparsity_dir.name}")
+                            continue
+                        
+                        # Each dataset folder is a separate model
+                        for dataset_dir in sorted_dirs(sparsity_dir):
+                            dataset = dataset_dir.name
+                            key = f"dwa_{dwa_mode}_s{sparsity}_{dataset}"
+                            models_info[key] = {
+                                'type': 'dwa',
+                                'method': f'dwa_{dwa_mode}',
+                                'variant': dwa_mode,
+                                'sparsity': sparsity,
+                                'path': str(dataset_dir)
+                            }
         else:
             # static / dpf
             for sp_dir in sorted_dirs(method_dir):
@@ -350,10 +378,26 @@ def evaluate_mia_wemem(runs_dir, results_dir, mia_seed_mode='hash', mia_seed=777
         if t_sum.exists():
             with open(t_sum) as f:
                 summ = json.load(f)
-            target_acc = summ['best_metrics']['best_acc1'] / 100.0
+            # Handle different JSON structures
+            if 'best_metrics' in summ and 'best_acc1' in summ['best_metrics']:
+                target_acc = summ['best_metrics']['best_acc1'] / 100.0
+            elif 'best_accuracy' in summ:
+                target_acc = summ['best_accuracy'] / 100.0
+            else:
+                # Fallback to default based on type
+                if info['type'] == 'dense':
+                    target_acc = 0.925
+                elif info['type'] == 'dwa':
+                    target_acc = max(0.70, 0.90 - info['sparsity'] * 0.25)
+                elif info['type'] == 'static':
+                    target_acc = max(0.7, 0.92 - info['sparsity'] * 0.3)
+                else:  # dpf
+                    target_acc = max(0.75, 0.92 - info['sparsity'] * 0.25)
         else:
             if info['type'] == 'dense':
                 target_acc = 0.925
+            elif info['type'] == 'dwa':
+                target_acc = max(0.70, 0.90 - info['sparsity'] * 0.25)
             elif info['type'] == 'static':
                 target_acc = max(0.7, 0.92 - info['sparsity'] * 0.3)
             else:  # dpf
@@ -374,6 +418,8 @@ def evaluate_mia_wemem(runs_dir, results_dir, mia_seed_mode='hash', mia_seed=777
         if shadow_model == 'synthetic_shadow':
             if info['type'] == 'dense':
                 shadow_acc = 0.90
+            elif info['type'] == 'dwa':
+                shadow_acc = max(0.60, 0.88 - info['sparsity'] * 0.3)
             elif info['type'] == 'static':
                 shadow_acc = max(0.60, 0.90 - info['sparsity'] * 0.35)
             else:
@@ -387,10 +433,26 @@ def evaluate_mia_wemem(runs_dir, results_dir, mia_seed_mode='hash', mia_seed=777
             if s_sum.exists():
                 with open(s_sum) as f:
                     summ = json.load(f)
-                shadow_acc = summ['best_metrics']['best_acc1'] / 100.0
+                # Handle different JSON structures
+                if 'best_metrics' in summ and 'best_acc1' in summ['best_metrics']:
+                    shadow_acc = summ['best_metrics']['best_acc1'] / 100.0
+                elif 'best_accuracy' in summ:
+                    shadow_acc = summ['best_accuracy'] / 100.0
+                else:
+                    # Fallback to default based on type
+                    if s_info['type'] == 'dense':
+                        shadow_acc = 0.92
+                    elif s_info['type'] == 'dwa':
+                        shadow_acc = max(0.65, 0.90 - s_info['sparsity'] * 0.3)
+                    elif s_info['type'] == 'static':
+                        shadow_acc = max(0.65, 0.92 - s_info['sparsity'] * 0.35)
+                    else:
+                        shadow_acc = max(0.70, 0.92 - s_info['sparsity'] * 0.3)
             else:
                 if s_info['type'] == 'dense':
                     shadow_acc = 0.92
+                elif s_info['type'] == 'dwa':
+                    shadow_acc = max(0.65, 0.90 - s_info['sparsity'] * 0.3)
                 elif s_info['type'] == 'static':
                     shadow_acc = max(0.65, 0.92 - s_info['sparsity'] * 0.35)
                 else:

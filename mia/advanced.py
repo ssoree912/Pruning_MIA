@@ -384,6 +384,32 @@ def evaluate_advanced_mia(runs_dir, results_dir):
                     'sparsity': 0.0,
                     'path': str(seed_dir)
                 }
+        elif method_dir.name == 'dwa':
+            # DWA structure: runs/dwa/{mode}/sparsity_{X}/{dataset}/
+            for dwa_mode_dir in sorted_dirs(method_dir):
+                dwa_mode = dwa_mode_dir.name  # reactivate_only, kill_active_plain_dead, etc.
+                for sparsity_dir in sorted_dirs(dwa_mode_dir):
+                    name = sparsity_dir.name
+                    m = re.search(r'sparsity[_-]?(\d+(?:\.\d+)?)', name)
+                    if not m:
+                        print(f"[WARN] Cannot parse sparsity from: {name} (skip)")
+                        continue
+                    sparsity = float(m.group(1))
+                    
+                    # DWA variant is the mode itself
+                    variant = dwa_mode
+                    
+                    for dataset_dir in sorted_dirs(sparsity_dir):
+                        # Check if this is a valid dataset directory (contains best_model.pth)
+                        if (dataset_dir / 'best_model.pth').exists():
+                            model_key = f"dwa_{dwa_mode}_s{sparsity}_{dataset_dir.name}"
+                            models_info[model_key] = {
+                                'type': 'dwa',
+                                'method': f'dwa_{dwa_mode}',
+                                'variant': variant,
+                                'sparsity': sparsity,
+                                'path': str(dataset_dir)
+                            }
         else:
             # e.g., method_dir.name in {'static', 'dpf', ...}
             for sparsity_dir in sorted_dirs(method_dir):
