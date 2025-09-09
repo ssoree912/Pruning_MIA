@@ -1,0 +1,19 @@
+{
+  "best_metrics": {
+    "best_acc1": 91.39,
+    "best_loss": 0.27123592200279234
+  },
+  "final_metrics": {
+    "acc1": 91.08,
+    "acc5": 99.74,
+    "loss": 0.2897736686706543
+  },
+  "total_epochs": 200,
+  "total_duration": 1717.235018491745,
+  "avg_epoch_time_seconds": 8.586175092458724,
+  "experiment_name": "dwa_kill_active_plain_dead_alpha0.5_beta0.5_sparsity_0.7_cifar10_resnet",
+  "dataset": "cifar10",
+  "architecture": "resnet20",
+  "sparsity": 0.7,
+  "dwa_mode": "kill_active_plain_dead"
+}

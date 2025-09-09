@@ -1,0 +1,16 @@
+{
+  "dataset_name": "cifar10",
+  "model_name": "resnet18",
+  "num_cls": 10,
+  "input_dim": 3,
+  "image_size": 32,
+  "hidden_size": 128,
+  "seed": 7,
+  "early_stop": 5,
+  "batch_size": 128,
+  "shadow_num": 2,
+  "attacks": "samia,threshold,nn,nn_top3,nn_cls",
+  "original": false,
+  "runs_dir": "./runs",
+  "output_dir": "./mia_results_dwa"
+}
