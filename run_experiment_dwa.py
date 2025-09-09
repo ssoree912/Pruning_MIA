@@ -532,12 +532,16 @@ def argize(cfg):
         gamma=cfg.training.gamma, step_size=cfg.training.step_size,
         warmup_epoch=cfg.training.warmup_lr_epoch,
 
-        # pruning (DWA-only essentials)
+        # pruning (DWA-only essentials + 필요한 필드 복원)
         prune=cfg.pruning.enabled,
         prune_rate=cfg.pruning.sparsity,
         prune_freq=cfg.pruning.prune_freq,
         target_epoch=cfg.pruning.target_epoch,
         freeze_epoch=cfg.pruning.freeze_epoch,
+        
+        # 내부 유틸에서 참조
+        prune_type="unstructured",  # 명시적으로 고정
+        prune_imp=getattr(cfg.pruning, 'importance_method', 'L1'),  # 기본값 L1
 
         # DWA parameters
         dwa_mode=getattr(cfg.pruning, 'dwa_mode', None),
