@@ -10,8 +10,12 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# 스크립트 경로 안정성
+SCRIPT_DIR = Path(__file__).resolve().parent
+RUN_SCRIPT = str(SCRIPT_DIR / 'run_experiment_dwa.py')
+
 def run_training(config_params):
-    cmd = [sys.executable, 'run_experiment_dwa.py']
+    cmd = [sys.executable, RUN_SCRIPT]
     for k, v in config_params.items():
         if v is None: continue
         if isinstance(v, bool):
@@ -23,13 +27,12 @@ def run_training(config_params):
             cmd.extend([f'--{k}', str(v)])
     print(f"Running training command: {' '.join(cmd)}")
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
+        # 타임아웃 제거 & 실시간 로그 스트리밍
+        res = subprocess.run(cmd)
         if res.returncode != 0:
-            print(f"Training failed with error:\n{res.stderr}")
-            return False, res.stderr
-        return True, res.stdout
-    except subprocess.TimeoutExpired:
-        return False, "Training timeout"
+            print(f"Training failed with return code: {res.returncode}")
+            return False, f"Process failed with return code: {res.returncode}"
+        return True, "Training completed successfully"
     except Exception as e:
         return False, str(e)
 
@@ -40,7 +43,13 @@ def collect_results(results_dir: Path):
     cfg = results_dir / 'config.json'
     if cfg.exists():
         with open(cfg, 'r') as f: 
-            results['config'] = json.load(f)
+            config = json.load(f)
+        results['config'] = config
+        # DWA 메타 동봉
+        p = config.get('pruning', {})
+        results['dwa_mode'] = p.get('dwa_mode')
+        results['dwa_alpha'] = p.get('dwa_alpha')
+        results['dwa_beta'] = p.get('dwa_beta')
     
     # Log files (now includes training.log)
     log_files = list(results_dir.glob('*.log'))
@@ -77,13 +86,17 @@ def create_training_summary_csv(all_results, experiment_prefix='dwa_experiments'
         if 'config' in r:
             c = r['config']
             row.update({
-                'method': c.get('pruning', {}).get('method', 'dpf'),
+                'method': c.get('pruning', {}).get('method', 'dcil'),
                 'sparsity': c.get('pruning', {}).get('sparsity', 0.0),
                 'dataset': c.get('data', {}).get('dataset', 'cifar10'),
                 'arch': c.get('model', {}).get('arch', 'resnet'),
                 'layers': c.get('model', {}).get('layers', 20),
                 'epochs': c.get('training', {}).get('epochs', 200),
                 'lr': c.get('training', {}).get('lr', 0.1),
+                # DWA 메타 추가
+                'dwa_mode': r.get('dwa_mode'),
+                'dwa_alpha': r.get('dwa_alpha'),
+                'dwa_beta': r.get('dwa_beta'),
             })
         if 'training' in r:
             t = r['training']
@@ -181,7 +194,7 @@ def main():
                         save_path = save_path / f'alpha{alpha}_beta{beta}'
                     save_path.mkdir(parents=True, exist_ok=True)
 
-                    if args.skip_existing and (save_path/'best_model.pth').exists():
+                    if args.skip_existing and ((save_path/'best_model.pth').exists() or (save_path/'experiment_summary.json').exists()):
                         print(f"Results already exist for {exp_name}, skipping...")
                         all_results[exp_name] = collect_results(save_path)
                         continue

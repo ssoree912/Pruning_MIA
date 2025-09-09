@@ -34,20 +34,31 @@ def _iter_mask_convs(model):
         if isinstance(module, nn.Conv2d) and hasattr(module, 'mask'):
             yield name, module
 
+def _apply_dwa_to_modules(model, forward_type, alpha=None, beta=None, global_threshold=None):
+    """모델 내부 MaskConv2d(DWA) 모듈들에 모드/하이퍼파라미터 주입"""
+    net = model.module if hasattr(model, 'module') else model
+    for m in net.modules():
+        if isinstance(m, nn.Conv2d) and hasattr(m, 'mask') and hasattr(m, 'forward_type'):
+            m.forward_type = forward_type
+            if (alpha is not None) and hasattr(m, 'alpha'):
+                m.alpha = float(alpha)
+            if (beta is not None) and hasattr(m, 'beta'):
+                m.beta = float(beta)
+            if (global_threshold is not None) and hasattr(m, 'threshold'):
+                with torch.no_grad():
+                    m.threshold.data = torch.as_tensor(
+                        float(global_threshold), dtype=m.threshold.dtype, device=m.threshold.device
+                    )
+
 def _update_dwa_tau(model, percentile):
     """레이어별 DWA threshold(τ) 갱신; 평균/표준편차 반환"""
-    try:
-        from pruning.dcil.mnn_dwa import MaskConv2dDWA
-    except Exception:
-        return None, None
-
     net = model.module if hasattr(model, 'module') else model
     tau_list = []
     for _, m in net.named_modules():
-        if isinstance(m, MaskConv2dDWA):
+        if hasattr(m, "update_threshold") and hasattr(m, "threshold"):
             try:
                 m.update_threshold(percentile)
-                if hasattr(m, "threshold") and m.threshold is not None:
+                if m.threshold is not None:
                     tau_list.append(float(m.threshold))
             except Exception:
                 pass
@@ -356,7 +367,7 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
             target_sparsity = cfg.pruning.sparsity * (1 - (1 - progress_ratio) ** 3)
             target_sparsity_updates.append(target_sparsity)
 
-            if iterations % cfg.pruning.prune_freq == 0 and cfg.pruning.prune_type == "unstructured":
+            if iterations % cfg.pruning.prune_freq == 0:
                 # 갱신 전 마스크 백업
                 old_masks = {id(m): m.mask.data.clone() for _, m in _iter_mask_convs(model)}
 
@@ -410,10 +421,12 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
 
         # ---- forward_type ----
         if cfg.pruning.enabled:
-            if (last_threshold is None) or (epoch <= cfg.training.warmup_lr_epoch) or (epoch >= cfg.pruning.freeze_epoch):
+            # 프루닝이 활성화된 상태에서만 DWA 모드 사용
+            freeze_epoch = cfg.pruning.freeze_epoch
+            if (last_threshold is None) or (epoch <= cfg.training.warmup_lr_epoch) or ((freeze_epoch >= 0) and (epoch >= freeze_epoch)):
                 forward_type = "DPF"
             else:
-                forward_type = cfg.pruning.dwa_mode or "scaling"
+                forward_type = cfg.pruning.dwa_mode or "DPF"
         else:
             forward_type = None
 
@@ -421,15 +434,23 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
         if forward_type is None:                # dense
             out = model(inp)
         elif forward_type == "DPF":
-            out = model(inp, "DPF")
+            out = model(inp, "DPF")             # 기존 레거시 경로 유지
         elif forward_type == "static":
-            out = model(inp, "static")
+            out = model(inp, "static")          # 검증 등에서 사용
         else:
-            # scaling 류는 τ(threshold) 필요, DWA 3모드는 α/β/τ 필요
-            if forward_type == "scaling":
-                out = model(inp, forward_type, last_threshold)
-            else:
-                out = model(inp, forward_type, cfg.pruning.dwa_alpha, cfg.pruning.dwa_beta, last_threshold)
+            # DWA 3모드만 허용
+            ALLOWED = {"reactivate_only", "kill_active_plain_dead", "kill_and_reactivate"}
+            assert forward_type in ALLOWED, f"Unknown DWA mode: {forward_type}"
+            _apply_dwa_to_modules(
+                model, forward_type,
+                getattr(cfg.pruning, 'dwa_alpha', 1.0),
+                getattr(cfg.pruning, 'dwa_beta', 1.0),
+                last_threshold
+            )
+            # Debug log for DWA activation (첫 번째 배치에서만)
+            if i == 0:
+                print(f"[DWA ON] mode={forward_type}, alpha={cfg.pruning.dwa_alpha}, beta={cfg.pruning.dwa_beta}, τ≈{threshold_updates[-1] if threshold_updates else last_threshold}")
+            out = model(inp)
 
         loss = criterion(out, tgt)
 
@@ -511,16 +532,14 @@ def argize(cfg):
         gamma=cfg.training.gamma, step_size=cfg.training.step_size,
         warmup_epoch=cfg.training.warmup_lr_epoch,
 
-        # pruning
+        # pruning (DWA-only essentials)
         prune=cfg.pruning.enabled,
         prune_rate=cfg.pruning.sparsity,
         prune_freq=cfg.pruning.prune_freq,
         target_epoch=cfg.pruning.target_epoch,
         freeze_epoch=cfg.pruning.freeze_epoch,
-        prune_type=cfg.pruning.prune_type,
-        prune_imp=getattr(cfg.pruning, 'importance_method', 'L1'),  # ✅ 추가: L1/L2 등
 
-        # (있어도 무방) DWA 관련 전달
+        # DWA parameters
         dwa_mode=getattr(cfg.pruning, 'dwa_mode', None),
         dwa_alpha=getattr(cfg.pruning, 'dwa_alpha', 1.0),
         dwa_beta=getattr(cfg.pruning, 'dwa_beta', 1.0),
@@ -529,7 +548,7 @@ def argize(cfg):
         # system
         print_freq=cfg.system.print_freq,
 
-        # misc
+        # model
         dataset=cfg.data.dataset, arch=cfg.model.arch, layers=cfg.model.layers,
         width_mult=cfg.model.width_mult, depth_mult=cfg.model.depth_mult, model_mult=cfg.model.model_mult,
     )
