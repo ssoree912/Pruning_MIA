@@ -1,0 +1,19 @@
+{
+  "best_metrics": {
+    "best_acc1": 91.39,
+    "best_loss": 0.27432948989868167
+  },
+  "final_metrics": {
+    "acc1": 90.86,
+    "acc5": 99.81,
+    "loss": 0.2983121036052704
+  },
+  "total_epochs": 200,
+  "total_duration": 1709.3600029945374,
+  "avg_epoch_time_seconds": 8.546800014972687,
+  "experiment_name": "dwa_kill_and_reactivate_alpha0.5_beta0.5_sparsity_0.7_cifar10_resnet",
+  "dataset": "cifar10",
+  "architecture": "resnet20",
+  "sparsity": 0.7,
+  "dwa_mode": "kill_and_reactivate"
+}
