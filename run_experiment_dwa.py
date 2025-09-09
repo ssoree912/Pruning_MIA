@@ -107,6 +107,15 @@ def main():
     if not log_file_path.exists():
         with open(log_file_path, "w") as f:
             f.write("epoch\tacc1_train\tacc1_valid\tbest_acc1\n")
+    
+    # detailed training log
+    detailed_log_path = experiment_dir / f"{cfg.name}_training.log"
+    
+    def log_message(message):
+        """Helper function to log messages to both console and file"""
+        print(message)
+        with open(detailed_log_path, "a") as f:
+            f.write(f"{message}\n")
 
     # save config
     cfg.to_json(str(experiment_dir / "config.json"))
@@ -163,9 +172,15 @@ def main():
     print("===> Data loading time: {:,}m {:.2f}s".format(int((time.time()-t0)//60),(time.time()-t0)%60))
     print("===> Data loaded..")
 
+    # Initial log
+    log_message(f"🚀 Starting DWA experiment: {cfg.name}")
+    log_message(f"📊 Dataset: {cfg.data.dataset}, Architecture: {cfg.model.arch}")
+    log_message(f"🎯 Sparsity: {cfg.pruning.sparsity}, DWA Mode: {getattr(cfg.pruning, 'dwa_mode', 'None')}")
+    log_message(f"⚙️ Alpha: {getattr(cfg.pruning, 'dwa_alpha', 1.0)}, Beta: {getattr(cfg.pruning, 'dwa_beta', 1.0)}")
+    
     # train
     best_acc1 = _run_train(cfg, model, train_loader, val_loader,
-                           criterion, optimizer, scheduler, arch_name, logger, log_file_path, experiment_dir)
+                           criterion, optimizer, scheduler, arch_name, logger, log_file_path, experiment_dir, log_message)
 
     if WANDB_AVAILABLE and getattr(cfg.wandb, 'enabled', False):
         try: wandb.finish()
@@ -174,14 +189,16 @@ def main():
     return best_acc1
 
 
-def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, scheduler, arch_name, logger, log_file_path, experiment_dir):
+def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, scheduler, arch_name, logger, log_file_path, experiment_dir, log_message):
     start_epoch = 0
     best_acc1 = 0.0
+    best_loss = float('inf')
     train_time = 0.0
     validate_time = 0.0
     global iterations
     iterations = 0
     last_threshold = None
+    validation_history = []
 
     for epoch in range(start_epoch, cfg.training.epochs):
         print("\n==> {}/{} training".format(arch_name, cfg.data.dataset))
@@ -211,11 +228,25 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
         acc1_train, acc5_train = round(train_metrics['acc1'],4), round(train_metrics['acc5'],4)
         acc1_valid, acc5_valid = round(val_metrics['acc1'],4), round(val_metrics['acc5'],4)
 
+        # Track validation history
+        validation_entry = {
+            'epoch': epoch,
+            'acc1': acc1_valid,
+            'acc5': acc5_valid,
+            'loss': val_metrics['loss'],
+            'train_acc1': acc1_train,
+            'train_acc5': acc5_train,
+            'train_loss': train_metrics['loss'],
+            'lr': optimizer.param_groups[0]["lr"]
+        }
+        validation_history.append(validation_entry)
+
         if acc1_valid > best_acc1 and (epoch >= cfg.pruning.target_epoch or cfg.pruning.sparsity == 0):
             best_acc1 = acc1_valid
+            best_loss = val_metrics['loss']
             model_path = experiment_dir / "best_model.pth"
             torch.save(model.state_dict(), model_path)
-            print(f"💾 Best model saved: {model_path}")
+            log_message(f"💾 Best model saved at epoch {epoch}: {model_path} (acc1: {best_acc1:.4f})")
 
         logger.add_scalar_group("train", {"acc1": acc1_train, "acc5": acc5_train}, epoch)
         logger.add_scalar_group("test",  {"best": best_acc1, "acc1": acc1_valid, "acc5": acc5_valid, "lr": optimizer.param_groups[0]["lr"]}, epoch)
@@ -240,7 +271,9 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
 
         if cfg.pruning.enabled:
             num_total, num_zero, sparsity = pruning.cal_sparsity(model)
-            print("\n====> sparsity: {:.2f}% || num_zero/num_total: {}/{}".format(sparsity, num_zero, num_total))
+            sparsity_msg = "\n====> sparsity: {:.2f}% || num_zero/num_total: {}/{}".format(sparsity, num_zero, num_total)
+            print(sparsity_msg)
+            log_message(sparsity_msg.strip())
         print()
 
     # ---- time summary & save summary ----
@@ -253,10 +286,26 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
     print("====> validation time: {}h {}m {:.2f}s".format(int(validate_time//3600), int((validate_time%3600)//60), validate_time%60))
     print("====> total training time: {}h {}m {:.2f}s".format(int(total_train_time//3600), int((total_train_time%3600)//60), total_train_time%60))
 
+    # Save validation history
+    with open(experiment_dir / "validation_history.json", "w") as f:
+        json.dump(validation_history, f, indent=2)
+    print(f"📈 Validation history saved: {experiment_dir / 'validation_history.json'}")
+
+    # Get final metrics
+    final_metrics = validation_history[-1] if validation_history else {}
+    
     summary = {
-        "best_accuracy": float(best_acc1),
+        "best_metrics": {
+            "best_acc1": float(best_acc1),
+            "best_loss": float(best_loss),
+        },
+        "final_metrics": {
+            "acc1": final_metrics.get('acc1', 0.0),
+            "acc5": final_metrics.get('acc5', 0.0), 
+            "loss": final_metrics.get('loss', 0.0),
+        },
         "total_epochs": cfg.training.epochs,
-        "total_training_time_seconds": float(total_train_time),
+        "total_duration": float(total_train_time),
         "avg_epoch_time_seconds": float(avg_train_time + avg_valid_time),
         "experiment_name": cfg.name,
         "dataset": cfg.data.dataset,
@@ -267,6 +316,7 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
     with open(experiment_dir / "experiment_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
     print(f"📊 Experiment summary saved: {experiment_dir / 'experiment_summary.json'}")
+    
     return best_acc1
 
 

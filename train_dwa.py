@@ -35,21 +35,38 @@ def run_training(config_params):
 
 def collect_results(results_dir: Path):
     results = {}
+    
+    # Config file
     cfg = results_dir / 'config.json'
     if cfg.exists():
-        with open(cfg, 'r') as f: results['config'] = json.load(f)
+        with open(cfg, 'r') as f: 
+            results['config'] = json.load(f)
+    
+    # Log files (now includes training.log)
     log_files = list(results_dir.glob('*.log'))
     if log_files:
         results['log_file'] = str(log_files[0])
+        results['log_files'] = [str(f) for f in log_files]  # All log files
+    
+    # Experiment summary (now with structured metrics)
     exp_sum = results_dir / 'experiment_summary.json'
     if exp_sum.exists():
-        with open(exp_sum, 'r') as f: results['training'] = json.load(f)
+        with open(exp_sum, 'r') as f: 
+            results['training'] = json.load(f)
+    
+    # Validation history (new)
     val_hist = results_dir / 'validation_history.json'
     if val_hist.exists():
-        with open(val_hist, 'r') as f: results['validation_history'] = json.load(f)
-    mia_json = results_dir / 'mia_results.json'
-    if mia_json.exists():
-        with open(mia_json, 'r') as f: results['mia'] = json.load(f)
+        with open(val_hist, 'r') as f: 
+            results['validation_history'] = json.load(f)
+    
+    
+    # Accuracy log file
+    acc_log = results_dir / f"*_acc_log.txt"
+    acc_log_files = list(results_dir.glob("*_acc_log.txt"))
+    if acc_log_files:
+        results['acc_log_file'] = str(acc_log_files[0])
+    
     return results
 
 def create_training_summary_csv(all_results, experiment_prefix='dwa_experiments'):
@@ -86,7 +103,9 @@ def create_training_summary_csv(all_results, experiment_prefix='dwa_experiments'
                     'val_best_acc1': best_val,
                     'val_final_acc1': vh[-1].get('acc1', None),
                     'val_final_loss': vh[-1].get('loss', None),
+                    'total_epochs_logged': len(vh),
                 })
+        
         rows.append(row)
 
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')

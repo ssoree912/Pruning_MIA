@@ -276,7 +276,7 @@ def extract_model_info(runs_dir):
                     'path': str(seed_dir)
                 }
         elif method_dir.name == 'dwa':
-            # DWA structure: runs/dwa/{mode}/sparsity_{X}/{dataset}/
+            # DWA structure: runs/dwa/{mode}/sparsity_{X}/{dataset}/[alpha_beta_variants]
             for dwa_mode_dir in sorted_dirs(method_dir):
                 dwa_mode = dwa_mode_dir.name  # reactivate_only, kill_active_plain_dead, etc.
                 for sparsity_dir in sorted_dirs(dwa_mode_dir):
@@ -294,14 +294,39 @@ def extract_model_info(runs_dir):
                         # Each dataset folder is a separate model
                         for dataset_dir in sorted_dirs(sparsity_dir):
                             dataset = dataset_dir.name
-                            key = f"dwa_{dwa_mode}_s{sparsity}_{dataset}"
-                            models_info[key] = {
-                                'type': 'dwa',
-                                'method': f'dwa_{dwa_mode}',
-                                'variant': dwa_mode,
-                                'sparsity': sparsity,
-                                'path': str(dataset_dir)
-                            }
+                            
+                            # Check for alpha/beta subdirectories or direct dataset directory
+                            if (dataset_dir / 'best_model.pth').exists():
+                                # Direct dataset directory
+                                key = f"dwa_{dwa_mode}_s{sparsity}_{dataset}"
+                                models_info[key] = {
+                                    'type': 'dwa',
+                                    'method': f'dwa_{dwa_mode}',
+                                    'variant': dwa_mode,
+                                    'sparsity': sparsity,
+                                    'path': str(dataset_dir)
+                                }
+                            else:
+                                # Check for alpha/beta subdirectories
+                                for alpha_beta_dir in sorted_dirs(dataset_dir):
+                                    if (alpha_beta_dir / 'best_model.pth').exists():
+                                        # Extract alpha/beta values from directory name
+                                        ab_match = re.search(r'alpha([\d.]+)_beta([\d.]+)', alpha_beta_dir.name)
+                                        if ab_match:
+                                            alpha, beta = ab_match.groups()
+                                            key = f"dwa_{dwa_mode}_s{sparsity}_{dataset}_alpha{alpha}_beta{beta}"
+                                            variant_ext = f"{dwa_mode}_alpha{alpha}_beta{beta}"
+                                        else:
+                                            key = f"dwa_{dwa_mode}_s{sparsity}_{dataset}_{alpha_beta_dir.name}"
+                                            variant_ext = f"{dwa_mode}_{alpha_beta_dir.name}"
+                                        
+                                        models_info[key] = {
+                                            'type': 'dwa',
+                                            'method': f'dwa_{dwa_mode}',
+                                            'variant': variant_ext,
+                                            'sparsity': sparsity,
+                                            'path': str(alpha_beta_dir)
+                                        }
         else:
             # static / dpf
             for sp_dir in sorted_dirs(method_dir):

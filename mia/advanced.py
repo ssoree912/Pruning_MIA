@@ -400,8 +400,9 @@ def evaluate_advanced_mia(runs_dir, results_dir):
                     variant = dwa_mode
                     
                     for dataset_dir in sorted_dirs(sparsity_dir):
-                        # Check if this is a valid dataset directory (contains best_model.pth)
+                        # Check for alpha/beta subdirectories or direct dataset directory
                         if (dataset_dir / 'best_model.pth').exists():
+                            # Direct dataset directory
                             model_key = f"dwa_{dwa_mode}_s{sparsity}_{dataset_dir.name}"
                             models_info[model_key] = {
                                 'type': 'dwa',
@@ -410,6 +411,27 @@ def evaluate_advanced_mia(runs_dir, results_dir):
                                 'sparsity': sparsity,
                                 'path': str(dataset_dir)
                             }
+                        else:
+                            # Check for alpha/beta subdirectories
+                            for alpha_beta_dir in sorted_dirs(dataset_dir):
+                                if (alpha_beta_dir / 'best_model.pth').exists():
+                                    # Extract alpha/beta values from directory name
+                                    ab_match = re.search(r'alpha([\d.]+)_beta([\d.]+)', alpha_beta_dir.name)
+                                    if ab_match:
+                                        alpha, beta = ab_match.groups()
+                                        model_key = f"dwa_{dwa_mode}_s{sparsity}_{dataset_dir.name}_alpha{alpha}_beta{beta}"
+                                        variant_ext = f"{variant}_alpha{alpha}_beta{beta}"
+                                    else:
+                                        model_key = f"dwa_{dwa_mode}_s{sparsity}_{dataset_dir.name}_{alpha_beta_dir.name}"
+                                        variant_ext = f"{variant}_{alpha_beta_dir.name}"
+                                    
+                                    models_info[model_key] = {
+                                        'type': 'dwa',
+                                        'method': f'dwa_{dwa_mode}',
+                                        'variant': variant_ext,
+                                        'sparsity': sparsity,
+                                        'path': str(alpha_beta_dir)
+                                    }
         else:
             # e.g., method_dir.name in {'static', 'dpf', ...}
             for sparsity_dir in sorted_dirs(method_dir):
