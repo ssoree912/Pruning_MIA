@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from scipy import stats
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, balanced_accuracy_score
 
 
 # ----------------------------
@@ -71,6 +71,7 @@ class LiRAAttacker:
         results = {
             'lira': {
                 'accuracy': accuracy_score(all_true, all_preds),
+                'balanced_accuracy': balanced_accuracy_score(all_true, all_preds),
                 'precision': precision_score(all_true, all_preds, zero_division=0),
                 'recall': recall_score(all_true, all_preds, zero_division=0),
                 'f1': f1_score(all_true, all_preds, zero_division=0),
@@ -126,6 +127,7 @@ class ShokriNNAttacker:
         results = {
             'shokri_nn': {
                 'accuracy': accuracy_score(target_true, target_preds),
+                'balanced_accuracy': balanced_accuracy_score(target_true, target_preds),
                 'precision': precision_score(target_true, target_preds, zero_division=0),
                 'recall': recall_score(target_true, target_preds, zero_division=0),
                 'f1': f1_score(target_true, target_preds, zero_division=0),
@@ -146,8 +148,25 @@ class ShokriNNAttacker:
         )
 
     def _train_attack_model(self, model, inputs, labels):
-        dataset = TensorDataset(inputs, labels)
+        # 1) 균형 샘플링
+        if not torch.is_tensor(inputs): inputs = torch.FloatTensor(inputs)
+        if not torch.is_tensor(labels): labels = torch.LongTensor(labels)
+
+        pos_idx = (labels == 1).nonzero(as_tuple=True)[0]
+        neg_idx = (labels == 0).nonzero(as_tuple=True)[0]
+        n = min(len(pos_idx), len(neg_idx))
+
+        # 고정 시드
+        g = torch.Generator().manual_seed(0)
+        pos_sel = pos_idx[torch.randperm(len(pos_idx), generator=g)[:n]]
+        neg_sel = neg_idx[torch.randperm(len(neg_idx), generator=g)[:n]]
+        sel = torch.cat([pos_sel, neg_sel])
+        sel = sel[torch.randperm(len(sel), generator=g)]
+
+        dataset = TensorDataset(inputs[sel], labels[sel])
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+        # 2) 표준 학습
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         criterion = nn.CrossEntropyLoss()
         model.train()
@@ -196,6 +215,7 @@ class Top3NNAttacker(ShokriNNAttacker):
         results = {
             'top3_nn': {
                 'accuracy': accuracy_score(target_true, target_preds),
+                'balanced_accuracy': balanced_accuracy_score(target_true, target_preds),
                 'precision': precision_score(target_true, target_preds, zero_division=0),
                 'recall': recall_score(target_true, target_preds, zero_division=0),
                 'f1': f1_score(target_true, target_preds, zero_division=0),
@@ -250,6 +270,7 @@ class ClassLabelNNAttacker(ShokriNNAttacker):
         results = {
             'class_label_nn': {
                 'accuracy': accuracy_score(target_true, target_preds),
+                'balanced_accuracy': balanced_accuracy_score(target_true, target_preds),
                 'precision': precision_score(target_true, target_preds, zero_division=0),
                 'recall': recall_score(target_true, target_preds, zero_division=0),
                 'f1': f1_score(target_true, target_preds, zero_division=0),
@@ -294,6 +315,7 @@ class SAMIAAttacker:
         results = {
             'samia': {
                 'accuracy': accuracy_score(target_true, target_preds),
+                'balanced_accuracy': balanced_accuracy_score(target_true, target_preds),
                 'precision': precision_score(target_true, target_preds, zero_division=0),
                 'recall': recall_score(target_true, target_preds, zero_division=0),
                 'f1': f1_score(target_true, target_preds, zero_division=0),
@@ -325,8 +347,25 @@ class SAMIAAttacker:
         return SAMIAModel(input_dim)
 
     def _train_attack_model(self, model, inputs, labels):
-        dataset = TensorDataset(inputs, labels)
+        # 1) 균형 샘플링
+        if not torch.is_tensor(inputs): inputs = torch.FloatTensor(inputs)
+        if not torch.is_tensor(labels): labels = torch.LongTensor(labels)
+
+        pos_idx = (labels == 1).nonzero(as_tuple=True)[0]
+        neg_idx = (labels == 0).nonzero(as_tuple=True)[0]
+        n = min(len(pos_idx), len(neg_idx))
+
+        # 고정 시드
+        g = torch.Generator().manual_seed(0)
+        pos_sel = pos_idx[torch.randperm(len(pos_idx), generator=g)[:n]]
+        neg_sel = neg_idx[torch.randperm(len(neg_idx), generator=g)[:n]]
+        sel = torch.cat([pos_sel, neg_sel])
+        sel = sel[torch.randperm(len(sel), generator=g)]
+
+        dataset = TensorDataset(inputs[sel], labels[sel])
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+        # 2) 표준 학습
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
         criterion = nn.CrossEntropyLoss()
         model.train()
@@ -342,11 +381,18 @@ class SAMIAAttacker:
 
 
 # ----------------------------
-# Helper: stable seed from key
+# Helper: stable seed from key & label-aligned Dirichlet
 # ----------------------------
 def seed_from_key(key: str) -> int:
     # 32-bit deterministic seed
     return int(hashlib.sha256(key.encode('utf-8')).hexdigest(), 16) % (2**31 - 1)
+
+def dirichlet_label_biased(rng, labels, num_classes, pos_strength, other_strength=1.0):
+    """라벨-정렬 Dirichlet 생성: 정답 클래스가 높은 확률을 갖도록"""
+    alphas = np.full((len(labels), num_classes), other_strength, dtype=float)
+    alphas[np.arange(len(labels)), labels] = pos_strength
+    # per-sample draw
+    return np.vstack([rng.dirichlet(alpha) for alpha in alphas])
 
 
 # ----------------------------
@@ -509,10 +555,15 @@ def evaluate_advanced_mia(runs_dir, results_dir):
         rng_t = np.random.RandomState(target_seed)
 
         num_train, num_test, num_classes = 5000, 1000, 10
-        target_train_outputs = rng_t.dirichlet([target_acc * 10] + [1] * (num_classes - 1), size=num_train)
         target_train_labels = rng_t.randint(0, num_classes, size=num_train)
-        target_test_outputs = rng_t.dirichlet([target_acc * 8] + [1] * (num_classes - 1), size=num_test)
         target_test_labels = rng_t.randint(0, num_classes, size=num_test)
+
+        # 멤버(훈련) 쪽이 더 자신감 높게, 논멤버(테스트)는 약간 낮게
+        train_strength = 1.0 + 10.0 * target_acc
+        test_strength = 1.0 + 8.0 * target_acc
+
+        target_train_outputs = dirichlet_label_biased(rng_t, target_train_labels, num_classes, train_strength)
+        target_test_outputs = dirichlet_label_biased(rng_t, target_test_labels, num_classes, test_strength)
 
         # build one shadow (first in list)
         shadow_model = shadow_models[0]
@@ -545,10 +596,11 @@ def evaluate_advanced_mia(runs_dir, results_dir):
             shadow_seed = seed_from_key("shadow:" + shadow_model)
             rng_s = np.random.RandomState(shadow_seed)
 
-        shadow_train_outputs = rng_s.dirichlet([shadow_acc * 10] + [1] * (num_classes - 1), size=num_train)
         shadow_train_labels = rng_s.randint(0, num_classes, size=num_train)
-        shadow_test_outputs = rng_s.dirichlet([shadow_acc * 8] + [1] * (num_classes - 1), size=num_test)
         shadow_test_labels = rng_s.randint(0, num_classes, size=num_test)
+        
+        shadow_train_outputs = dirichlet_label_biased(rng_s, shadow_train_labels, num_classes, 1.0 + 10.0 * shadow_acc)
+        shadow_test_outputs = dirichlet_label_biased(rng_s, shadow_test_labels, num_classes, 1.0 + 8.0 * shadow_acc)
 
         # run attacks
         attackers = [
@@ -598,6 +650,7 @@ def evaluate_advanced_mia(runs_dir, results_dir):
         for atk in ['lira', 'shokri_nn', 'top3_nn', 'class_label_nn', 'samia']:
             if atk in res:
                 row[f'{atk.upper()}_Acc'] = f"{res[atk].get('accuracy', 0):.3f}"
+                row[f'{atk.upper()}_BALACC'] = f"{res[atk].get('balanced_accuracy', 0):.3f}"
                 row[f'{atk.upper()}_AUC'] = f"{res[atk].get('auc', 0):.3f}"
         rows.append(row)
 

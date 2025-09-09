@@ -18,16 +18,26 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 
 # ----------------------------
-# Seed helpers
+# Seed helpers & Dirichlet label-biased
 # ----------------------------
 def seed_from_key(key: str) -> int:
     """32-bit deterministic seed from a string key."""
     return int(hashlib.sha256(key.encode("utf-8")).hexdigest(), 16) % (2**31 - 1)
+
+def dirichlet_label_biased(rng, labels, num_classes, pos_strength=10.0, base=1.0):
+    """라벨 y에 해당하는 축의 알파만 키워서 y 확률을 높이는 Dirichlet 샘플러"""
+    labels = np.asarray(labels, dtype=int)
+    out = np.empty((labels.shape[0], num_classes), dtype=np.float32)
+    for i, y in enumerate(labels):
+        alpha = np.full(num_classes, base, dtype=np.float32)
+        alpha[y] = pos_strength
+        out[i] = rng.dirichlet(alpha)
+    return out
 
 def decide_seed(mode: str, model_key: str, fixed_seed: int = 777, kind: str = "target") -> int:
     """
@@ -202,8 +212,18 @@ class NeuralAttacker:
             torch.zeros(len(shadow_test_outputs))
         ], dim=0).long()
 
+        # ✅ 밸런스드 샘플링으로 5:1 비율 문제 해결
+        n_members = torch.sum(shadow_attack_labels == 1).item()
+        n_nonmembers = torch.sum(shadow_attack_labels == 0).item()
+        
+        # 클래스 가중치: 적은 클래스에 더 높은 가중치
+        class_weights = torch.FloatTensor([1.0/n_nonmembers, 1.0/n_members])
+        sample_weights = class_weights[shadow_attack_labels]
+        
+        # WeightedRandomSampler로 밸런스드 샘플링
+        sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
         dataset = TensorDataset(shadow_attack_inputs, shadow_attack_labels)
-        loader  = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        loader  = DataLoader(dataset, batch_size=self.batch_size, sampler=sampler)
 
         input_dim  = shadow_attack_inputs.shape[1]
         classifier = MIAClassifier(input_dim).to(self.device)
@@ -433,10 +453,18 @@ def evaluate_mia_wemem(runs_dir, results_dir, mia_seed_mode='hash', mia_seed=777
         rng_t  = np.random.RandomState(t_seed)
 
         num_train, num_test, num_classes = 5000, 1000, 10
-        t_train_out = rng_t.dirichlet([target_acc * 10] + [1]*(num_classes-1), size=num_train)
+        
+        # 라벨 먼저 만들고, 라벨축을 강화한 Dirichlet로 확률 생성
         t_train_lab = rng_t.randint(0, num_classes, size=num_train)
-        t_test_out  = rng_t.dirichlet([target_acc * 8]  + [1]*(num_classes-1), size=num_test)
         t_test_lab  = rng_t.randint(0, num_classes, size=num_test)
+
+        member_strength    = max(2.0, 10.0 * target_acc)  # 멤버일 때 더 자신감
+        nonmember_strength = max(1.5,  8.0 * target_acc)  # 논멤버는 약하게
+
+        t_train_out = dirichlet_label_biased(rng_t, t_train_lab, num_classes,
+                                             pos_strength=member_strength, base=1.0)
+        t_test_out  = dirichlet_label_biased(rng_t, t_test_lab,  num_classes,
+                                             pos_strength=nonmember_strength, base=1.0)
 
         # pick first shadow
         shadow_model = shadow_models[0]
@@ -485,10 +513,17 @@ def evaluate_mia_wemem(runs_dir, results_dir, mia_seed_mode='hash', mia_seed=777
             s_seed = decide_seed(mia_seed_mode, shadow_model, mia_seed, kind='shadow')
             rng_s  = np.random.RandomState(s_seed)
 
-        s_train_out = rng_s.dirichlet([shadow_acc * 10] + [1]*(num_classes-1), size=num_train)
+        # 섀도우도 라벨-정렬 Dirichlet로 생성
         s_train_lab = rng_s.randint(0, num_classes, size=num_train)
-        s_test_out  = rng_s.dirichlet([shadow_acc * 8]  + [1]*(num_classes-1), size=num_test)
         s_test_lab  = rng_s.randint(0, num_classes, size=num_test)
+
+        shadow_member_strength    = max(2.0, 10.0 * shadow_acc)
+        shadow_nonmember_strength = max(1.5,  8.0 * shadow_acc)
+
+        s_train_out = dirichlet_label_biased(rng_s, s_train_lab, num_classes,
+                                             pos_strength=shadow_member_strength, base=1.0)
+        s_test_out  = dirichlet_label_biased(rng_s, s_test_lab,  num_classes,
+                                             pos_strength=shadow_nonmember_strength, base=1.0)
 
         target_results = {}
         # --- Threshold attacks
@@ -526,10 +561,25 @@ def evaluate_mia_wemem(runs_dir, results_dir, mia_seed_mode='hash', mia_seed=777
             'shadow_used': shadow_models
         }
 
-    # save JSON
+    # save JSON (convert numpy types to native Python types)
+    def convert_numpy_types(obj):
+        """Recursively convert numpy types to native Python types for JSON serialization"""
+        if isinstance(obj, dict):
+            return {k: convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(v) for v in obj]
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return obj
+    
     results_file = os.path.join(results_dir, 'wemem_mia_results.json')
     with open(results_file, 'w') as f:
-        json.dump(all_results, f, indent=2)
+        json.dump(convert_numpy_types(all_results), f, indent=2)
 
     # summary CSV
     rows = []

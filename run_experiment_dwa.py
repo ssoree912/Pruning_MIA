@@ -450,7 +450,7 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
             # Debug log for DWA activation (첫 번째 배치에서만)
             if i == 0:
                 print(f"[DWA ON] mode={forward_type}, alpha={cfg.pruning.dwa_alpha}, beta={cfg.pruning.dwa_beta}, τ≈{threshold_updates[-1] if threshold_updates else last_threshold}")
-            out = model(inp)
+            out = model(inp,"DPF")
 
         loss = criterion(out, tgt)
 
