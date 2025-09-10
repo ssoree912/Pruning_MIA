@@ -17,7 +17,7 @@ from datetime import datetime
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_epoch=None, total_epochs=None):
+def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_epoch=None, total_epochs=None, seed=42):
     """Create organized save path structure"""
     base_path = Path('./runs')
     
@@ -45,6 +45,10 @@ def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_
         save_path = base_path / method / f'sparsity_{sparsity}{freeze_suffix}' / dataset
     else:
         raise ValueError(f"Unknown method: {method}")
+    
+    # Add seed to path if not default seed
+    if seed != 42:
+        save_path = save_path / f'seed{seed}'
     
     return save_path
 
@@ -605,7 +609,7 @@ def main():
             print(f"{'='*50}")
             
             # Create save path
-            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs)
+            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs, args.seed)
             
             # Skip if results already exist
             if args.skip_existing and save_path.exists():
