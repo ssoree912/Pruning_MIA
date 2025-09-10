@@ -628,6 +628,8 @@ def main():
                 'arch': args.arch,
                 'epochs': args.epochs,
                 'freeze-epoch': args.freeze_epoch,
+                'seed': args.seed,
+                'gpu': args.gpu,
             }
             
             # Add wandb config if enabled
