@@ -161,6 +161,8 @@ def main():
     p.add_argument('--wandb-project', default='dwa-experiments')
     p.add_argument('--wandb-entity', default=None)
     p.add_argument('--wandb-tags', nargs='*', default=[])
+    p.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    p.add_argument('--gpu', type=int, default=0, help='GPU device ID')
     args = p.parse_args()
 
     # 필요시 과거 runs 재정리 (생략 가능)
@@ -222,6 +224,10 @@ def main():
                         'dwa-alpha': alpha,
                         'dwa-beta': beta,
                         'dwa-threshold-percentile': args.dwa_threshold_percentile,
+
+                        # 새로 추가: seed와 gpu
+                        'seed': args.seed,
+                        'gpu': args.gpu,
                     }
                     if args.wandb:
                         cfg_kwargs.update({

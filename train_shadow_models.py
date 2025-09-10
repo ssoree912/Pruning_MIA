@@ -57,8 +57,8 @@ def train_shadow_models(modes, sparsity, num_shadows=8, start_seed=43, gpu=0, dr
                 'python', 'train_dwa.py',
                 '--dwa-modes'
             ] + modes + [
-                '--dwa-alphas', '0.5',
-                '--dwa-betas', '0.5', 
+                '--dwa-alphas', '5.0',
+                '--dwa-betas', '5.0', 
                 '--sparsities', str(sparsity),
                 '--epochs', '200',
                 '--target-epoch', '75',
@@ -88,8 +88,8 @@ def train_shadow_models(modes, sparsity, num_shadows=8, start_seed=43, gpu=0, dr
             'python', 'train_dwa.py',
             '--dwa-modes'
         ] + modes + [
-            '--dwa-alphas', '0.5',
-            '--dwa-betas', '0.5',
+            '--dwa-alphas', '5.0',
+            '--dwa-betas', '5.0',
             '--sparsities', str(sparsity),
             '--epochs', '200',
             '--target-epoch', '75',
