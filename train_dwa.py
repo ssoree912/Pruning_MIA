@@ -185,6 +185,7 @@ def main():
                     if alpha != 1.0: exp_name += f"_alpha{alpha}"
                     if beta  != 1.0: exp_name += f"_beta{beta}"
                     exp_name += f"_sparsity_{sp}_{args.dataset}_{args.arch}"
+                    if args.seed != 42: exp_name += f"_seed{args.seed}"
 
                     print("\n" + "="*50)
                     print(f"Running experiment: {exp_name}")
@@ -194,6 +195,9 @@ def main():
                     save_path = Path('./runs/dwa')/mode/f'sparsity_{sp}'/args.dataset
                     if alpha != 1.0 or beta != 1.0:
                         save_path = save_path / f'alpha{alpha}_beta{beta}'
+                    # seed별로 다른 폴더에 저장 (기본 seed=42는 기존 경로 유지)
+                    if args.seed != 42:
+                        save_path = save_path / f'seed{args.seed}'
                     save_path.mkdir(parents=True, exist_ok=True)
 
                     if args.skip_existing and ((save_path/'best_model.pth').exists() or (save_path/'experiment_summary.json').exists()):
@@ -230,12 +234,15 @@ def main():
                         'gpu': args.gpu,
                     }
                     if args.wandb:
+                        wandb_tags = args.wandb_tags + ['dwa', mode, args.dataset, args.arch]
+                        if args.seed != 42:
+                            wandb_tags.append(f'seed{args.seed}')
                         cfg_kwargs.update({
                             'wandb': True,
                             'wandb_project': args.wandb_project,  # 하이픈 접근 버그 수정
                             'wandb_entity': args.wandb_entity,
                             'wandb_name': exp_name,
-                            'wandb_tags': args.wandb_tags + ['dwa', mode, args.dataset, args.arch],
+                            'wandb_tags': wandb_tags,
                         })
 
                     ok, out = run_training(cfg_kwargs)
