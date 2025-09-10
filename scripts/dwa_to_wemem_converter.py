@@ -86,25 +86,44 @@ def convert_dwa_to_wemem_structure(runs_dir='./runs', dataset='cifar10', model='
                 return p
         return None
 
+    # Collect all available models first
+    all_models = []
+    
     for mode_dir in mode_dirs:
         for sparsity_dir in mode_dir.iterdir():
-            if sparsity_dir.is_dir() and sparsity_ok(sparsity_dir):
-                # Search recursively for dataset-like dirs and checkpoints
+            if sparsity_dir.is_dir() and (sparsity is None or sparsity_dir.name.startswith('sparsity_')):
+                # Search for dataset dirs and checkpoints
                 for sub in sparsity_dir.rglob('*'):
                     if sub.is_dir() and ds_key in sub.name.casefold():
                         model_path = find_ckpt_in_dir(sub)
                         if model_path is not None:
-                            if victim_model_path is None:
-                                victim_model_path = model_path
-                                victim_experiment_dir = sub
-                            else:
-                                shadow_model_paths.append(model_path)
+                            all_models.append((model_path, sub, sparsity_dir.name))
     
-    if victim_model_path is None:
-        print(f"❌ No DWA models found for dataset '{dataset}' under {dwa_dir} (mode={mode}, sparsity={sparsity}).")
-        print("   Tips: check folder names and checkpoint filenames.")
-        print("   Expected something like: runs/dwa/<mode>/sparsity_*/<dataset>/**/{ckpt_globs}")
+    if not all_models:
+        print(f"❌ No DWA models found for dataset '{dataset}' under {dwa_dir}")
         return False
+    
+    # Sort by sparsity to get consistent ordering
+    all_models.sort(key=lambda x: x[2])
+    
+    # If specific sparsity requested, use it as victim, others as shadows
+    if sparsity is not None:
+        target_sparsity = f'sparsity_{sparsity}'
+        victim_models = [m for m in all_models if m[2] == target_sparsity]
+        shadow_models = [m for m in all_models if m[2] != target_sparsity]
+        
+        if victim_models:
+            victim_model_path = victim_models[0][0]
+            victim_experiment_dir = victim_models[0][1]
+            shadow_model_paths = [m[0] for m in shadow_models]
+        else:
+            print(f"❌ No model found for sparsity {sparsity}")
+            return False
+    else:
+        # Use first as victim, rest as shadows
+        victim_model_path = all_models[0][0]
+        victim_experiment_dir = all_models[0][1]
+        shadow_model_paths = [m[0] for m in all_models[1:]]
     
     print(f"✅ Found victim model: {victim_model_path}")
     print(f"✅ Found {len(shadow_model_paths)} shadow models")
