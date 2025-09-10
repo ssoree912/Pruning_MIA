@@ -90,7 +90,7 @@ dmypy.json
 
 # Machine Learning specific
 # Model checkpoints and weights
-*.pth
+
 *.pt
 *.h5
 *.hdf5

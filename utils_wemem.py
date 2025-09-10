@@ -31,6 +31,9 @@ def get_model(model_type, num_cls, input_dim):
     if model_type == "resnet18":
         from cifar10_models import resnet18
         model = resnet18(pretrained=False, num_classes=num_cls)
+    elif model_type == "resnet20":
+        from cifar10_models import resnet18
+        model = resnet18(pretrained=False, num_classes=num_cls)
     elif model_type == "vgg16bn":
         from cifar10_models import vgg16_bn
         model = vgg16_bn(pretrained=False, num_classes=num_cls)
