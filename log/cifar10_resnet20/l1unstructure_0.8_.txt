@@ -1,0 +1,1 @@
+Victim pruned model test accuracy: 10.920
