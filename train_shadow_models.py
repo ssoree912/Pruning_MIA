@@ -36,11 +36,15 @@ def create_shadow_config(base_config_path, shadow_seed, output_path):
     print(f"✅ Created shadow config: {output_path} (seed={shadow_seed})")
     return config
 
-def train_shadow_models(mode, sparsity, num_shadows=8, start_seed=43, gpu=0, dry_run=False):
+def train_shadow_models(modes, sparsity, num_shadows=8, start_seed=43, gpu=0, dry_run=False):
     """Shadow 모델들 훈련 (train_dwa.py 사용)"""
     
-    print(f"🎯 Training {num_shadows} shadow models")
-    print(f"   Mode: {mode}")
+    # modes를 리스트로 처리
+    if isinstance(modes, str):
+        modes = [modes]
+    
+    print(f"🎯 Training {num_shadows} shadow models for {len(modes)} mode(s)")
+    print(f"   Modes: {', '.join(modes)}")
     print(f"   Sparsity: {sparsity}")
     print(f"   Shadow seeds: {start_seed} to {start_seed + num_shadows - 1}")
     print(f"   GPU: {gpu}")
@@ -51,7 +55,8 @@ def train_shadow_models(mode, sparsity, num_shadows=8, start_seed=43, gpu=0, dry
             shadow_seed = start_seed + i
             cmd = [
                 'python', 'train_dwa.py',
-                '--dwa-modes', mode,
+                '--dwa-modes'
+            ] + modes + [
                 '--dwa-alphas', '0.5',
                 '--dwa-betas', '0.5', 
                 '--sparsities', str(sparsity),
@@ -76,11 +81,13 @@ def train_shadow_models(mode, sparsity, num_shadows=8, start_seed=43, gpu=0, dry
         shadow_seed = start_seed + i
         print(f"\n{'='*80}")
         print(f"🤖 Training Shadow Model {i+1}/{num_shadows} (seed={shadow_seed})")
+        print(f"   Modes: {', '.join(modes)}")
         print(f"{'='*80}")
         
         cmd = [
             'python', 'train_dwa.py',
-            '--dwa-modes', mode,
+            '--dwa-modes'
+        ] + modes + [
             '--dwa-alphas', '0.5',
             '--dwa-betas', '0.5',
             '--sparsities', str(sparsity),
@@ -115,7 +122,7 @@ def train_shadow_models(mode, sparsity, num_shadows=8, start_seed=43, gpu=0, dry
 
 def main():
     parser = argparse.ArgumentParser(description='Train shadow models for DWA MIA')
-    parser.add_argument('--mode', required=True, help='DWA mode (kill_active_plain_dead, etc.)')
+    parser.add_argument('--mode', required=True, nargs='+', help='DWA modes (kill_active_plain_dead, etc.)')
     parser.add_argument('--sparsity', type=float, required=True, help='Sparsity level (0.9, etc.)')
     parser.add_argument('--num_shadows', type=int, default=8, help='Number of shadow models')
     parser.add_argument('--start_seed', type=int, default=43, help='Starting seed for shadows')
@@ -128,7 +135,7 @@ def main():
     print("=" * 50)
     
     success = train_shadow_models(
-        mode=args.mode,
+        modes=args.mode,
         sparsity=args.sparsity,
         num_shadows=args.num_shadows,
         start_seed=args.start_seed,
