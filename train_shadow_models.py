@@ -36,53 +36,70 @@ def create_shadow_config(base_config_path, shadow_seed, output_path):
     print(f"✅ Created shadow config: {output_path} (seed={shadow_seed})")
     return config
 
-def train_shadow_models(victim_config_path, num_shadows=8, start_seed=43, gpu=0, dry_run=False):
-    """Shadow 모델들 훈련"""
+def train_shadow_models(mode, sparsity, num_shadows=8, start_seed=43, gpu=0, dry_run=False):
+    """Shadow 모델들 훈련 (train_dwa.py 사용)"""
     
     print(f"🎯 Training {num_shadows} shadow models")
-    print(f"   Victim config: {victim_config_path}")
+    print(f"   Mode: {mode}")
+    print(f"   Sparsity: {sparsity}")
     print(f"   Shadow seeds: {start_seed} to {start_seed + num_shadows - 1}")
     print(f"   GPU: {gpu}")
     
-    if not os.path.exists(victim_config_path):
-        print(f"❌ Victim config not found: {victim_config_path}")
-        return False
-    
-    # Shadow configs 생성
-    shadow_configs = []
-    configs_dir = "shadow_configs"
-    os.makedirs(configs_dir, exist_ok=True)
-    
-    for i in range(num_shadows):
-        shadow_seed = start_seed + i
-        shadow_config_path = f"{configs_dir}/shadow_seed{shadow_seed}.json"
-        
-        config = create_shadow_config(victim_config_path, shadow_seed, shadow_config_path)
-        shadow_configs.append((shadow_seed, shadow_config_path, config))
-    
     if dry_run:
-        print("🔍 DRY RUN: Shadow configs created but training skipped")
+        print("🔍 DRY RUN: Would train shadow models with these commands:")
+        for i in range(num_shadows):
+            shadow_seed = start_seed + i
+            cmd = [
+                'python', 'train_dwa.py',
+                '--dwa-modes', mode,
+                '--dwa-alphas', '0.5',
+                '--dwa-betas', '0.5', 
+                '--sparsities', str(sparsity),
+                '--epochs', '200',
+                '--target-epoch', '75',
+                '--prune-freq', '16',
+                '--freeze-epoch', '-1',
+                '--dataset', 'cifar10',
+                '--arch', 'resnet',
+                '--seed', str(shadow_seed),
+                '--gpu', str(gpu),
+                '--wandb', 
+                '--wandb-project', f'dwa_mia_shadow_seed{shadow_seed}'
+            ]
+            print(f"   Shadow {i+1}: {' '.join(cmd)}")
         return True
     
     # Shadow 모델들 훈련
     print("\n🚀 Starting shadow model training...")
     
-    for i, (shadow_seed, config_path, config) in enumerate(shadow_configs):
+    for i in range(num_shadows):
+        shadow_seed = start_seed + i
         print(f"\n{'='*80}")
         print(f"🤖 Training Shadow Model {i+1}/{num_shadows} (seed={shadow_seed})")
         print(f"{'='*80}")
         
-        # 훈련 명령어 (실제 DWA 훈련 스크립트에 맞게 조정 필요)
         cmd = [
-            'python', 'train.py',  # 실제 DWA 훈련 스크립트 이름
-            '--config', config_path,
-            '--gpu', str(gpu)
+            'python', 'train_dwa.py',
+            '--dwa-modes', mode,
+            '--dwa-alphas', '0.5',
+            '--dwa-betas', '0.5',
+            '--sparsities', str(sparsity),
+            '--epochs', '200',
+            '--target-epoch', '75',
+            '--prune-freq', '16',
+            '--freeze-epoch', '-1',
+            '--dataset', 'cifar10',
+            '--arch', 'resnet',
+            '--seed', str(shadow_seed),
+            '--gpu', str(gpu),
+            '--wandb',
+            '--wandb-project', f'dwa_mia_shadow_seed{shadow_seed}'
         ]
         
         print(f"🔥 Command: {' '.join(cmd)}")
         
         try:
-            result = subprocess.run(cmd, check=True, capture_output=False, text=True)
+            result = subprocess.run(cmd, check=True)
             print(f"✅ Shadow {i+1} training completed!")
             
         except subprocess.CalledProcessError as e:
@@ -90,8 +107,7 @@ def train_shadow_models(victim_config_path, num_shadows=8, start_seed=43, gpu=0,
             return False
         
         except FileNotFoundError:
-            print(f"❌ Training script not found. Please check the command: {' '.join(cmd)}")
-            print("💡 You may need to adjust the training command in this script")
+            print(f"❌ train_dwa.py not found. Please check if the script exists")
             return False
     
     print(f"\n🎉 All {num_shadows} shadow models training completed!")
@@ -99,11 +115,12 @@ def train_shadow_models(victim_config_path, num_shadows=8, start_seed=43, gpu=0,
 
 def main():
     parser = argparse.ArgumentParser(description='Train shadow models for DWA MIA')
-    parser.add_argument('--victim_config', required=True, help='Path to victim model config')
+    parser.add_argument('--mode', required=True, help='DWA mode (kill_active_plain_dead, etc.)')
+    parser.add_argument('--sparsity', type=float, required=True, help='Sparsity level (0.9, etc.)')
     parser.add_argument('--num_shadows', type=int, default=8, help='Number of shadow models')
     parser.add_argument('--start_seed', type=int, default=43, help='Starting seed for shadows')
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID')
-    parser.add_argument('--dry_run', action='store_true', help='Only create configs, skip training')
+    parser.add_argument('--dry_run', action='store_true', help='Only show commands, skip training')
     
     args = parser.parse_args()
     
@@ -111,7 +128,8 @@ def main():
     print("=" * 50)
     
     success = train_shadow_models(
-        victim_config_path=args.victim_config,
+        mode=args.mode,
+        sparsity=args.sparsity,
         num_shadows=args.num_shadows,
         start_seed=args.start_seed,
         gpu=args.gpu,
