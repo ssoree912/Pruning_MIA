@@ -1,40 +1,32 @@
 from .resnet import resnet
 from .wideresnet import *
 
-# Import MIA models from parent directory to avoid conflicts
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Define MIA models directly here to avoid import conflicts
+import torch.nn as nn
+import torch.nn.functional as F
 
-try:
-    import models as parent_models
-    MIAFC = parent_models.MIAFC
-    ColumnFC = parent_models.ColumnFC
-except ImportError:
-    # Fallback: define inline
-    import torch.nn as nn
-    import torch.nn.functional as F
+class MIAFC(nn.Module):
+    """Fully Connected MIA Attack Model"""
+    def __init__(self, input_dim, output_dim=2):
+        super(MIAFC, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, output_dim)
+        self.dropout = nn.Dropout(0.3)
     
-    class MIAFC(nn.Module):
-        def __init__(self, input_dim, output_dim=2):
-            super(MIAFC, self).__init__()
-            self.fc1 = nn.Linear(input_dim, 256)
-            self.fc2 = nn.Linear(256, 128)
-            self.fc3 = nn.Linear(128, output_dim)
-            self.dropout = nn.Dropout(0.3)
-        
-        def forward(self, x):
-            x = F.relu(self.fc1(x))
-            x = self.dropout(x)
-            x = F.relu(self.fc2(x))
-            x = self.dropout(x)
-            x = self.fc3(x)
-            return x
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = self.fc3(x)
+        return x
+
+class ColumnFC(nn.Module):
+    """Column Fully Connected Model"""
+    def __init__(self, input_dim, output_dim):
+        super(ColumnFC, self).__init__()
+        self.fc = nn.Linear(input_dim, output_dim)
     
-    class ColumnFC(nn.Module):
-        def __init__(self, input_dim, output_dim):
-            super(ColumnFC, self).__init__()
-            self.fc = nn.Linear(input_dim, output_dim)
-        
-        def forward(self, x):
-            return self.fc(x)
+    def forward(self, x):
+        return self.fc(x)
