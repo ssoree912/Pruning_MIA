@@ -8,14 +8,18 @@ import os
 import shutil
 import pickle
 import json
+import sys
 from pathlib import Path
+
+# Ensure project root is on sys.path so `datasets.py` is importable when run from scripts/
+sys.path.append(str(Path(__file__).parent.parent))
 import torch
 from torch.utils.data import Subset
 from datasets import get_dataset
 import random
 import numpy as np
 
-def convert_dwa_to_wemem_structure(runs_dir='./runs', dataset='cifar10', model='resnet18', seed=7, mode=None, sparsity=None, limit_shadows=5):
+def convert_dwa_to_wemem_structure(runs_dir='./runs', dataset='cifar10', model='resnet18', seed=7, mode=None, sparsity=None, limit_shadows=5, ckpt_globs="best_model.pth,best.pth,ckpt_best.pth"): 
     """DWA 결과를 WeMeM-main 구조로 변환
 
     Args:
@@ -67,21 +71,39 @@ def convert_dwa_to_wemem_structure(runs_dir='./runs', dataset='cifar10', model='
         s_str = str(sparsity)
         return sp_dir.name == f'sparsity_{s_str}'
 
+    ds_key = dataset.casefold()
+    ckpt_patterns = [p.strip() for p in ckpt_globs.split(',') if p.strip()]
+
+    def find_ckpt_in_dir(root_dir: Path):
+        # Try preferred names first
+        for pat in ckpt_patterns:
+            for p in root_dir.rglob(pat):
+                if p.is_file():
+                    return p
+        # Fallback: any .pth under root_dir
+        for p in root_dir.rglob('*.pth'):
+            if p.is_file():
+                return p
+        return None
+
     for mode_dir in mode_dirs:
         for sparsity_dir in mode_dir.iterdir():
             if sparsity_dir.is_dir() and sparsity_ok(sparsity_dir):
-                for dataset_dir in sparsity_dir.iterdir():
-                    if dataset_dir.is_dir() and dataset_dir.name == dataset:
-                        model_path = dataset_dir / 'best_model.pth'
-                        if model_path.exists():
+                # Search recursively for dataset-like dirs and checkpoints
+                for sub in sparsity_dir.rglob('*'):
+                    if sub.is_dir() and ds_key in sub.name.casefold():
+                        model_path = find_ckpt_in_dir(sub)
+                        if model_path is not None:
                             if victim_model_path is None:
                                 victim_model_path = model_path
-                                victim_experiment_dir = dataset_dir
+                                victim_experiment_dir = sub
                             else:
                                 shadow_model_paths.append(model_path)
     
     if victim_model_path is None:
-        print(f"❌ No DWA models found for dataset {dataset}")
+        print(f"❌ No DWA models found for dataset '{dataset}' under {dwa_dir} (mode={mode}, sparsity={sparsity}).")
+        print("   Tips: check folder names and checkpoint filenames.")
+        print("   Expected something like: runs/dwa/<mode>/sparsity_*/<dataset>/**/{ckpt_globs}")
         return False
     
     print(f"✅ Found victim model: {victim_model_path}")
@@ -189,6 +211,7 @@ def main():
     parser.add_argument('--mode', default=None, help='Select one mode to convert')
     parser.add_argument('--sparsity', default=None, help='Select one sparsity (e.g., 0.6)')
     parser.add_argument('--limit_shadows', type=int, default=5, help='Limit number of shadow models')
+    parser.add_argument('--ckpt_globs', default='best_model.pth,best.pth,ckpt_best.pth', help='Comma-separated checkpoint filename patterns to search for')
     
     args = parser.parse_args()
     
@@ -200,6 +223,7 @@ def main():
         mode=args.mode,
         sparsity=args.sparsity,
         limit_shadows=args.limit_shadows,
+        ckpt_globs=args.ckpt_globs,
     )
     
     if success:

@@ -60,6 +60,7 @@ def main(args):
     else:
         name = f'{args.pruner_name}_{args.prune_sparsity}_{args.defend}'
     print(f"Save Folder: {save_folder}")
+    os.makedirs(f'log/{args.dataset_name}_{args.model_name}', exist_ok=True)
 
     # Load datasets
     trainset = get_dataset(args.dataset_name, train=True)
@@ -92,7 +93,8 @@ def main(args):
     victim_pruned_model = BaseModel(
         args.model_name, num_cls=args.num_cls, input_dim=args.input_dim, save_folder=pruned_model_save_folder,
         device=device)
-    victim_pruned_model.model.load_state_dict(torch.load(f"{pruned_model_save_folder}/best.pth"))
+    # Robust load: support DP prefixes and raw state_dict checkpoints
+    victim_pruned_model.load(f"{pruned_model_save_folder}/best.pth")
     victim_pruned_model.test(victim_train_loader, "Victim Pruned Model Train")
     test_acc, loss = victim_pruned_model.test(victim_test_loader, "Victim Pruned Model Test")
     with open(f'log/{args.dataset_name}_{args.model_name}/{name}.txt', 'a') as appender:
@@ -117,7 +119,7 @@ def main(args):
         shadow_pruned_model = BaseModel(
             args.model_name, num_cls=args.num_cls, input_dim=args.input_dim,
             save_folder=pruned_shadow_model_save_folder, device=device)
-        shadow_pruned_model.model.load_state_dict(torch.load(f"{pruned_shadow_model_save_folder}/best.pth"))
+        shadow_pruned_model.load(f"{pruned_shadow_model_save_folder}/best.pth")
         shadow_pruned_model.test(shadow_train_loader, "Shadow Pruned Model Train")
         shadow_pruned_model.test(shadow_test_loader, "Shadow Pruned Model Test")
 

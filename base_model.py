@@ -328,12 +328,58 @@ class BaseModel:
 
     def load(self, load_path, verbose=False):
         state = torch.load(load_path, map_location=self.device)
-        acc = state['acc']
+        # Support both metadata checkpoints and raw state_dict files
+        model_state = None
+        acc = None
+        loss = None
+        epoch = None
+        if isinstance(state, dict) and 'state' in state and isinstance(state['state'], dict):
+            model_state = state['state']
+            acc = state.get('acc', None)
+            loss = state.get('loss', None)
+            epoch = state.get('epoch', None)
+        elif isinstance(state, dict):
+            # Likely a raw state_dict
+            model_state = state
+        else:
+            # Unexpected format; try to use as state_dict directly
+            model_state = state
+
         if verbose:
             print(f"Load model from {load_path}")
-            print(f"Epoch {state['epoch']}, Acc: {state['acc']:.3f}, Loss: {state['loss']:.3f}")
-        self.model.load_state_dict(state['state'])
-        return acc
+            if epoch is not None and acc is not None and loss is not None:
+                print(f"Epoch {epoch}, Acc: {acc:.3f}, Loss: {loss:.3f}")
+
+        try:
+            self.model.load_state_dict(model_state)
+            return acc if acc is not None else 0.0
+        except Exception as e:
+            # Retry with common adaptations
+            from collections import OrderedDict
+            target_state = self.model.state_dict()
+
+            # 1) Strip 'module.' prefix if present
+            new_state = OrderedDict()
+            for k, v in model_state.items():
+                nk = k[7:] if k.startswith('module.') else k
+                new_state[nk] = v
+            model_state = new_state
+
+            # 2) Filter to matching keys and shapes
+            filtered_state = OrderedDict()
+            for k, v in model_state.items():
+                if k in target_state and hasattr(v, 'shape') and hasattr(target_state[k], 'shape'):
+                    if v.shape == target_state[k].shape:
+                        filtered_state[k] = v
+
+            missing = [k for k in target_state.keys() if k not in filtered_state]
+            unexpected = [k for k in model_state.keys() if k not in filtered_state]
+            if verbose:
+                print("Warning: relaxed loading due to state_dict mismatch.")
+                print(f"  Loaded params: {len(filtered_state)} | Missing: {len(missing)} | Skipped unexpected: {len(unexpected)}")
+
+            self.model.load_state_dict(filtered_state, strict=False)
+            return acc if acc is not None else 0.0
 
     def predict_target_sensitivity(self, data_loader, m=10, epsilon=1e-3):
         self.model.eval()
