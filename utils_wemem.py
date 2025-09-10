@@ -41,9 +41,13 @@ def get_model(model_type, num_cls, input_dim):
         from cifar10_models import densenet121
         model = densenet121(pretrained=False, num_classes=num_cls)
     elif model_type == "columnfc":
+        import sys
+        sys.path.append('.')
         from models import ColumnFC
         model = ColumnFC(input_dim=input_dim, output_dim=num_cls)
     elif model_type == "mia_fc":
+        import sys
+        sys.path.append('.')
         from models import MIAFC
         model = MIAFC(input_dim=num_cls, output_dim=2)
     elif model_type == "transformer":
