@@ -171,7 +171,8 @@ def main():
             '--prune_type', exp['mode'],
             '--victim_seed', str(victim_seed),
             '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
-            '--gpu', args.device.replace('cuda:', '')
+            '--device', args.device.replace('cuda:', ''),
+            '--split_seed', str(split_seed)
         ]
         
         if run_command(eval_cmd):

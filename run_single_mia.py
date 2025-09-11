@@ -11,7 +11,8 @@ from pathlib import Path
 
 def run_single_mia(dataset='cifar10', model='resnet', sparsity='0.9', alpha='5.0', beta='5.0', 
                   prune_method='dwa', prune_type='reactivate_only', 
-                  victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0):
+                  victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
+                  split_seed=7):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for {dataset}_{model}")
@@ -40,8 +41,33 @@ def run_single_mia(dataset='cifar10', model='resnet', sparsity='0.9', alpha='5.0
             return False
     print(f"✅ Found all {len(shadow_seeds)} shadow models")
     
-    # Step 2: MIA 평가 실행 (설정 파일 없이 직접 파라미터 전달)
-    print("\n🎯 Step 2: Running MIA evaluation...")
+    # Step 2: 고정 스플릿 확인 및 없으면 생성
+    print("\n🧩 Step 2: Ensuring fixed MIA data splits...")
+    split_path = Path(f"mia_data_splits/{dataset}_seed{split_seed}_victim{victim_seed}.pkl")
+    if not split_path.exists():
+        print(f"📦 Creating fixed splits: {split_path}")
+        mk_cmd = [
+            sys.executable, 'create_fixed_data_splits.py',
+            '--dataset', dataset,
+            '--seed', str(split_seed),
+            '--victim_seed', str(victim_seed),
+            '--shadow_seeds', *[str(s) for s in shadow_seeds]
+        ]
+        try:
+            mk_res = subprocess.run(mk_cmd, check=True, capture_output=True, text=True)
+            if mk_res.stdout:
+                print(mk_res.stdout)
+            print("✅ Fixed splits created.")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to create data splits: {e}")
+            if e.stdout:
+                print("STDOUT:", e.stdout)
+            if e.stderr:
+                print("STDERR:", e.stderr)
+            return False
+
+    # Step 3: MIA 평가 실행 (설정 파일 없이 직접 파라미터 전달)
+    print("\n🎯 Step 3: Running MIA evaluation...")
     
     cmd = [
         'python', 'mia_modi.py',
@@ -52,6 +78,7 @@ def run_single_mia(dataset='cifar10', model='resnet', sparsity='0.9', alpha='5.0
         '--alpha', str(alpha),
         '--beta', str(beta),
         '--victim_seed', str(victim_seed),
+        '--seed', str(split_seed),
         '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
         '--prune_method', prune_method,
         '--prune_type', prune_type,
@@ -98,6 +125,7 @@ def main():
     parser.add_argument('--victim_seed', type=int, default=42, help='Victim model seed')
     parser.add_argument('--shadow_seeds', nargs='+', type=int, default=[43,44,45,46,47,48,49,50], help='Shadow model seeds')
     parser.add_argument('--device', type=int, default=0, help='GPU ID')
+    parser.add_argument('--split_seed', type=int, default=7, help='Seed used for fixed MIA splits (must match pkl)')
     
     args = parser.parse_args()
     
@@ -115,7 +143,8 @@ def main():
         prune_type=args.prune_type,
         victim_seed=args.victim_seed,
         shadow_seeds=args.shadow_seeds,
-        device=args.device
+        device=args.device,
+        split_seed=args.split_seed
     )
     
     if success:
