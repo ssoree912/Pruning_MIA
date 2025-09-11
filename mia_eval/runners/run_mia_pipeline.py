@@ -18,7 +18,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-# Resolve project root and absolute script paths
+# Resolve project root and absolute script paths (no hardcoded names)
 THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parents[2]
 RUN_SINGLE = REPO_ROOT / 'mia_eval' / 'runners' / 'run_single_mia.py'

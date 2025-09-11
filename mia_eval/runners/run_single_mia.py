@@ -9,9 +9,9 @@ import sys
 import subprocess
 from pathlib import Path
 
-# Ensure project root and absolute script paths
+# Ensure project root and absolute script paths (do NOT hardcode project name)
 THIS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = THIS_DIR.parents[2]
+REPO_ROOT = THIS_DIR.parents[2]  # repository root
 CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'data' / 'create_fixed_data_splits.py'
 MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 
