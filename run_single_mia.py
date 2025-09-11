@@ -9,7 +9,7 @@ import sys
 import subprocess
 from pathlib import Path
 
-def run_single_mia(dataset='cifar10', model='resnet', sparsity='0.9', alpha='5.0', beta='5.0', 
+def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5.0', beta='5.0', 
                   prune_method='dwa', prune_type='reactivate_only', 
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
                   split_seed=7):
@@ -116,7 +116,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Run single model MIA evaluation')
     parser.add_argument('--dataset', default='cifar10', help='Dataset name (cifar10, cifar100)')
-    parser.add_argument('--model', default='resnet', help='Model name')
+    parser.add_argument('--model', default='resnet18', help='Model name (e.g., resnet18)')
     parser.add_argument('--sparsity', default='0.9', help='Sparsity level')
     parser.add_argument('--alpha', default='5.0', help='Alpha value')
     parser.add_argument('--beta', default='5.0', help='Beta value')

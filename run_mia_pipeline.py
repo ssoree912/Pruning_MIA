@@ -163,7 +163,7 @@ def main():
         eval_cmd = [
             sys.executable, 'run_single_mia.py',
             '--dataset', exp['dataset'],
-            '--model', 'resnet',
+            '--model', 'resnet18',
             '--sparsity', exp['sparsity'],
             '--alpha', exp['alpha'],
             '--beta', exp['beta'],

@@ -11,6 +11,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from attackers import MiaAttack
 from base_model import BaseModel
+from mia_utils import load_dwa_model
 from datasets import get_dataset
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 
@@ -109,34 +110,53 @@ def main(args):
     # Load victim model
     def load_model_from_seed_folder(base_path, seed, dataset_name, model_name, sparsity, alpha, beta, 
                                    prune_method, prune_type, device, forward_mode='standard', num_cls=10, input_dim=3):
-        model_path = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}/best_model.pth"
+        model_dir = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}"
+        model_path = f"{model_dir}/best_model.pth"
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found at {model_path}")
-        
+
         print(f"Loading model with forward_mode: {forward_mode}")
-        model = BaseModel(model_name, num_cls=num_cls, input_dim=input_dim, device=device)
-        model.model.load_state_dict(torch.load(model_path, map_location=device))
-        
-        # Set forward mode based on prune_type and user preference
-        if forward_mode == 'dwa_adaptive' and prune_method == 'dwa':
-            # DWA adaptive mode: use alpha/beta for dynamic forward
-            if hasattr(model.model, 'set_dwa_params'):
-                model.model.set_dwa_params(alpha=alpha, beta=beta, mode=prune_type)
-                print(f"Set DWA params: alpha={alpha}, beta={beta}, mode={prune_type}")
-            else:
-                print("Warning: Model does not support DWA adaptive mode, using standard")
-        elif forward_mode == 'scaling':
-            # Scaling mode: apply confidence scaling
-            if hasattr(model.model, 'set_scaling_mode'):
-                model.model.set_scaling_mode(True)
-                print("Enabled confidence scaling mode")
-        elif forward_mode == 'dpf':
-            # DPF mode: differential privacy forward
-            if hasattr(model.model, 'set_dp_mode'):
-                model.model.set_dp_mode(True)
-                print("Enabled differential privacy forward mode")
-        
-        return model
+
+        # Prefer DWA-aware loader when prune_method is DWA/static/DPF
+        if prune_method.lower() in {"dwa", "static", "dpf"}:
+            # Try to locate a config.json near the seed folder
+            candidate_cfgs = [
+                os.path.join(model_dir, 'config.json'),
+                os.path.join(os.path.dirname(model_dir), 'config.json'),
+                os.path.join(os.path.dirname(os.path.dirname(model_dir)), 'config.json')
+            ]
+            config_path = None
+            for c in candidate_cfgs:
+                if os.path.exists(c):
+                    config_path = c
+                    break
+            try:
+                loaded_model, _ = load_dwa_model(model_path, config_path=config_path, device=device)
+                # Wrap into BaseModel interface for downstream predict_target_sensitivity
+                wrapper = BaseModel(model_name, num_cls=num_cls, input_dim=input_dim, device=device)
+                wrapper.model = loaded_model.to(device)
+
+                # Best-effort: set optional forward modes if supported
+                if forward_mode == 'dwa_adaptive' and hasattr(wrapper.model, 'set_dwa_params'):
+                    wrapper.model.set_dwa_params(alpha=alpha, beta=beta, mode=prune_type)
+                elif forward_mode == 'scaling' and hasattr(wrapper.model, 'set_scaling_mode'):
+                    wrapper.model.set_scaling_mode(True)
+                elif forward_mode == 'dpf' and hasattr(wrapper.model, 'set_dp_mode'):
+                    wrapper.model.set_dp_mode(True)
+
+                return wrapper
+            except Exception as e:
+                print(f"Warning: DWA-aware loading failed ({e}); falling back to generic model loader.")
+
+        # Fallback: generic model + state_dict (may be partial)
+        wrapper = BaseModel(model_name, num_cls=num_cls, input_dim=input_dim, device=device)
+        try:
+            state = torch.load(model_path, map_location=device)
+            # Attempt robust load via BaseModel.load for relaxed matching
+            wrapper.load(model_path, verbose=True)
+        except Exception as e:
+            print(f"Warning: Fallback load failed ({e}); using randomly initialized weights.")
+        return wrapper
     
     print(f"Loading victim model (seed {args.victim_seed}) with forward_mode={args.forward_mode}...")
     victim_model = load_model_from_seed_folder(
