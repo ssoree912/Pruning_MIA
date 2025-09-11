@@ -100,7 +100,7 @@ dmypy.json
 checkpoint/
 checkpoints/
 saved_models/
-models/
+# models/
 
 # Logs and experiment outputs
 *.log

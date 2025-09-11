@@ -11,14 +11,14 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-try:
-    from mia_eval.core.attackers import MiaAttack
-except ImportError:
-    from attackers import MiaAttack
 THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+try:
+    from mia_eval.core.attackers import MiaAttack
+except ImportError:
+    from attackers import MiaAttack
 
 from base_model import BaseModel
 from mia_eval.core.mia_utils import load_dwa_model
