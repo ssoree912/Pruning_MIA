@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from attacker_threshold import ThresholdAttacker
 from base_model import BaseModel
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 try:
     from utils_wemem import seed_worker
 except ImportError:
@@ -108,12 +108,22 @@ class MiaAttack:
             new_victim_data = victim_predicts
 
         attack_train_dataset = TensorDataset(new_attack_data, attack_labels)
+        # Balanced sampling to mitigate member/non-member imbalance
+        with torch.no_grad():
+            class_counts = torch.bincount(attack_labels, minlength=2).float()
+            # Avoid div by zero; if a class is missing, fall back to uniform
+            if (class_counts == 0).any():
+                sample_weights = torch.ones_like(attack_labels, dtype=torch.float)
+            else:
+                class_weights = 1.0 / class_counts
+                sample_weights = class_weights[attack_labels]
+        sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
         attack_train_dataloader = DataLoader(
-            attack_train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4, pin_memory=True,
-            worker_init_fn=seed_worker)
+            attack_train_dataset, batch_size=self.batch_size, sampler=sampler, shuffle=False,
+            num_workers=4, pin_memory=True, worker_init_fn=seed_worker)
         attack_test_dataset = TensorDataset(new_victim_data, victim_labels)
         attack_test_dataloader = DataLoader(
-            attack_test_dataset, batch_size=self.batch_size, shuffle=True, num_workers=4, pin_memory=True,
+            attack_test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, pin_memory=True,
             worker_init_fn=seed_worker)
 
         attack_model = BaseModel(

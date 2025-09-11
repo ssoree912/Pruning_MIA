@@ -9,87 +9,54 @@ import sys
 import subprocess
 from pathlib import Path
 
-def run_single_mia(dataset='cifar10', model='resnet18', mode=None, sparsity=None, gpu=0):
-    """단일 모델에 대한 MIA 평가 실행"""
+def run_single_mia(dataset='cifar10', model='resnet', sparsity='0.9', alpha='5.0', beta='5.0', 
+                  prune_method='dwa', prune_type='reactivate_only', 
+                  victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0):
+    """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for {dataset}_{model}")
-    if mode:
-        print(f"   Mode: {mode}")
-    if sparsity:
-        print(f"   Sparsity: {sparsity}")
+    print(f"   Sparsity: {sparsity}")
+    print(f"   Alpha: {alpha}, Beta: {beta}")
+    print(f"   Victim seed: {victim_seed}")
+    print(f"   Shadow seeds: {shadow_seeds}")
     
-    # Step 1: DWA → WeMeM 구조 변환
-    print("\n🔄 Step 1: Converting DWA results to WeMeM structure...")
+    # Step 1: 모델 경로 확인
+    print("\n🔍 Step 1: Checking model paths...")
     
-    cmd = [
-        'python', 'scripts/dwa_to_wemem_converter.py',
-        '--dataset', dataset,
-        '--model', model,
-        '--runs_dir', './runs'
-    ]
+    base_path = "runs"
     
-    if mode:
-        cmd.extend(['--mode', mode])
-    if sparsity:
-        cmd.extend(['--sparsity', str(sparsity)])
-    
-    try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print("✅ Conversion successful!")
-        print(result.stdout)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Conversion failed: {e}")
-        print("STDOUT:", e.stdout)
-        print("STDERR:", e.stderr)
+    # Victim 모델 확인
+    victim_path = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset}/alpha{alpha}_beta{beta}/seed{victim_seed}/best_model.pth"
+    if not os.path.exists(victim_path):
+        print(f"❌ Victim model not found: {victim_path}")
         return False
-    except FileNotFoundError:
-        print("❌ Converter script not found. Make sure scripts/dwa_to_wemem_converter.py exists")
-        return False
+    print(f"✅ Found victim model: {victim_path}")
     
-    # Step 2: 설정 파일 확인/생성
-    config_path = f"configs/{dataset}_{model}.json"
-    if not os.path.exists(config_path):
-        print(f"\n⚠️ Config file {config_path} not found")
-        print("Creating basic config file...")
-        
-        # 기본 설정 생성
-        config = {
-            "dataset_name": dataset,
-            "model_name": model,
-            "num_cls": 10 if dataset == 'cifar10' else 100,
-            "input_dim": 3,
-            "image_size": 32,
-            "hidden_size": 128,
-            "seed": 7,
-            "early_stop": 5,
-            "batch_size": 128,
-            "pruner_name": "l1unstructure",
-            "prune_sparsity": float(sparsity) if sparsity else 0.6,
-            "shadow_num": 2,
-            "attacks": "samia,threshold,nn,nn_top3,nn_cls",
-            "original": False
-        }
-        
-        os.makedirs("configs", exist_ok=True)
-        import json
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-        print(f"✅ Created {config_path}")
+    # Shadow 모델들 확인
+    for seed in shadow_seeds:
+        shadow_path = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset}/alpha{alpha}_beta{beta}/seed{seed}/best_model.pth"
+        if not os.path.exists(shadow_path):
+            print(f"❌ Shadow model not found: {shadow_path}")
+            return False
+    print(f"✅ Found all {len(shadow_seeds)} shadow models")
     
-    # Step 3: MIA 평가 실행
+    # Step 2: MIA 평가 실행 (설정 파일 없이 직접 파라미터 전달)
     print("\n🎯 Step 2: Running MIA evaluation...")
     
     cmd = [
         'python', 'mia_modi.py',
-        str(gpu),
-        config_path,
+        '--device', str(device),
         '--dataset_name', dataset,
         '--model_name', model,
+        '--sparsity', str(sparsity),
+        '--alpha', str(alpha),
+        '--beta', str(beta),
+        '--victim_seed', str(victim_seed),
+        '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
+        '--prune_method', prune_method,
+        '--prune_type', prune_type,
         '--attacks', 'samia,threshold,nn,nn_top3,nn_cls'
     ]
-    
-    if sparsity:
-        cmd.extend(['--prune_sparsity', str(sparsity)])
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
@@ -97,13 +64,14 @@ def run_single_mia(dataset='cifar10', model='resnet18', mode=None, sparsity=None
         print(result.stdout)
         
         # 결과 파일 확인
-        log_file = f"log/{dataset}_{model}/l1unstructure_{sparsity or '0.6'}_.txt"
-        if os.path.exists(log_file):
-            print(f"\n📊 Results saved to: {log_file}")
+        result_file = f"mia_results/{prune_method}_{prune_type}/sparsity_{sparsity}_alpha{alpha}_beta{beta}_victim{victim_seed}.json"
+        if os.path.exists(result_file):
+            print(f"\n📊 Results saved to: {result_file}")
             print("\n📈 MIA Attack Results:")
-            with open(log_file, 'r') as f:
-                content = f.read()
-                print(content)
+            import json
+            with open(result_file, 'r') as f:
+                results = json.load(f)
+                print(json.dumps(results['results'], indent=2))
         
         return True
         
@@ -121,10 +89,15 @@ def main():
     
     parser = argparse.ArgumentParser(description='Run single model MIA evaluation')
     parser.add_argument('--dataset', default='cifar10', help='Dataset name (cifar10, cifar100)')
-    parser.add_argument('--model', default='resnet18', help='Model name')
-    parser.add_argument('--mode', help='DWA mode (kill_active_plain_dead, kill_and_reactivate, reactivate_only)')
-    parser.add_argument('--sparsity', help='Sparsity level (0.5, 0.7, 0.8, 0.9, 0.95)')
-    parser.add_argument('--gpu', type=int, default=0, help='GPU ID')
+    parser.add_argument('--model', default='resnet', help='Model name')
+    parser.add_argument('--sparsity', default='0.9', help='Sparsity level')
+    parser.add_argument('--alpha', default='5.0', help='Alpha value')
+    parser.add_argument('--beta', default='5.0', help='Beta value')
+    parser.add_argument('--prune_method', default='dwa', help='Pruning method')
+    parser.add_argument('--prune_type', default='reactivate_only', help='Pruning type')
+    parser.add_argument('--victim_seed', type=int, default=42, help='Victim model seed')
+    parser.add_argument('--shadow_seeds', nargs='+', type=int, default=[43,44,45,46,47,48,49,50], help='Shadow model seeds')
+    parser.add_argument('--device', type=int, default=0, help='GPU ID')
     
     args = parser.parse_args()
     
@@ -135,9 +108,14 @@ def main():
     success = run_single_mia(
         dataset=args.dataset,
         model=args.model, 
-        mode=args.mode,
         sparsity=args.sparsity,
-        gpu=args.gpu
+        alpha=args.alpha,
+        beta=args.beta,
+        prune_method=args.prune_method,
+        prune_type=args.prune_type,
+        victim_seed=args.victim_seed,
+        shadow_seeds=args.shadow_seeds,
+        device=args.device
     )
     
     if success:

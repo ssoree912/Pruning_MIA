@@ -105,7 +105,7 @@ models/
 # Logs and experiment outputs
 *.log
 logs/
-# runs/
+runs/
 wandb/
 mlruns/
 outputs/
