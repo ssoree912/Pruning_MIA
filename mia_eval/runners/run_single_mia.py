@@ -11,7 +11,18 @@ from pathlib import Path
 
 # Ensure project root and absolute script paths (do NOT hardcode project name)
 THIS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = THIS_DIR.parents[2]  # repository root
+
+def _find_repo_root(start: Path) -> Path:
+    # Walk up to find a folder that looks like the project root
+    for cand in [start] + list(start.parents):
+        if (cand / '.git').exists():
+            return cand
+        if (cand / 'base_model.py').exists() and (cand / 'mia_eval').exists():
+            return cand
+    # Fallback: assume two levels up from runners/
+    return start.parents[2]
+
+REPO_ROOT = _find_repo_root(THIS_DIR)
 CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'data' / 'create_fixed_data_splits.py'
 MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 

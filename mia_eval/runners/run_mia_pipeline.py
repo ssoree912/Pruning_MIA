@@ -20,7 +20,16 @@ from pathlib import Path
 
 # Resolve project root and absolute script paths (no hardcoded names)
 THIS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = THIS_DIR.parents[2]
+
+def _find_repo_root(start: Path) -> Path:
+    for cand in [start] + list(start.parents):
+        if (cand / '.git').exists():
+            return cand
+        if (cand / 'base_model.py').exists() and (cand / 'mia_eval').exists():
+            return cand
+    return start.parents[2]
+
+REPO_ROOT = _find_repo_root(THIS_DIR)
 RUN_SINGLE = REPO_ROOT / 'mia_eval' / 'runners' / 'run_single_mia.py'
 CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'data' / 'create_fixed_data_splits.py'
 from datetime import datetime
