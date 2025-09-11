@@ -51,7 +51,12 @@ def get_model(model_type, num_cls, input_dim):
         from models import MIAFC
         model = MIAFC(input_dim=num_cls, output_dim=2)
     elif model_type == "transformer":
-        from transformer import Transformer
+        try:
+            # Prefer relocated MIA transformer under mia_eval
+            from mia_eval.models.transformer import Transformer
+        except Exception:
+            # Fallback to legacy root module
+            from transformer import Transformer
         model = Transformer(input_dim=num_cls, output_dim=2)
     else:
         print(model_type)

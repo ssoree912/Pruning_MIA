@@ -113,10 +113,7 @@ results/
 txt_logs/
 
 # Datasets (usually large, stored separately)
-data/
-datasets/
-Data/
-Datasets/
+
 *.zip
 *.tar.gz
 *.tar
