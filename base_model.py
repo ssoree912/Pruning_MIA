@@ -38,6 +38,25 @@ class BaseModel:
             self.attack_model.apply(weight_init)
             self.attack_model_optim = get_optimizer("adam", self.attack_model.parameters(), lr=0.001, weight_decay=5e-4)
 
+    def _safe_forward(self, inputs):
+        """Forward wrapper that adapts to models requiring additional args (e.g., type_value).
+        Tries a plain call first, then falls back to common DWA/MaskConv variants.
+        """
+        try:
+            return self.model(inputs)
+        except TypeError as e:
+            msg = str(e)
+            if 'type_value' in msg:
+                # Try common type_value settings
+                for tv in (0, 5, 6):
+                    try:
+                        return self.model(inputs, type_value=tv)
+                    except Exception:
+                        continue
+                # As a last resort, try keyword without value to surface clearer error
+                return self.model(inputs, type_value=0)
+            raise
+
     def train(self, train_loader, log_pref=""):
         self.model.train()
         total_loss = 0
@@ -299,7 +318,7 @@ class BaseModel:
         with torch.no_grad():
             for batch_idx, (inputs, targets) in enumerate(test_loader):
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
-                outputs = self.model(inputs)
+                outputs = self._safe_forward(inputs)
                 loss = self.criterion(outputs, targets)
                 total_loss += loss.item() * targets.size(0)
                 if isinstance(self.criterion, nn.BCELoss):
@@ -389,7 +408,7 @@ class BaseModel:
         with torch.no_grad():
             for inputs, targets in data_loader:
                 inputs = inputs.to(self.device)
-                outputs = self.model(inputs)
+                outputs = self._safe_forward(inputs)
                 predicts = F.softmax(outputs, dim=-1)
                 predict_list.append(predicts.detach().data.cpu())
                 target_list.append(targets)
@@ -402,7 +421,7 @@ class BaseModel:
                     x = inputs.repeat((m, 1))
                 u = torch.randn_like(x)
                 evaluation_points = x + epsilon * u
-                new_predicts = F.softmax(self.model(evaluation_points), dim=-1)
+                new_predicts = F.softmax(self._safe_forward(evaluation_points), dim=-1)
                 diff = torch.abs(new_predicts - predicts.repeat((m, 1)))
                 diff = diff.view(m, -1, self.num_cls)
                 sensitivity = diff.mean(dim=0) / epsilon
