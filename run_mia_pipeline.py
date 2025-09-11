@@ -86,7 +86,7 @@ def check_dwa_results(runs_dir):
     return True, model_count, experiments
 
 def main():
-parser = argparse.ArgumentParser(description='DWA MIA Evaluation Pipeline')
+    parser = argparse.ArgumentParser(description='DWA MIA Evaluation Pipeline')
     parser.add_argument('--dataset', type=str, default='cifar10', 
                        choices=['cifar10', 'cifar100'], help='Dataset name')
     parser.add_argument('--runs_dir', type=str, default='./runs', 
