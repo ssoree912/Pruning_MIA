@@ -294,53 +294,37 @@ def main(args):
         print(f"Modified entropy attack accuracy: {mentr:.3f}")
         print(f"Top1 confidence attack accuracy: {top1_conf:.3f}")
         
-        # Extended metrics for threshold attacks
-        if HAS_METRICS:
-            print(f"\n🔍 Computing extended threshold metrics (strategy: {args.threshold_strategy})...")
-            
-            try:
-                from mia_metrics import select_threshold_strategy
-                
-                # Confidence-based extended metrics with custom strategy
-                victim_in_conf = attacker.victim_in_predicts.max(dim=1)[0].numpy()
-                victim_out_conf = attacker.victim_out_predicts.max(dim=1)[0].numpy()
-                
-                # Use selected threshold strategy
-                optimal_threshold = select_threshold_strategy(
-                    victim_in_conf, victim_out_conf, strategy=args.threshold_strategy
-                )
-                
-                conf_metrics = compute_mia_metrics(
-                    victim_in_conf, victim_out_conf, threshold=optimal_threshold
-                )
-                results['confidence_extended'] = conf_metrics
-                results['threshold_strategy'] = args.threshold_strategy
-                print_mia_metrics(conf_metrics, f"Confidence Attack ({args.threshold_strategy.upper()})")
-                
-                # Compare different strategies
-                print(f"\n📊 Threshold Strategy Comparison:")
-                strategies = ['youden', 'max_accuracy', 'fpr_1pct', 'equal_error_rate']
-                strategy_results = {}
-                
-                for strategy in strategies:
-                    try:
-                        thresh = select_threshold_strategy(victim_in_conf, victim_out_conf, strategy)
-                        metrics = compute_mia_metrics(victim_in_conf, victim_out_conf, thresh)
-                        strategy_results[strategy] = {
-                            'auroc': metrics['auroc'],
-                            'accuracy': metrics['accuracy'],
-                            'advantage': metrics['advantage'],
-                            'threshold': thresh
-                        }
-                        print(f"  {strategy:15s}: AUROC={metrics['auroc']:.4f}, Acc={metrics['accuracy']:.4f}, Adv={metrics['advantage']:.4f}")
-                    except Exception as e:
-                        print(f"  {strategy:15s}: Failed ({e})")
-                
-                results['strategy_comparison'] = strategy_results
-                
-            except Exception as e:
-                print(f"Could not compute extended metrics: {e}")
-                print("Extended metrics require access to prediction scores")
+        # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold
+        try:
+            from sklearn.metrics import roc_auc_score, balanced_accuracy_score
+            import numpy as _np
+            vin = attacker.victim_in_predicts.max(dim=1)[0].numpy()
+            vout = attacker.victim_out_predicts.max(dim=1)[0].numpy()
+            y_true = _np.concatenate([_np.ones_like(vin), _np.zeros_like(vout)])
+            y_score = _np.concatenate([vin, vout])
+            auroc = float(roc_auc_score(y_true, y_score)) if len(_np.unique(y_true)) > 1 else 0.0
+            vals = _np.unique(y_score)
+            best_adv, best_thr = -1.0, 0.5
+            for thr in vals:
+                y_pred = (y_score >= thr).astype(int)
+                tp = ((y_pred == 1) & (y_true == 1)).sum(); fn = ((y_pred == 0) & (y_true == 1)).sum()
+                tn = ((y_pred == 0) & (y_true == 0)).sum(); fp = ((y_pred == 1) & (y_true == 0)).sum()
+                tpr = tp / (tp + fn + 1e-8); fpr = fp / (fp + tn + 1e-8)
+                adv = tpr - fpr
+                if adv > best_adv:
+                    best_adv, best_thr = adv, thr
+            y_pred = (y_score >= best_thr).astype(int)
+            bal_acc = float(balanced_accuracy_score(y_true, y_pred))
+            results['confidence_extended'] = {
+                'auroc': auroc,
+                'balanced_accuracy': bal_acc,
+                'advantage': float(best_adv),
+                'threshold': float(best_thr)
+            }
+            results['threshold_strategy'] = 'youden'
+            print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}")
+        except Exception as e:
+            print(f"Could not compute extended metrics inline: {e}")
     
     if "nn" in attacks:
         nn_acc = attacker.nn_attack("nn")
