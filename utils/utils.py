@@ -294,7 +294,7 @@ def seed_worker(worker_id: int) -> Any:
 
 __all__ = [
     # model/optim
-    'get_model', 'get_optimizer', 'weight_init', 'CrossEntropy_soft', 'one_hot_embedding', 'seed_worker',
+    'get_optimizer', 'weight_init', 'CrossEntropy_soft', 'one_hot_embedding', 'seed_worker',
     # training utils
     'TrainAverageMeter', 'TrainProgressMeter', 'ScoreMeter', 'set_scheduler', 'accuracy', 'set_arch_name',
     'save_ckpt', 'save_summary', 'save_eval',
