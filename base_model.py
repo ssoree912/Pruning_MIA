@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
-from utils.utils import get_model, get_optimizer, weight_init, CrossEntropy_soft, one_hot_embedding
+from mia_eval.core.mia_utils import get_model
+from utils.utils import get_optimizer, weight_init, CrossEntropy_soft, one_hot_embedding
 
 
 
