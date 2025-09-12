@@ -73,7 +73,7 @@ class TrainAverageMeter(object):
     def update(self, val, n=1):
         self.val = val; self.sum += val * n; self.count += n; self.avg = self.sum / self.count
     def __str__(self):
-        return f"{self.name} {self.val{self.fmt}} ({self.avg{self.fmt}})"
+        return f"{self.name} {self.val:{self.fmt}} ({self.avg:{self.fmt}})"
 
 
 class TrainProgressMeter(object):
@@ -245,7 +245,7 @@ class LightAverageMeter(object):
     def update(self, val, n=1):
         self.val = val; self.sum += val * n; self.count += n; self.avg = self.sum / self.count
     def __str__(self):
-        return f"{self.name} {self.val{self.fmt}} ({self.avg{self.fmt}})"
+        return f"{self.name} {self.val:{self.fmt}} ({self.avg:{self.fmt}})"
 
 class LightProgressMeter(object):
     def __init__(self, num_batches, *meters, prefix=""):
