@@ -29,7 +29,7 @@ MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5.0', beta='5.0', 
                   prune_method='dwa', prune_type='reactivate_only', 
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
-                  split_seed=7):
+                  split_seed=7, forward_mode='standard', original=False):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for {dataset}_{model}")
@@ -99,8 +99,11 @@ def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5
         '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
         '--prune_method', prune_method,
         '--prune_type', prune_type,
+        '--forward_mode', forward_mode,
         '--attacks', 'samia,threshold,nn,nn_top3,nn_cls'
     ]
+    if original:
+        cmd.append('--original')
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(REPO_ROOT))
@@ -143,6 +146,8 @@ def main():
     parser.add_argument('--shadow_seeds', nargs='+', type=int, default=[43,44,45,46,47,48,49,50], help='Shadow model seeds')
     parser.add_argument('--device', type=int, default=0, help='GPU ID')
     parser.add_argument('--split_seed', type=int, default=7, help='Seed used for fixed MIA splits (must match pkl)')
+    parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','dwa_adaptive','scaling','dpf'], help='Model forward mode')
+    parser.add_argument('--original', action='store_true', help='Attack original (unpruned) models')
     
     args = parser.parse_args()
     
@@ -161,7 +166,9 @@ def main():
         victim_seed=args.victim_seed,
         shadow_seeds=args.shadow_seeds,
         device=args.device,
-        split_seed=args.split_seed
+        split_seed=args.split_seed,
+        forward_mode=args.forward_mode,
+        original=args.original
     )
     
     if success:
