@@ -27,7 +27,7 @@ except ImportError as e:
 
 # Additional WeMeM-main style imports
 from datasets import get_dataset
-from utils.utils import get_model, get_optimizer, weight_init
+from utils.utils import get_optimizer, weight_init
 WEMEM_AVAILABLE = True
 
 class MIADataset(Dataset):
