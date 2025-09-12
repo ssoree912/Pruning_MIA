@@ -15,6 +15,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from base_model import BaseModel
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+import numpy as np
 try:
     from utils_wemem import seed_worker
 except ImportError:
@@ -49,11 +51,14 @@ class MiaAttack:
         self._prepare()
 
     def _prepare(self):
+        print("[MIA] Preparing attack data ...")
         attack_in_predicts_list, attack_in_targets_list, attack_in_sens_list = [], [], []
         attack_out_predicts_list, attack_out_targets_list, attack_out_sens_list = [], [], []
-        for shadow_model, shadow_pruned_model, shadow_train_loader, shadow_test_loader in zip(
+        total = len(self.shadow_model_list)
+        for idx, (shadow_model, shadow_pruned_model, shadow_train_loader, shadow_test_loader) in enumerate(zip(
                 self.shadow_model_list, self.shadow_pruned_model_list, self.shadow_train_loader_list,
-                self.shadow_test_loader_list):
+                self.shadow_test_loader_list), start=1):
+            print(f"[MIA] Shadow {idx}/{total}: collecting train/test outputs ...")
 
             if self.attack_original:
                 attack_in_predicts, attack_in_targets, attack_in_sens = \
@@ -80,6 +85,7 @@ class MiaAttack:
         self.attack_out_targets = torch.cat(attack_out_targets_list, dim=0)
         self.attack_out_sens = torch.cat(attack_out_sens_list, dim=0)
 
+        print("[MIA] Collecting victim outputs ...")
         if self.attack_original:
             self.victim_in_predicts, self.victim_in_targets, self.victim_in_sens = \
                 self.victim_model.predict_target_sensitivity(self.victim_train_loader)
@@ -90,6 +96,7 @@ class MiaAttack:
                 self.victim_pruned_model.predict_target_sensitivity(self.victim_train_loader)
             self.victim_out_predicts, self.victim_out_targets, self.victim_out_sens = \
                 self.victim_pruned_model.predict_target_sensitivity(self.victim_test_loader)
+        print("[MIA] Attack data ready.")
 
     def nn_attack(self, mia_type="nn_sens_cls", model_name="mia_fc"):
         attack_predicts = torch.cat([self.attack_in_predicts, self.attack_out_predicts], dim=0)
@@ -145,7 +152,94 @@ class MiaAttack:
         for epoch in range(self.epochs):
             train_acc, train_loss = attack_model.train(attack_train_dataloader)
             test_acc, test_loss = attack_model.test(attack_test_dataloader)
-        return test_acc
+        # Compute detailed metrics on victim set
+        attack_model.model.eval()
+        with torch.no_grad():
+            logits = attack_model.model(new_victim_data.to(self.device))
+            probs = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
+        y_true = victim_labels.cpu().numpy()
+        y_pred = (probs >= 0.5).astype(int)
+        # Advantage = TPR - FPR
+        tp = np.sum((y_pred == 1) & (y_true == 1))
+        fn = np.sum((y_pred == 0) & (y_true == 1))
+        tn = np.sum((y_pred == 0) & (y_true == 0))
+        fp = np.sum((y_pred == 1) & (y_true == 0))
+        tpr = tp / (tp + fn + 1e-8)
+        fpr = fp / (fp + tn + 1e-8)
+        result = {
+            'accuracy': float(accuracy_score(y_true, y_pred)),
+            'balanced_accuracy': float(balanced_accuracy_score(y_true, y_pred)),
+            'precision': float(precision_score(y_true, y_pred, zero_division=0)),
+            'recall': float(recall_score(y_true, y_pred, zero_division=0)),
+            'f1': float(f1_score(y_true, y_pred, zero_division=0)),
+            'auc': float(roc_auc_score(y_true, probs)) if len(np.unique(y_true)) > 1 else 0.0,
+            'advantage': float(tpr - fpr)
+        }
+        return result
+
+    def lira_attack(self):
+        """LiRA-style Gaussian likelihood ratio attack using shadow outputs.
+        Estimates member/non-member distributions from shadow in/out and applies LR to victim.
+        Returns dict with accuracy/balanced_accuracy/auc/advantage.
+        """
+        # Convert to numpy
+        s_in = self.attack_in_predicts.cpu().numpy()
+        s_in_y = self.attack_in_targets.cpu().numpy()
+        s_out = self.attack_out_predicts.cpu().numpy()
+        s_out_y = self.attack_out_targets.cpu().numpy()
+        v_in = self.victim_in_predicts.cpu().numpy()
+        v_in_y = self.victim_in_targets.cpu().numpy()
+        v_out = self.victim_out_predicts.cpu().numpy()
+        v_out_y = self.victim_out_targets.cpu().numpy()
+
+        # Log-likelihood proxy: log p(true_class)
+        def true_logp(probs, labels):
+            idx = np.arange(labels.shape[0])
+            return np.log(np.clip(probs[idx, labels], 1e-12, 1.0))
+
+        s_in_ll = true_logp(s_in, s_in_y)
+        s_out_ll = true_logp(s_out, s_out_y)
+        v_in_ll = true_logp(v_in, v_in_y)
+        v_out_ll = true_logp(v_out, v_out_y)
+
+        # Fit Gaussians
+        mu_in,  std_in  = float(np.mean(s_in_ll)),  float(np.std(s_in_ll) + 1e-8)
+        mu_out, std_out = float(np.mean(s_out_ll)), float(np.std(s_out_ll) + 1e-8)
+
+        # Gaussian pdf
+        def norm_pdf(x, mu, std):
+            z = (x - mu) / std
+            return np.exp(-0.5 * z * z) / (std * np.sqrt(2.0 * np.pi))
+
+        def lr_scores(ll):
+            pin  = norm_pdf(ll, mu_in, std_in)
+            pout = norm_pdf(ll, mu_out, std_out)
+            return pin / (pout + 1e-12)
+
+        v_train_lr = lr_scores(v_in_ll)
+        v_test_lr  = lr_scores(v_out_ll)
+        y_true = np.concatenate([np.ones_like(v_train_lr), np.zeros_like(v_test_lr)])
+        y_score = np.concatenate([v_train_lr, v_test_lr])
+        y_pred = (y_score > 1.0).astype(int)  # LR>1 ⇒ member
+
+        # Metrics
+        tp = np.sum((y_pred == 1) & (y_true == 1))
+        fn = np.sum((y_pred == 0) & (y_true == 1))
+        tn = np.sum((y_pred == 0) & (y_true == 0))
+        fp = np.sum((y_pred == 1) & (y_true == 0))
+        tpr = tp / (tp + fn + 1e-8)
+        fpr = fp / (fp + tn + 1e-8)
+
+        return {
+            'accuracy': float(accuracy_score(y_true, y_pred)),
+            'balanced_accuracy': float(balanced_accuracy_score(y_true, y_pred)),
+            'auc': float(roc_auc_score(y_true, y_score)) if len(np.unique(y_true)) > 1 else 0.0,
+            'advantage': float(tpr - fpr),
+            'member_mean': mu_in,
+            'member_std': std_in,
+            'nonmember_mean': mu_out,
+            'nonmember_std': std_out,
+        }
 
     def threshold_attack(self):
         victim_in_predicts = self.victim_in_predicts.numpy()

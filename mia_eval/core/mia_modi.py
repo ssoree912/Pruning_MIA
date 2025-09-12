@@ -46,7 +46,7 @@ parser = argparse.ArgumentParser(description='Membership inference Attacks on Ne
 parser.add_argument('--device', default=0, type=int, help="GPU id to use")
 parser.add_argument('--config_path', default=None, type=str, help="config file path")
 parser.add_argument('--dataset_name', default='cifar10', type=str)
-parser.add_argument('--model_name', default='resnet18', type=str)
+parser.add_argument('--model_name', default='auto', type=str, help='Model resolved from config; use only as fallback')
 parser.add_argument('--num_cls', default=10, type=int)
 parser.add_argument('--input_dim', default=3, type=int)
 parser.add_argument('--image_size', default=32, type=int)
@@ -64,7 +64,7 @@ parser.add_argument('--prune_method', default='dwa', type=str)
 parser.add_argument('--prune_type', default='reactivate_only', type=str)
 parser.add_argument('--defend', default='', type=str)
 parser.add_argument('--defend_arg', default=4, type=float)
-parser.add_argument('--attacks', default="samia,threshold", type=str)  
+parser.add_argument('--attacks', default="samia,threshold,nn,nn_top3,nn_cls,lira", type=str)
 parser.add_argument('--original', action='store_true', help="Attack original models instead of pruned models")
 parser.add_argument('--threshold_strategy', default='youden', choices=['youden', 'max_accuracy', 'fpr_1pct', 'equal_error_rate'], 
                    help="Threshold selection strategy for attacks")
@@ -259,12 +259,13 @@ def main(args):
     shadow_test_loader_list = []
     shadow_cfg_map = {}
     
+    total_shadows = len(args.shadow_seeds)
     for i, shadow_seed in enumerate(args.shadow_seeds):
         if shadow_seed not in data_splits['shadows']:
             print(f"⚠️ Warning: Shadow seed {shadow_seed} not in data splits, skipping...")
             continue
             
-        print(f"Loading shadow model (seed {shadow_seed}) with forward_mode={args.forward_mode}...")
+        print(f"[{i+1}/{total_shadows}] Loading shadow model (seed {shadow_seed}) with forward_mode={args.forward_mode}...")
         shadow_model, s_cfg = load_model_from_seed_folder(
             base_path, shadow_seed, args.dataset_name, args.model_name,
             args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
@@ -293,9 +294,9 @@ def main(args):
         shadow_test_loader = DataLoader(shadow_test_dataset, batch_size=args.batch_size,
                                       shuffle=False, num_workers=4, pin_memory=False)
         
-        print(f"Shadow {shadow_seed}: {len(shadow_train_indices)} members, {len(shadow_test_indices)} non-members")
-        shadow_model.test(shadow_train_loader, f"Shadow Model {shadow_seed} Train (Members)")
-        shadow_model.test(shadow_test_loader, f"Shadow Model {shadow_seed} Test (Non-members)")
+        print(f"[{i+1}/{total_shadows}] Shadow {shadow_seed}: {len(shadow_train_indices)} members, {len(shadow_test_indices)} non-members")
+        shadow_model.test(shadow_train_loader, f"[{i+1}/{total_shadows}] Shadow Model {shadow_seed} Train (Members)")
+        shadow_model.test(shadow_test_loader, f"[{i+1}/{total_shadows}] Shadow Model {shadow_seed} Test (Non-members)")
         
         shadow_model_list.append(shadow_model)
         shadow_train_loader_list.append(shadow_train_loader)
@@ -321,9 +322,9 @@ def main(args):
     results = {}
     
     if "samia" in attacks:
-        nn_trans_acc = attacker.nn_attack("nn_sens_cls", model_name="transformer")
-        results['samia'] = nn_trans_acc
-        print(f"SAMIA attack accuracy: {nn_trans_acc:.3f}")
+        samia_metrics = attacker.nn_attack("nn_sens_cls", model_name="transformer")
+        results['samia'] = samia_metrics
+        print(f"SAMIA: Acc={samia_metrics['accuracy']:.3f}, AUC={samia_metrics['auc']:.3f}, BalAcc={samia_metrics['balanced_accuracy']:.3f}, Adv={samia_metrics['advantage']:.3f}")
     
     if "threshold" in attacks:
         conf, xent, mentr, top1_conf = attacker.threshold_attack()
@@ -370,19 +371,24 @@ def main(args):
             print(f"Could not compute extended metrics inline: {e}")
     
     if "nn" in attacks:
-        nn_acc = attacker.nn_attack("nn")
-        results['nn'] = nn_acc
-        print(f"NN attack accuracy: {nn_acc:.3f}")
+        nn_metrics = attacker.nn_attack("nn")
+        results['nn'] = nn_metrics
+        print(f"NN: Acc={nn_metrics['accuracy']:.3f}, AUC={nn_metrics['auc']:.3f}, BalAcc={nn_metrics['balanced_accuracy']:.3f}, Adv={nn_metrics['advantage']:.3f}")
     
     if "nn_top3" in attacks:
-        nn_top3_acc = attacker.nn_attack("nn_top3")
-        results['nn_top3'] = nn_top3_acc
-        print(f"Top3-NN attack accuracy: {nn_top3_acc:.3f}")
+        nn_top3_metrics = attacker.nn_attack("nn_top3")
+        results['nn_top3'] = nn_top3_metrics
+        print(f"Top3-NN: Acc={nn_top3_metrics['accuracy']:.3f}, AUC={nn_top3_metrics['auc']:.3f}, BalAcc={nn_top3_metrics['balanced_accuracy']:.3f}, Adv={nn_top3_metrics['advantage']:.3f}")
     
     if "nn_cls" in attacks:
-        nn_cls_acc = attacker.nn_attack("nn_cls")
-        results['nn_cls'] = nn_cls_acc
-        print(f"NN-Cls attack accuracy: {nn_cls_acc:.3f}")
+        nn_cls_metrics = attacker.nn_attack("nn_cls")
+        results['nn_cls'] = nn_cls_metrics
+        print(f"NN-Cls: Acc={nn_cls_metrics['accuracy']:.3f}, AUC={nn_cls_metrics['auc']:.3f}, BalAcc={nn_cls_metrics['balanced_accuracy']:.3f}, Adv={nn_cls_metrics['advantage']:.3f}")
+
+    if "lira" in attacks:
+        lira = attacker.lira_attack()
+        results['lira'] = lira
+        print(f"LiRA: AUC={lira['auc']:.3f}, Acc={lira['accuracy']:.3f}, BalAcc={lira['balanced_accuracy']:.3f}, Adv={lira['advantage']:.3f}")
     
     # Build data split summary
     if use_training_splits:

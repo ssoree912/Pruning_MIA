@@ -178,7 +178,6 @@ def main():
         eval_cmd = [
             sys.executable, str(RUN_SINGLE),
             '--dataset', exp['dataset'],
-            '--model', 'resnet18',
             '--sparsity', exp['sparsity'],
             '--alpha', exp['alpha'],
             '--beta', exp['beta'],
@@ -206,7 +205,7 @@ def main():
         if json_files:
             print(f"\n📁 Found {len(json_files)} result files:")
             
-            # 간단한 요약 출력
+            # 간단한 요약 출력 + 구조화된 결과 수집
             import json
             all_results = []
             
@@ -223,7 +222,30 @@ def main():
                             'victim_seed': config.get('victim_seed', 0),
                             'victim_acc': data.get('victim_test_acc', 0),
                         }
-                        summary.update(results)
+                        # Flatten known nested metrics
+                        def pull_attack(d, name):
+                            v = results.get(name)
+                            if isinstance(v, dict):
+                                d[f'{name}_acc'] = v.get('accuracy')
+                                d[f'{name}_auc'] = v.get('auc')
+                                d[f'{name}_balacc'] = v.get('balanced_accuracy')
+                                d[f'{name}_adv'] = v.get('advantage')
+                            elif v is not None:
+                                d[name] = v
+                        # Threshold metrics (scalars)
+                        for k in ['confidence','entropy','modified_entropy','top1_conf']:
+                            if k in results:
+                                summary[k] = results[k]
+                        # Confidence-extended
+                        ext = results.get('confidence_extended')
+                        if isinstance(ext, dict):
+                            summary['confidence_extended_auroc'] = ext.get('auroc')
+                            summary['confidence_extended_balacc'] = ext.get('balanced_accuracy')
+                            summary['confidence_extended_adv'] = ext.get('advantage')
+                            summary['confidence_extended_thr'] = ext.get('threshold')
+                        # Classifier-based
+                        for name in ['samia','nn','nn_top3','nn_cls','lira']:
+                            pull_attack(summary, name)
                         all_results.append(summary)
                         
                 except Exception as e:
@@ -245,21 +267,19 @@ def main():
                 summary_file = result_dir / 'summary.csv'
                 fieldnames = [
                     'mode', 'sparsity', 'victim_seed', 'victim_acc',
-                    'samia', 'confidence', 'entropy', 'modified_entropy', 'top1_conf',
-                    'nn', 'nn_top3', 'nn_cls',
-                    'confidence_extended_auroc', 'confidence_extended_accuracy', 'confidence_extended_advantage'
+                    'confidence', 'entropy', 'modified_entropy', 'top1_conf',
+                    'confidence_extended_auroc', 'confidence_extended_balacc', 'confidence_extended_adv', 'confidence_extended_thr',
+                    'samia_acc','samia_auc','samia_balacc','samia_adv',
+                    'nn_acc','nn_auc','nn_balacc','nn_adv',
+                    'nn_top3_acc','nn_top3_auc','nn_top3_balacc','nn_top3_adv',
+                    'nn_cls_acc','nn_cls_auc','nn_cls_balacc','nn_cls_adv',
+                    'lira_acc','lira_auc','lira_balacc','lira_adv'
                 ]
                 with open(summary_file, 'w', newline='') as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     for r in all_results:
                         row = {k: r.get(k, '') for k in fieldnames}
-                        # Map nested extended metrics if present
-                        if 'confidence_extended' in r:
-                            ext = r['confidence_extended']
-                            row['confidence_extended_auroc'] = ext.get('auroc', '')
-                            row['confidence_extended_accuracy'] = ext.get('accuracy', '')
-                            row['confidence_extended_advantage'] = ext.get('advantage', '')
                         writer.writerow(row)
                 print(f"📄 Wrote CSV summary: {summary_file}")
         else:

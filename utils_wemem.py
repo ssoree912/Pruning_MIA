@@ -32,6 +32,9 @@ def get_model(model_type, num_cls, input_dim):
         from cifar10_models import resnet18
         model = resnet18(pretrained=False, num_classes=num_cls)
     elif model_type == "resnet20":
+        # CIFAR ResNet-20 is created via the training code (models/pruning.models).
+        # utils_wemem does not provide a native ResNet-20; fall back to resnet18 with a warning
+        print("[utils_wemem] Warning: resnet20 requested here; falling back to resnet18 for compatibility.")
         from cifar10_models import resnet18
         model = resnet18(pretrained=False, num_classes=num_cls)
     elif model_type == "vgg16bn":

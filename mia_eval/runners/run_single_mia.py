@@ -26,13 +26,13 @@ REPO_ROOT = _find_repo_root(THIS_DIR)
 CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'create_data' / 'create_fixed_data_splits.py'
 MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 
-def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5.0', beta='5.0', 
+def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0', 
                   prune_method='dwa', prune_type='reactivate_only', 
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
                   split_seed=7, forward_mode='standard', original=False):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
-    print(f"🚀 Running MIA evaluation for {dataset}_{model}")
+    print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
     print(f"   Sparsity: {sparsity}")
     print(f"   Alpha: {alpha}, Beta: {beta}")
     print(f"   Victim seed: {victim_seed}")
@@ -90,7 +90,7 @@ def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5
         sys.executable, str(MIA_CORE),
         '--device', str(device),
         '--dataset_name', dataset,
-        '--model_name', model,
+        # model_name resolved from config; no CLI override
         '--sparsity', str(sparsity),
         '--alpha', str(alpha),
         '--beta', str(beta),
@@ -106,9 +106,9 @@ def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5
         cmd.append('--original')
     
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=str(REPO_ROOT))
+        # Stream child process output live (no capture) so progress is visible
+        result = subprocess.run(cmd, check=True, cwd=str(REPO_ROOT))
         print("✅ MIA evaluation successful!")
-        print(result.stdout)
         
         # 결과 파일 확인
         result_file = f"mia_results/{prune_method}_{prune_type}/sparsity_{sparsity}_alpha{alpha}_beta{beta}_victim{victim_seed}.json"
@@ -124,8 +124,6 @@ def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5
         
     except subprocess.CalledProcessError as e:
         print(f"❌ MIA evaluation failed: {e}")
-        print("STDOUT:", e.stdout)
-        print("STDERR:", e.stderr)
         return False
     except FileNotFoundError:
         print("❌ mia_modi.py script not found")
@@ -136,7 +134,8 @@ def main():
     
     parser = argparse.ArgumentParser(description='Run single model MIA evaluation')
     parser.add_argument('--dataset', default='cifar10', help='Dataset name (cifar10, cifar100)')
-    parser.add_argument('--model', default='resnet18', help='Model name (e.g., resnet18)')
+    # Model is resolved from config; keep option for backward-compat but ignore
+    parser.add_argument('--model', default=None, help='(Ignored) Model name; resolved from config.json')
     parser.add_argument('--sparsity', default='0.9', help='Sparsity level')
     parser.add_argument('--alpha', default='5.0', help='Alpha value')
     parser.add_argument('--beta', default='5.0', help='Beta value')
@@ -157,7 +156,6 @@ def main():
     
     success = run_single_mia(
         dataset=args.dataset,
-        model=args.model, 
         sparsity=args.sparsity,
         alpha=args.alpha,
         beta=args.beta,
