@@ -100,7 +100,7 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
         '--prune_method', prune_method,
         '--prune_type', prune_type,
         '--forward_mode', forward_mode,
-        '--attacks', 'samia,threshold,nn,nn_top3,nn_cls'
+        '--attacks', args.attacks
     ]
     if original:
         cmd.append('--original')
@@ -147,6 +147,7 @@ def main():
     parser.add_argument('--split_seed', type=int, default=7, help='Seed used for fixed MIA splits (must match pkl)')
     parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','dwa_adaptive','scaling','dpf'], help='Model forward mode')
     parser.add_argument('--original', action='store_true', help='Attack original (unpruned) models')
+    parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
     
     args = parser.parse_args()
     

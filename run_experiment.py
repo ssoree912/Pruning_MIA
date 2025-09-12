@@ -31,7 +31,13 @@ import pruning
 from data import DataLoader
 
 # Import common utilities
-from common_utils import AverageMeter, ProgressMeter, accuracy, set_scheduler, set_arch_name
+from utils.utils import (
+    TrainAverageMeter as AverageMeter,
+    TrainProgressMeter as ProgressMeter,
+    accuracy,
+    set_scheduler,
+    set_arch_name,
+)
 
 def monitor_masking_behavior(model, epoch, iteration, config):
     """모델의 마스킹 동작 모니터링"""

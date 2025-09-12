@@ -17,10 +17,7 @@ from base_model import BaseModel
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 import numpy as np
-try:
-    from utils_wemem import seed_worker
-except ImportError:
-    from utils import seed_worker
+from utils.utils import seed_worker
 
 
 

@@ -22,21 +22,13 @@ try:
     from data import cifar10_loader, cifar100_loader
     import models
     import pruning
-except ImportError:
-    # Fallback to repo root modules if available
-    try:
-        from datasets import get_dataset
-        from utils_wemem import get_model, get_optimizer, weight_init
-    except ImportError as e:
-        print(f"Warning: Could not import some modules: {e}")
+except ImportError as e:
+    print(f"Warning: Could not import some training modules: {e}")
 
 # Additional WeMeM-main style imports
-try:
-    from datasets import get_dataset
-    from utils_wemem import get_model, get_optimizer, weight_init
-    WEMEM_AVAILABLE = True
-except ImportError:
-    WEMEM_AVAILABLE = False
+from datasets import get_dataset
+from utils.utils import get_model, get_optimizer, weight_init
+WEMEM_AVAILABLE = True
 
 class MIADataset(Dataset):
     """MIA용 데이터셋"""
@@ -183,4 +175,3 @@ def load_dwa_model(model_path, config_path=None, device='cuda'):
     model = model.to(device)
     
     return model, config
-

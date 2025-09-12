@@ -20,8 +20,7 @@ except ImportError:
 
 import models
 import pruning
-from utils import *            # AverageMeter, ProgressMeter, accuracy, set_scheduler, set_arch_name, SummaryLogger
-from common_utils import *     # 기존 프로젝트 util들
+from utils.utils import *    # AverageMeter/ProgressMeter/accuracy/schedulers/SummaryLogger
 from data import DataLoader
 
 from configs.config import parse_config_args, setup_reproducibility

@@ -154,4 +154,5 @@ data/
 # TensorBoard logs
 tb_logs/
 tensorboard_logs/
-# WeMeM-main/
+WeMeM-main/
+mi_lira_2021/

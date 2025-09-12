@@ -5,10 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
-try:
-    from utils_wemem import get_model, get_optimizer, weight_init, CrossEntropy_soft, one_hot_embedding
-except ImportError:
-    from utils import get_model, get_optimizer, weight_init, CrossEntropy_soft, one_hot_embedding
+from utils.utils import get_model, get_optimizer, weight_init, CrossEntropy_soft, one_hot_embedding
 
 
 
