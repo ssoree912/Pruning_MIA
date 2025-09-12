@@ -29,7 +29,8 @@ MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0', 
                   prune_method='dwa', prune_type='reactivate_only', 
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
-                  split_seed=7, forward_mode='standard', original=False):
+                  split_seed=7, forward_mode='standard', original=False,
+                  attacks='samia,threshold,nn,nn_top3,nn_cls,lira'):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
@@ -100,7 +101,7 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
         '--prune_method', prune_method,
         '--prune_type', prune_type,
         '--forward_mode', forward_mode,
-        '--attacks', args.attacks
+        '--attacks', attacks
     ]
     if original:
         cmd.append('--original')
@@ -167,7 +168,8 @@ def main():
         device=args.device,
         split_seed=args.split_seed,
         forward_mode=args.forward_mode,
-        original=args.original
+        original=args.original,
+        attacks=args.attacks
     )
     
     if success:
