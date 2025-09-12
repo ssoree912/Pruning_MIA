@@ -221,6 +221,33 @@ def main(args):
         args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
         device, args.forward_mode, args.num_cls, args.input_dim
     )
+    # Auto-tune type_value if needed to maximize accuracy on a small sample
+    def _sample_accuracy(model, loader, tv=None, max_batches=2):
+        model.model.eval()
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for bi, (xb, yb) in enumerate(loader):
+                if bi >= max_batches:
+                    break
+                xb, yb = xb.to(model.device), yb.to(model.device)
+                try:
+                    logits = model.model(xb) if tv is None else model.model(xb, type_value=tv)
+                except TypeError:
+                    logits = model.model(xb)
+                _, pred = logits.max(1)
+                correct += pred.eq(yb).sum().item()
+                total += yb.size(0)
+        return (correct / total) if total > 0 else 0.0
+
+    # Try a few candidates commonly used in masked conv paths
+    candidate_tvs = [0, 5, 6]
+    acc_scores = {}
+    for tv in candidate_tvs:
+        acc_scores[tv] = _sample_accuracy(victim_model, victim_train_loader, tv=tv, max_batches=2)
+    best_tv = max(acc_scores, key=acc_scores.get)
+    victim_model.preferred_type_value = best_tv
+    print(f"[Victim] Selected type_value={best_tv} (probe acc~{acc_scores[best_tv]*100:.2f}%)")
     
     victim_model.test(victim_train_loader, "Victim Model Train")
     test_acc, loss = victim_model.test(victim_test_loader, "Victim Model Test")
@@ -244,6 +271,11 @@ def main(args):
             device, args.forward_mode, args.num_cls, args.input_dim
         )
         shadow_cfg_map[str(shadow_seed)] = s_cfg
+        # Auto-tune type_value for shadow
+        acc_scores = {tv: _sample_accuracy(shadow_model, victim_train_loader, tv=tv, max_batches=2) for tv in candidate_tvs}
+        best_tv = max(acc_scores, key=acc_scores.get)
+        shadow_model.preferred_type_value = best_tv
+        print(f"[Shadow {shadow_seed}] Selected type_value={best_tv} (probe acc~{acc_scores[best_tv]*100:.2f}%)")
         
         # Use shadow data splits (training-time if available)
         if use_training_splits and i < len(training_shadow_splits):
