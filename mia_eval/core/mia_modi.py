@@ -173,7 +173,8 @@ def main(args):
             try:
                 loaded_model, loaded_config = load_dwa_model(model_path, config_path=config_path, device=device)
                 # Wrap into BaseModel interface for downstream predict_target_sensitivity
-                wrapper = BaseModel(model_name, num_cls=num_cls, input_dim=input_dim, device=device)
+                safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
+                wrapper = BaseModel(safe_name, num_cls=num_cls, input_dim=input_dim, device=device)
                 wrapper.model = loaded_model.to(device)
 
                 # Best-effort: set forward behavior from config when available
@@ -206,7 +207,8 @@ def main(args):
                 print(f"Warning: DWA-aware loading failed without config ({e}); falling back to generic model loader.")
 
         # Fallback: generic model + state_dict (may be partial)
-        wrapper = BaseModel(model_name, num_cls=num_cls, input_dim=input_dim, device=device)
+        safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
+        wrapper = BaseModel(safe_name, num_cls=num_cls, input_dim=input_dim, device=device)
         try:
             state = torch.load(model_path, map_location=device)
             # Attempt robust load via BaseModel.load for relaxed matching
