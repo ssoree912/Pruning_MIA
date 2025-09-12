@@ -119,7 +119,7 @@ def main(args):
         data_split_path = str(REPO_ROOT / 'mia_data_splits' / f"{args.dataset_name}_seed{args.seed}_victim{args.victim_seed}.pkl")
         if not os.path.exists(data_split_path):
             print(f"❌ Data split file not found: {data_split_path}")
-            print("Please run: python mia_eval/data/create_fixed_data_splits.py --dataset {args.dataset_name} --victim_seed {args.victim_seed}")
+            print("Please run: python mia_eval/create_data/create_fixed_data_splits.py --dataset {args.dataset_name} --victim_seed {args.victim_seed}")
             raise FileNotFoundError(f"Data split file not found: {data_split_path}")
         with open(data_split_path, 'rb') as f:
             data_splits = pickle.load(f)
@@ -168,6 +168,8 @@ def main(args):
                 if os.path.exists(c):
                     config_path = c
                     break
+            if config_path:
+                print(f"[Loader] Using config: {config_path}")
             try:
                 loaded_model, loaded_config = load_dwa_model(model_path, config_path=config_path, device=device)
                 # Wrap into BaseModel interface for downstream predict_target_sensitivity
@@ -182,17 +184,26 @@ def main(args):
                         cfg_beta  = loaded_config['pruning'].get('dwa_beta', beta)
                         cfg_mode  = loaded_config['pruning'].get('dwa_mode', prune_type)
                         wrapper.model.set_dwa_params(alpha=cfg_alpha, beta=cfg_beta, mode=cfg_mode)
+                        print(f"[Loader] Applied DWA forward: mode={cfg_mode}, alpha={cfg_alpha}, beta={cfg_beta}")
+                    elif method == 'dwa' and not hasattr(wrapper.model, 'set_dwa_params'):
+                        raise RuntimeError("Loaded model does not expose set_dwa_params for DWA mode")
                     # Other methods could be added here if model exposes toggles
                 elif forward_mode == 'dwa_adaptive' and hasattr(wrapper.model, 'set_dwa_params'):
                     wrapper.model.set_dwa_params(alpha=alpha, beta=beta, mode=prune_type)
+                    print(f"[Loader] Applied DWA forward (from args): mode={prune_type}, alpha={alpha}, beta={beta}")
                 elif forward_mode == 'scaling' and hasattr(wrapper.model, 'set_scaling_mode'):
                     wrapper.model.set_scaling_mode(True)
+                    print("[Loader] Enabled confidence scaling mode (from args)")
                 elif forward_mode == 'dpf' and hasattr(wrapper.model, 'set_dp_mode'):
                     wrapper.model.set_dp_mode(True)
+                    print("[Loader] Enabled DP forward mode (from args)")
 
                 return wrapper, loaded_config
             except Exception as e:
-                print(f"Warning: DWA-aware loading failed ({e}); falling back to generic model loader.")
+                # Fail fast if config is present but cannot be honored
+                if config_path is not None:
+                    raise RuntimeError(f"Failed to load/apply config at {config_path}: {e}")
+                print(f"Warning: DWA-aware loading failed without config ({e}); falling back to generic model loader.")
 
         # Fallback: generic model + state_dict (may be partial)
         wrapper = BaseModel(model_name, num_cls=num_cls, input_dim=input_dim, device=device)

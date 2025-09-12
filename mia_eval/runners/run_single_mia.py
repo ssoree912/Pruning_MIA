@@ -23,7 +23,7 @@ def _find_repo_root(start: Path) -> Path:
     return start.parents[2]
 
 REPO_ROOT = _find_repo_root(THIS_DIR)
-CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'data' / 'create_fixed_data_splits.py'
+CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'create_data' / 'create_fixed_data_splits.py'
 MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 
 def run_single_mia(dataset='cifar10', model='resnet18', sparsity='0.9', alpha='5.0', beta='5.0', 

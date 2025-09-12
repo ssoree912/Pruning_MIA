@@ -31,7 +31,7 @@ def _find_repo_root(start: Path) -> Path:
 
 REPO_ROOT = _find_repo_root(THIS_DIR)
 RUN_SINGLE = REPO_ROOT / 'mia_eval' / 'runners' / 'run_single_mia.py'
-CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'data' / 'create_fixed_data_splits.py'
+CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'create_data' / 'create_fixed_data_splits.py'
 from datetime import datetime
 
 def run_command(cmd, cwd=None):

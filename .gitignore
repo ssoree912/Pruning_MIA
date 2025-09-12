@@ -135,7 +135,7 @@ txt_logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
+data/
 # IDE and editor files
 .vscode/
 .idea/
