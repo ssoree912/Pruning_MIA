@@ -110,6 +110,7 @@ def main():
                        help='MIA results output directory')
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use')
     parser.add_argument('--split_seed', type=int, default=7, help='Seed used for fixed MIA data splits')
+    parser.add_argument('--debug', action='store_true', help='Enable debug prints inside per-run MIA evaluation')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--datapath', type=str, default='~/Datasets', help='Dataset path')
     parser.add_argument('--skip_data_prep', action='store_true', 
@@ -188,6 +189,8 @@ def main():
             '--device', args.device.replace('cuda:', ''),
             '--split_seed', str(split_seed)
         ]
+        if args.debug:
+            eval_cmd.append('--debug')
         
         if run_command(eval_cmd, cwd=str(REPO_ROOT)):
             success_count += 1

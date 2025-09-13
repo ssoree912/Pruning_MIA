@@ -30,7 +30,7 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
                   prune_method='dwa', prune_type='reactivate_only', 
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
                   split_seed=7, forward_mode='standard', original=False,
-                  attacks='samia,threshold,nn,nn_top3,nn_cls,lira'):
+                  attacks='samia,threshold,nn,nn_top3,nn_cls,lira', debug=False):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
@@ -105,6 +105,8 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
     ]
     if original:
         cmd.append('--original')
+    if debug:
+        cmd.append('--debug')
     
     try:
         # Stream child process output live (no capture) so progress is visible
@@ -149,6 +151,7 @@ def main():
     parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','dwa_adaptive','scaling','dpf'], help='Model forward mode')
     parser.add_argument('--original', action='store_true', help='Attack original (unpruned) models')
     parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
+    parser.add_argument('--debug', action='store_true', help='Enable debug prints inside mia_modi.py')
     
     args = parser.parse_args()
     
@@ -169,7 +172,8 @@ def main():
         split_seed=args.split_seed,
         forward_mode=args.forward_mode,
         original=args.original,
-        attacks=args.attacks
+        attacks=args.attacks,
+        debug=args.debug
     )
     
     if success:
