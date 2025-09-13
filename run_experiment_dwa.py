@@ -296,36 +296,7 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
     print("====> validation time: {}h {}m {:.2f}s".format(int(validate_time//3600), int((validate_time%3600)//60), validate_time%60))
     print("====> total training time: {}h {}m {:.2f}s".format(int(total_train_time//3600), int((total_train_time%3600)//60), total_train_time%60))
 
-    # Save validation history
-    with open(experiment_dir / "validation_history.json", "w") as f:
-        json.dump(validation_history, f, indent=2)
-    print(f"📈 Validation history saved: {experiment_dir / 'validation_history.json'}")
-
-    # Get final metrics
-    final_metrics = validation_history[-1] if validation_history else {}
-    
-    summary = {
-        "best_metrics": {
-            "best_acc1": float(best_acc1),
-            "best_loss": float(best_loss),
-        },
-        "final_metrics": {
-            "acc1": final_metrics.get('acc1', 0.0),
-            "acc5": final_metrics.get('acc5', 0.0), 
-            "loss": final_metrics.get('loss', 0.0),
-        },
-        "total_epochs": cfg.training.epochs,
-        "total_duration": float(total_train_time),
-        "avg_epoch_time_seconds": float(avg_train_time + avg_valid_time),
-        "experiment_name": cfg.name,
-        "dataset": cfg.data.dataset,
-        "architecture": arch_name,
-        "sparsity": cfg.pruning.sparsity if cfg.pruning.enabled else 0.0,
-        "dwa_mode": getattr(cfg.pruning, 'dwa_mode', None),
-    }
-    with open(experiment_dir / "experiment_summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
-    print(f"📊 Experiment summary saved: {experiment_dir / 'experiment_summary.json'}")
+    # Skip saving validation_history.json and experiment_summary.json (will be aggregated later)
     
     return best_acc1
 

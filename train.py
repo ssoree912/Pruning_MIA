@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-통합 훈련 및 결과 수집 스크립트
-훈련 완료 후 자동으로 MIA 평가 수행하고 결과 수집
+통합 훈련 스크립트 (결과 수집/요약 제거)
 """
 
 import os
 import sys
 import json
 import subprocess
-import pandas as pd
 from pathlib import Path
 import argparse
 import shutil
@@ -52,7 +50,7 @@ def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_
     
     return save_path
 
-def run_training(config_params):
+def run_training(config_params, dry_run: bool = False):
     """Run training with specified parameters"""
     cmd = ['python', 'run_experiment.py']
     
@@ -67,7 +65,10 @@ def run_training(config_params):
                 cmd.extend([f'--{key}', str(value)])
     
     print(f"Running training command: {' '.join(cmd)}")
-    
+    if dry_run:
+        print("[DRY RUN] Skipping execution.")
+        return True, "dry-run"
+
     try:
         # Show output in real-time instead of capturing
         # result = subprocess.run(cmd, text=True, timeout=7200)  # 2 hour timeout
@@ -77,7 +78,7 @@ def run_training(config_params):
         # return True, "Training completed"
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
         if result.returncode != 0:
-                print(f"Training failed with error: {result.stderr}")
+            print(f"Training failed with error: {result.stderr}")
             return False, result.stderr
         return True, result.stdout
 
@@ -90,449 +91,24 @@ def run_training(config_params):
         return False, str(e)
 
 def run_comprehensive_mia_evaluation(runs_dir):
-    """Run comprehensive MIA evaluation using advanced and WeMeM methods"""
-    
-    results_dir = Path('results/mia')
-    results_dir.mkdir(parents=True, exist_ok=True)
-    
-    print("🎯 Running Advanced MIA evaluation...")
-    
-    # 1. Run Advanced MIA (LiRA, Shokri-NN, Top3-NN, ClassLabel-NN, SAMIA)
-    cmd_advanced = ['python', 'mia/mia_advanced.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'advanced')]
-    print(f"Command: {' '.join(cmd_advanced)}")
-    
-    try:
-        result = subprocess.run(cmd_advanced, capture_output=True, text=True, timeout=3600)
-        if result.returncode != 0:
-            print(f"Advanced MIA failed: {result.stderr}")
-            advanced_success = False
-        else:
-            print("✅ Advanced MIA completed")
-            advanced_success = True
-    except subprocess.TimeoutExpired:
-        print("❌ Advanced MIA timed out")
-        advanced_success = False
-    except Exception as e:
-        print(f"❌ Advanced MIA error: {e}")
-        advanced_success = False
-    
-    print("\n🔍 Running WeMeM MIA evaluation...")
-    
-    # 2. Run WeMeM MIA (Confidence, Entropy, Modified Entropy, Neural Network)
-    cmd_wemem = ['python', 'mia/mia_classic.py', '--runs-dir', str(runs_dir), '--results-dir', str(results_dir / 'wemem')]
-    print(f"Command: {' '.join(cmd_wemem)}")
-    
-    try:
-        result = subprocess.run(cmd_wemem, capture_output=True, text=True, timeout=3600)
-        if result.returncode != 0:
-            print(f"WeMeM MIA failed: {result.stderr}")
-            wemem_success = False
-        else:
-            print("✅ WeMeM MIA completed")
-            wemem_success = True
-    except subprocess.TimeoutExpired:
-        print("❌ WeMeM MIA timed out")
-        wemem_success = False
-    except Exception as e:
-        print(f"❌ WeMeM MIA error: {e}")
-        wemem_success = False
-    
-    # 3. Combine results
-    print("\n🔄 Combining MIA results...")
-    try:
-        combine_mia_results(results_dir, advanced_success, wemem_success)
-        return True, "MIA evaluation completed"
-    except Exception as e:
-        return False, f"Failed to combine results: {e}"
+    """Deprecated: MIA 평가 로직 제거됨 (보존용 스텁)."""
+    return False, "MIA evaluation removed"
 
 def combine_mia_results(results_dir, advanced_success, wemem_success):
-    """Combine Advanced and WeMeM MIA results into unified CSV"""
-    
-    combined_data = []
-    
-    # Load Advanced MIA results
-    if advanced_success:
-        advanced_csv = results_dir / 'advanced' / 'advanced_mia_summary.csv'
-        if advanced_csv.exists():
-            import pandas as pd
-            advanced_df = pd.read_csv(advanced_csv)
-            
-            for _, row in advanced_df.iterrows():
-                entry = {
-                    'experiment': row['Model'],
-                    'method': row['Type'],
-                    'sparsity': float(row['Sparsity'].replace('%', '')) / 100 if isinstance(row['Sparsity'], str) else row['Sparsity'],
-                    
-                    # Advanced MIA results
-                    'lira_accuracy': float(row.get('LIRA_Acc', '0').replace('%', '')) if isinstance(row.get('LIRA_Acc', 0), str) else row.get('LIRA_Acc', 0),
-                    'lira_auc': float(row.get('LIRA_AUC', '0').replace('%', '')) if isinstance(row.get('LIRA_AUC', 0), str) else row.get('LIRA_AUC', 0),
-                    'shokri_nn_accuracy': float(row.get('SHOKRI_NN_Acc', '0').replace('%', '')) if isinstance(row.get('SHOKRI_NN_Acc', 0), str) else row.get('SHOKRI_NN_Acc', 0),
-                    'shokri_nn_auc': float(row.get('SHOKRI_NN_AUC', '0').replace('%', '')) if isinstance(row.get('SHOKRI_NN_AUC', 0), str) else row.get('SHOKRI_NN_AUC', 0),
-                    'top3_nn_accuracy': float(row.get('TOP3_NN_Acc', '0').replace('%', '')) if isinstance(row.get('TOP3_NN_Acc', 0), str) else row.get('TOP3_NN_Acc', 0),
-                    'top3_nn_auc': float(row.get('TOP3_NN_AUC', '0').replace('%', '')) if isinstance(row.get('TOP3_NN_AUC', 0), str) else row.get('TOP3_NN_AUC', 0),
-                    'class_label_nn_accuracy': float(row.get('CLASS_LABEL_NN_Acc', '0').replace('%', '')) if isinstance(row.get('CLASS_LABEL_NN_Acc', 0), str) else row.get('CLASS_LABEL_NN_Acc', 0),
-                    'class_label_nn_auc': float(row.get('CLASS_LABEL_NN_AUC', '0').replace('%', '')) if isinstance(row.get('CLASS_LABEL_NN_AUC', 0), str) else row.get('CLASS_LABEL_NN_AUC', 0),
-                    'samia_accuracy': float(row.get('SAMIA_Acc', '0').replace('%', '')) if isinstance(row.get('SAMIA_Acc', 0), str) else row.get('SAMIA_Acc', 0),
-                    'samia_auc': float(row.get('SAMIA_AUC', '0').replace('%', '')) if isinstance(row.get('SAMIA_AUC', 0), str) else row.get('SAMIA_AUC', 0),
-                }
-                combined_data.append(entry)
-    
-    # Load WeMeM MIA results  
-    if wemem_success:
-        wemem_csv = results_dir / 'wemem' / 'wemem_mia_summary.csv'
-        if wemem_csv.exists():
-            import pandas as pd
-            try:
-                wemem_df = pd.read_csv(wemem_csv)
-                if wemem_df.empty:
-                    print("⚠️ WeMeM CSV is empty, skipping WeMeM results")
-                    wemem_df = None
-            except pd.errors.EmptyDataError:
-                print("⚠️ WeMeM CSV has no data, skipping WeMeM results")
-                wemem_df = None
-            
-            # Match by experiment name and add WeMeM results
-            if wemem_df is not None:
-                for _, row in wemem_df.iterrows():
-                    model_name = row['Model']
-                    
-                    # Find matching entry in combined_data
-                    matching_entry = None
-                    for entry in combined_data:
-                        if entry['experiment'] == model_name:
-                            matching_entry = entry
-                            break
-                    
-                    if matching_entry is None:
-                        # Create new entry if not found
-                        matching_entry = {
-                            'experiment': model_name,
-                            'method': row['Type'],
-                            'sparsity': row['Sparsity'],
-                        }
-                        combined_data.append(matching_entry)
-                    
-                    # Add WeMeM results - using correct column names
-                    def safe_float(value):
-                        try:
-                            return float(value) if value is not None and str(value).strip() != '' and str(value) != '0' else 0
-                        except (ValueError, TypeError):
-                            return 0
-                    
-                    matching_entry.update({
-                        'confidence_accuracy': safe_float(row.get('Confidence_Accuracy')),
-                        'confidence_f1': safe_float(row.get('Confidence_F1')),
-                        'entropy_accuracy': safe_float(row.get('Entropy_Accuracy')),
-                        'entropy_f1': safe_float(row.get('Entropy_F1')),
-                        'modified_entropy_accuracy': safe_float(row.get('Modified_Entropy_Accuracy')),
-                        'modified_entropy_f1': safe_float(row.get('Modified_Entropy_F1')),
-                        'neural_network_accuracy': safe_float(row.get('Neural_Network_Accuracy')),
-                        'neural_network_f1': safe_float(row.get('Neural_Network_F1')),
-                        'neural_network_auc': safe_float(row.get('Neural_Network_AUC')),
-                    })
-    
-    # Save combined results
-    if combined_data:
-        import pandas as pd
-        combined_df = pd.DataFrame(combined_data)
-        
-        # Sort by method and sparsity
-        if 'method' in combined_df.columns and 'sparsity' in combined_df.columns:
-            combined_df = combined_df.sort_values(['method', 'sparsity'])
-        
-        mia_filename = 'comprehensive_mia_results.csv'
-        if args.seed != 42:  # Add seed to filename for non-default seeds
-            mia_filename = f'comprehensive_mia_results_seed{args.seed}.csv'
-        combined_file = results_dir / mia_filename
-        combined_df.to_csv(combined_file, index=False)
-        
-        print(f"📊 Combined MIA results saved: {combined_file}")
-        print(f"📈 Total experiments: {len(combined_data)}")
-        
-        # Display summary
-        print(f"\n🎯 MIA Attack Results Summary:")
-        key_cols = ['experiment', 'method', 'sparsity', 'lira_auc', 'confidence_accuracy', 'neural_network_auc']
-        available_cols = [col for col in key_cols if col in combined_df.columns]
-        if available_cols:
-            print(combined_df[available_cols].to_string(index=False))
-    else:
-        print("⚠️ No combined data to save")
-
+    """Deprecated: MIA 결과 병합 로직 제거됨 (보존용 스텁)."""
     return True
 
 def collect_results(results_dir):
-    """Collect training and MIA results from directory"""
-    results = {}
-    
-    # Look for training results
-    config_file = results_dir / 'config.json'
-    if config_file.exists():
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-            results['config'] = config
-    
-    # Look for training logs
-    log_files = list(results_dir.glob('*.log'))
-    if log_files:
-        results['log_file'] = str(log_files[0])
-    
-    # Look for experiment summary (training results)
-    experiment_summary_file = results_dir / 'experiment_summary.json'
-    if experiment_summary_file.exists():
-        with open(experiment_summary_file, 'r') as f:
-            training_results = json.load(f)
-            results['training'] = training_results
-    
-    # Look for validation history
-    val_history_file = results_dir / 'validation_history.json'
-    if val_history_file.exists():
-        with open(val_history_file, 'r') as f:
-            val_history = json.load(f)
-            results['validation_history'] = val_history
-    
-    # Look for MIA results
-    mia_results_file = results_dir / 'mia_results.json'
-    if mia_results_file.exists():
-        with open(mia_results_file, 'r') as f:
-            mia_results = json.load(f)
-            results['mia'] = mia_results
-    
-    return results
+    """Deprecated: 실험 결과 수집은 별도 스크립트에서 수행 (보존용 스텁)."""
+    return {}
 
 def create_training_summary_csv(all_results, experiment_prefix='experiments'):
-    """Create summary CSV with all results"""
-    # Ensure results directory exists
-    results_dir = Path('results')
-    results_dir.mkdir(exist_ok=True)
-    
-    # Add seed to filename if provided
-    if seed is not None and seed != 42:  # Don't add seed for default seed 42
-        output_file = output_file.replace('.csv', f'_seed{seed}.csv')
-    
-    summary_data = []
-    
-    for exp_name, results in all_results.items():
-        row = {'experiment': exp_name}
-        
-        # Add config info
-        if 'config' in results:
-            config = results['config']
-            row.update({
-                'method': config.get('pruning', {}).get('method', 'dense'),
-                'sparsity': config.get('pruning', {}).get('sparsity', 0.0),
-                'dataset': config.get('data', {}).get('dataset', 'cifar10'),
-                'arch': config.get('model', {}).get('arch', 'resnet'),
-                'layers': config.get('model', {}).get('layers', 20),
-                'epochs': config.get('training', {}).get('epochs', 200),
-                'lr': config.get('training', {}).get('lr', 0.1),
-            })
-        
-        # Add training results if available
-        if 'training' in results:
-            training = results['training']
-            row.update({
-                'best_acc1': training.get('best_metrics', {}).get('best_acc1', None),
-                'best_loss': training.get('best_metrics', {}).get('best_loss', None),
-                'final_acc1': training.get('final_metrics', {}).get('acc1', None),
-                'final_acc5': training.get('final_metrics', {}).get('acc5', None),
-                'final_loss': training.get('final_metrics', {}).get('loss', None),
-                'total_training_time_hours': training.get('total_duration', 0) / 3600 if training.get('total_duration') else None,
-            })
-        
-        # Add validation history summary if available
-        if 'validation_history' in results:
-            val_history = results['validation_history']
-            if val_history:
-                # Get best and final metrics from validation history
-                best_val_acc1 = max(epoch.get('acc1', 0) for epoch in val_history if 'acc1' in epoch) if val_history else None
-                final_val_acc1 = val_history[-1].get('acc1', None) if val_history else None
-                final_val_loss = val_history[-1].get('loss', None) if val_history else None
-                
-                row.update({
-                    'val_best_acc1': best_val_acc1,
-                    'val_final_acc1': final_val_acc1,
-                    'val_final_loss': final_val_loss,
-                })
-        
-        # MIA 결과는 별도 파일로 분리
-        
-        summary_data.append(row)
-    
-    # 실험 설정 기반으로 파일명 생성
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    
-    # 첫 번째 실험의 설정으로 파일명 생성
-    if all_results:
-        first_result = next(iter(all_results.values()))
-        if 'config' in first_result:
-            config = first_result['config']
-            dataset = config.get('data', {}).get('dataset', 'cifar10')
-            arch = config.get('model', {}).get('arch', 'resnet')
-            epochs = config.get('training', {}).get('epochs', 200)
-            methods = set()
-            for result in all_results.values():
-                if 'config' in result:
-                    method = result['config'].get('pruning', {}).get('method', 'dense')
-                    methods.add(method)
-            methods_str = '-'.join(sorted(methods))
-            file_suffix = f"{methods_str}_{dataset}_{arch}_e{epochs}_{timestamp}"
-        else:
-            file_suffix = f"{experiment_prefix}_{timestamp}"
-    else:
-        file_suffix = f"{experiment_prefix}_{timestamp}"
-    
-    output_file = f"results/training_results_{file_suffix}.csv"
-    
-    df = pd.DataFrame(summary_data)
-    df.to_csv(output_file, index=False)
-    print(f"Summary results saved to {output_file}")
-    return df
+    """Deprecated: 요약 CSV는 별도 스크립트에서 생성 (보존용 스텁)."""
+    return None
 
 def log_mia_results_to_wandb(args):
-    """Log MIA evaluation results to Weights & Biases"""
-    try:
-        import wandb
-        
-        # Check if MIA results file exists
-        mia_filename = 'comprehensive_mia_results.csv'
-        if args.seed != 42:  # Add seed to filename for non-default seeds
-            mia_filename = f'comprehensive_mia_results_seed{args.seed}.csv'
-        mia_results_file = Path(f'results/mia/{mia_filename}')
-        if not mia_results_file.exists():
-            print("⚠️ MIA results file not found, skipping wandb logging")
-            return
-        
-        # Read MIA results
-        mia_df = pd.read_csv(mia_results_file)
-        
-        print("📊 Logging MIA results to Weights & Biases...")
-        
-        # Initialize wandb for MIA results
-        run = wandb.init(
-            project=args.wandb_project,
-            entity=args.wandb_entity,
-            job_type="mia_evaluation",
-            name=f"MIA_Results_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            tags=args.wandb_tags + ['mia', 'evaluation'],
-            reinit=True
-        )
-        
-        # Create summary table
-        wandb_table = wandb.Table(dataframe=mia_df)
-        wandb.log({"MIA_Results_Table": wandb_table})
-        
-        # Log key metrics for each experiment
-        for _, row in mia_df.iterrows():
-            experiment_name = row['experiment']
-            method = row['method']
-            sparsity = row.get('sparsity', 0)
-            
-            # Create metrics dict
-            mia_metrics = {}
-            
-            # Advanced MIA metrics
-            for metric in ['lira_accuracy', 'lira_auc', 'shokri_nn_accuracy', 'shokri_nn_auc', 
-                          'top3_nn_accuracy', 'top3_nn_auc', 'class_label_nn_accuracy', 'class_label_nn_auc',
-                          'samia_accuracy', 'samia_auc']:
-                if metric in row and pd.notna(row[metric]):
-                    mia_metrics[f"mia/{metric}"] = float(row[metric])
-            
-            # WeMeM metrics
-            for metric in ['confidence_accuracy', 'confidence_f1', 'entropy_accuracy', 'entropy_f1',
-                          'modified_entropy_accuracy', 'modified_entropy_f1', 'neural_network_accuracy',
-                          'neural_network_f1', 'neural_network_auc']:
-                if metric in row and pd.notna(row[metric]):
-                    mia_metrics[f"mia/{metric}"] = float(row[metric])
-            
-            # Add experiment info
-            mia_metrics.update({
-                "mia/experiment": experiment_name,
-                "mia/method": method,
-                "mia/sparsity": float(sparsity) if sparsity else 0.0,
-            })
-            
-            # Log metrics
-            wandb.log(mia_metrics)
-        
-        # Create visualizations
-        if len(mia_df) > 1:
-            # Plot MIA attack success rates by method and sparsity
-            import matplotlib.pyplot as plt
-            
-            fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-            fig.suptitle('MIA Attack Success Rates', fontsize=16)
-            
-            # LiRA AUC
-            if 'lira_auc' in mia_df.columns:
-                ax1 = axes[0, 0]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax1.plot(method_data['sparsity'], method_data['lira_auc'], 'o-', label=method)
-                    else:
-                        ax1.scatter(method_data['sparsity'], method_data['lira_auc'], label=method, s=100)
-                ax1.set_title('LiRA AUC')
-                ax1.set_xlabel('Sparsity')
-                ax1.set_ylabel('AUC')
-                ax1.legend()
-                ax1.grid(True, alpha=0.3)
-            
-            # Neural Network AUC (WeMeM)
-            if 'neural_network_auc' in mia_df.columns:
-                ax2 = axes[0, 1]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax2.plot(method_data['sparsity'], method_data['neural_network_auc'], 'o-', label=method)
-                    else:
-                        ax2.scatter(method_data['sparsity'], method_data['neural_network_auc'], label=method, s=100)
-                ax2.set_title('Neural Network AUC (WeMeM)')
-                ax2.set_xlabel('Sparsity')
-                ax2.set_ylabel('AUC')
-                ax2.legend()
-                ax2.grid(True, alpha=0.3)
-            
-            # Confidence Attack Accuracy
-            if 'confidence_accuracy' in mia_df.columns:
-                ax3 = axes[1, 0]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax3.plot(method_data['sparsity'], method_data['confidence_accuracy'], 'o-', label=method)
-                    else:
-                        ax3.scatter(method_data['sparsity'], method_data['confidence_accuracy'], label=method, s=100)
-                ax3.set_title('Confidence Attack Accuracy')
-                ax3.set_xlabel('Sparsity')
-                ax3.set_ylabel('Accuracy')
-                ax3.legend()
-                ax3.grid(True, alpha=0.3)
-            
-            # SAMIA AUC
-            if 'samia_auc' in mia_df.columns:
-                ax4 = axes[1, 1]
-                for method in mia_df['method'].unique():
-                    method_data = mia_df[mia_df['method'] == method]
-                    if len(method_data) > 1:
-                        ax4.plot(method_data['sparsity'], method_data['samia_auc'], 'o-', label=method)
-                    else:
-                        ax4.scatter(method_data['sparsity'], method_data['samia_auc'], label=method, s=100)
-                ax4.set_title('SAMIA AUC')
-                ax4.set_xlabel('Sparsity')
-                ax4.set_ylabel('AUC')
-                ax4.legend()
-                ax4.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            wandb.log({"MIA_Attack_Comparison": wandb.Image(fig)})
-            plt.close(fig)
-        
-        wandb.finish()
-        print("✅ MIA results logged to Weights & Biases successfully!")
-        
-    except ImportError:
-        print("⚠️ wandb not available, skipping MIA results logging")
-    except Exception as e:
-        print(f"❌ Error logging MIA results to wandb: {e}")
+    """Deprecated: MIA 결과 로깅 제거됨 (보존용 스텁)."""
+    print("MIA results logging disabled")
 
 def reorganize_existing_models():
     """Reorganize existing model folders into new structure"""
@@ -600,6 +176,11 @@ def main():
                        help='Random seed for reproducibility')
     parser.add_argument('--gpu', type=int, default=0,
                        help='GPU device ID')
+    # Multi-seed controls
+    parser.add_argument('--multi-seed', action='store_true', help='Enable multi-seed training')
+    parser.add_argument('--num-seeds', type=int, default=8, help='Number of seeds for multi-seed')
+    parser.add_argument('--start-seed', type=int, default=43, help='Starting seed for multi-seed')
+    parser.add_argument('--dry-run', action='store_true', help='Print planned runs without executing')
     
     args = parser.parse_args()
     
@@ -610,7 +191,13 @@ def main():
         print("Reorganization complete. Exiting.")
         return
     
-    all_results = {}
+    # Plan seeds
+    if args.multi_seed:
+        seed_list = list(range(args.start_seed, args.start_seed + args.num_seeds))
+    else:
+        seed_list = [args.seed]
+
+    # Collecting per-run results is disabled; we'll aggregate later from runs/ if needed.
     failed_experiments = []
     
     print(f"Starting training for methods: {args.methods}")
@@ -641,77 +228,57 @@ def main():
             print(f"Running experiment: {exp_name}")
             print(f"{'='*50}")
             
-            # Create save path
-            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs, args.seed)
-            
-            # Skip if results already exist
-            if args.skip_existing and save_path.exists():
-                best_model = save_path / 'best_model.pth'
-                if best_model.exists():
-                    print(f"Results already exist for {exp_name}, skipping...")
-                    results = collect_results(save_path)
-                    all_results[exp_name] = results
+            for cur_seed in seed_list:
+                # Create save path (includes seed when cur_seed != 42)
+                save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs, cur_seed)
+
+                # Skip if results already exist
+                if args.skip_existing and (save_path / 'best_model.pth').exists():
+                    print(f"Results already exist for {exp_name} (seed={cur_seed}), skipping...")
                     continue
-            
-            # Prepare training config
-            config_params = {
-                'name': exp_name,
-                'save-dir': str(save_path),
-                'dataset': args.dataset,
-                'arch': args.arch,
-                'epochs': args.epochs,
-                'freeze-epoch': args.freeze_epoch,
-                'seed': args.seed,
-                'gpu': args.gpu,
-            }
-            
-            # Add wandb config if enabled
-            if args.wandb:
-                config_params.update({
-                    'wandb': True,
-                    'wandb_project': args.wandb_project,
-                    'wandb_entity': args.wandb_entity,
-                    'wandb_name': exp_name,
-                })
-                if args.wandb_tags:
-                    config_params['wandb_tags'] = ','.join(args.wandb_tags + [method, args.dataset, args.arch])
-            
-            if method != 'dense':
-                config_params.update({
-                    'prune': True,
-                    'prune-method': method,
-                    'sparsity': sparsity,
-                })
-            
-            # Run training
-            print(f"Starting training for {exp_name}...")
-            success, output = run_training(config_params)
-            
-            if not success:
-                print(f"Training failed for {exp_name}: {output}")
-                failed_experiments.append((exp_name, 'training', output))
-                continue
-            
-            print(f"Training completed for {exp_name}")
-            
-            # Collect results
-            results = collect_results(save_path)
-            all_results[exp_name] = results
-            
-            print(f"Experiment {exp_name} completed")
+
+                # Prepare training config
+                config_params = {
+                    'name': f"{exp_name}",
+                    'save-dir': str(save_path),
+                    'dataset': args.dataset,
+                    'arch': args.arch,
+                    'epochs': args.epochs,
+                    'freeze-epoch': args.freeze_epoch,
+                    'seed': cur_seed,
+                    'gpu': args.gpu,
+                }
+
+                # Add wandb config if enabled
+                if args.wandb:
+                    tags = args.wandb_tags + [method, args.dataset, args.arch, f'seed{cur_seed}'] if args.wandb_tags else [method, args.dataset, args.arch, f'seed{cur_seed}']
+                    config_params.update({
+                        'wandb': True,
+                        'wandb_project': args.wandb_project,
+                        'wandb_entity': args.wandb_entity,
+                        'wandb_name': f"{exp_name}_seed{cur_seed}",
+                        'wandb_tags': ','.join(tags),
+                    })
+
+                if method != 'dense':
+                    config_params.update({
+                        'prune': True,
+                        'prune-method': method,
+                        'sparsity': sparsity,
+                    })
+
+                # Run training (or dry-run)
+                print(f"Starting training for {exp_name} (seed={cur_seed})...")
+                success, output = run_training(config_params, dry_run=args.dry_run)
+
+                if not success:
+                    print(f"Training failed for {exp_name} (seed={cur_seed}): {output}")
+                    failed_experiments.append((f"{exp_name}_seed{cur_seed}", 'training', output))
+                    continue
+
+                print(f"Training completed for {exp_name} (seed={cur_seed})")
     
-    # Create training results summary
-    print(f"\n{'='*50}")
-    print("Creating training summary...")
-    print(f"{'='*50}")
-    
-    if all_results:
-        # 실험 정보를 포함한 파일명으로 저장
-        methods_info = f"{'-'.join(args.methods)}"
-        summary_df = create_training_summary_csv(all_results, experiment_prefix=methods_info)
-        print(f"Completed {len(all_results)} experiments")
-        print(f"Training Summary:\n{summary_df.to_string()}")
-    
+    # Training summary CSV generation is disabled in this run.
     # Run MIA evaluation on all trained models
     # print(f"\n{'='*50}")
     # print("Running MIA evaluation...")

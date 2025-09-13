@@ -161,7 +161,12 @@ def main():
     p.add_argument('--wandb-project', default='dwa-experiments')
     p.add_argument('--wandb-entity', default=None)
     p.add_argument('--wandb-tags', nargs='*', default=[])
+    # Seeding
     p.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    p.add_argument('--multi-seed', action='store_true', help='Run multiple seeds (shadow-style)')
+    p.add_argument('--num-seeds', type=int, default=8, help='Number of seeds when using --multi-seed')
+    p.add_argument('--start-seed', type=int, default=43, help='Starting seed when using --multi-seed')
+    p.add_argument('--dry-run', action='store_true', help='Print planned runs without executing')
     p.add_argument('--gpu', type=int, default=0, help='GPU device ID')
     args = p.parse_args()
 
@@ -177,15 +182,21 @@ def main():
     print(f"Sparsities: {args.sparsities}")
     print(f"Dataset: {args.dataset}, Architecture: {args.arch}")
 
+    # Seed planning
+    if args.multi_seed:
+        seed_list = list(range(args.start_seed, args.start_seed + args.num_seeds))
+    else:
+        seed_list = [args.seed]
+
     for mode in args.dwa_modes:
         for alpha in args.dwa_alphas:
             for beta in args.dwa_betas:
                 for sp in args.sparsities:
-                    exp_name = f"dwa_{mode}"
+                    for cur_seed in seed_list:
+                        exp_name = f"dwa_{mode}"
                     if alpha != 1.0: exp_name += f"_alpha{alpha}"
                     if beta  != 1.0: exp_name += f"_beta{beta}"
-                    exp_name += f"_sparsity_{sp}_{args.dataset}_{args.arch}"
-                    if args.seed != 42: exp_name += f"_seed{args.seed}"
+                    exp_name += f"_sparsity_{sp}_{args.dataset}_{args.arch}_seed{cur_seed}"
 
                     print("\n" + "="*50)
                     print(f"Running experiment: {exp_name}")
@@ -195,14 +206,12 @@ def main():
                     save_path = Path('./runs/dwa')/mode/f'sparsity_{sp}'/args.dataset
                     if alpha != 1.0 or beta != 1.0:
                         save_path = save_path / f'alpha{alpha}_beta{beta}'
-                    # seed별로 다른 폴더에 저장 (기본 seed=42는 기존 경로 유지)
-                    if args.seed != 42:
-                        save_path = save_path / f'seed{args.seed}'
+                    # 항상 seed 하위 폴더에 저장
+                    save_path = save_path / f'seed{cur_seed}'
                     save_path.mkdir(parents=True, exist_ok=True)
 
                     if args.skip_existing and ((save_path/'best_model.pth').exists() or (save_path/'experiment_summary.json').exists()):
                         print(f"Results already exist for {exp_name}, skipping...")
-                        all_results[exp_name] = collect_results(save_path)
                         continue
 
                     cfg_kwargs = {
@@ -230,13 +239,12 @@ def main():
                         'dwa-threshold-percentile': args.dwa_threshold_percentile,
 
                         # 새로 추가: seed와 gpu
-                        'seed': args.seed,
+                        'seed': cur_seed,
                         'gpu': args.gpu,
                     }
                     if args.wandb:
                         wandb_tags = args.wandb_tags + ['dwa', mode, args.dataset, args.arch]
-                        if args.seed != 42:
-                            wandb_tags.append(f'seed{args.seed}')
+                        wandb_tags.append(f'seed{cur_seed}')
                         cfg_kwargs.update({
                             'wandb': True,
                             'wandb_project': args.wandb_project,  # 하이픈 접근 버그 수정
@@ -245,13 +253,17 @@ def main():
                             'wandb_tags': wandb_tags,
                         })
 
-                    ok, out = run_training(cfg_kwargs)
+                    if args.dry_run:
+                        # Print the would-be command assembled in run_training
+                        print(f"[DRY RUN] Would run: {RUN_SCRIPT} with args {cfg_kwargs}")
+                        ok, out = True, "dry-run"
+                    else:
+                        ok, out = run_training(cfg_kwargs)
                     if not ok:
                         print(f"Training failed for {exp_name}: {out}")
                         failed.append((exp_name, 'training', out))
                         continue
 
-                    all_results[exp_name] = collect_results(save_path)
                     print(f"Experiment {exp_name} completed")
 
     print("\n" + "="*50)
