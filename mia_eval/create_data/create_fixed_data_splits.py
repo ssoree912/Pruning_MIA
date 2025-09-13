@@ -42,9 +42,15 @@ except:
 def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], 
                       save_dir="mia_data_splits"):
     """
-    우리 구조에 맞는 고정 데이터 분할 생성
-    - 모든 seed 모델이 전체 데이터로 학습했다고 가정
-    - MIA 평가를 위해 victim은 특정 부분을, shadow들은 나머지 부분을 "멤버"로 간주
+    고정 MIA 데이터 분할 생성 (훈련/테스트 분리 일관성 유지)
+
+    핵심 변경점:
+    - "멤버"(member)는 오직 학습 데이터셋(train set)에서만 선택
+    - "비멤버"(non-member)는 오직 테스트 데이터셋(test set)에서만 선택
+
+    과거 버전은 train+test를 합쳐 무작위로 절반을 victim/shadow 풀로 나눴기 때문에
+    실제 학습 여부와 상관없는 레이블 잡음이 발생하여 MIA 지표가 무작위 수준으로 떨어질 수 있었습니다.
+    본 구현은 학습 분포와 평가 분포를 일치시켜 지표 신뢰도를 높입니다.
     """
     
     print(f"Creating fixed data splits for {dataset_name}")
@@ -58,41 +64,48 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
     if testset is None:
         total_dataset = trainset
         print(f"Using trainset only: {len(trainset)} samples")
+        # Train-only 환경에서는 엄밀한 MIA 정의가 어렵지만, 동일 분포 내에서 분할
+        total_indices = list(range(len(total_dataset)))
+        victim_train_indices, victim_test_indices = train_test_split(
+            total_indices, test_size=0.1, random_state=victim_seed
+        )
+        shadow_splits = {}
+        for shadow_seed in shadow_seeds:
+            s_tr, s_te = train_test_split(total_indices, test_size=0.1, random_state=shadow_seed)
+            shadow_splits[shadow_seed] = {'train_indices': s_tr, 'test_indices': s_te}
+            print(f"Shadow {shadow_seed} train(member): {len(s_tr)}, test(non-member): {len(s_te)}")
     else:
         total_dataset = ConcatDataset([trainset, testset])
         print(f"Using train+test: {len(trainset)} + {len(testset)} = {len(total_dataset)} samples")
-    
-    # 전체 데이터를 victim/shadow 풀로 분할 (50:50)
-    total_indices = list(range(len(total_dataset)))
-    victim_pool_indices, shadow_pool_indices = train_test_split(
-        total_indices, test_size=0.5, random_state=seed
-    )
-    
-    print(f"Victim pool: {len(victim_pool_indices)} samples")
-    print(f"Shadow pool: {len(shadow_pool_indices)} samples")
-    
-    # Victim 데이터 분할 (90% train, 10% test)
-    victim_train_indices, victim_test_indices = train_test_split(
-        victim_pool_indices, test_size=0.1, random_state=victim_seed
-    )
-    
-    print(f"Victim train (member): {len(victim_train_indices)} samples")
-    print(f"Victim test (non-member): {len(victim_test_indices)} samples")
-    
-    # Shadow 데이터 분할들 (각 shadow마다 90% train, 10% test)
-    shadow_splits = {}
-    for shadow_seed in shadow_seeds:
-        shadow_train_indices, shadow_test_indices = train_test_split(
-            shadow_pool_indices, test_size=0.1, random_state=shadow_seed
-        )
-        
-        shadow_splits[shadow_seed] = {
-            'train_indices': shadow_train_indices,  # member
-            'test_indices': shadow_test_indices     # non-member
-        }
-        
-        print(f"Shadow {shadow_seed} train (member): {len(shadow_train_indices)} samples")
-        print(f"Shadow {shadow_seed} test (non-member): {len(shadow_test_indices)} samples")
+
+        # ConcatDataset 인덱스 공간으로 변환
+        train_offset = 0
+        test_offset = len(trainset)
+        train_indices_all = list(range(train_offset, train_offset + len(trainset)))
+        test_indices_all  = list(range(test_offset,  test_offset  + len(testset)))
+
+        # Victim: train에서 멤버, test에서 비멤버
+        v_tr, _ = train_test_split(train_indices_all, test_size=0.1, random_state=victim_seed)
+        v_te, _ = train_test_split(test_indices_all,  test_size=0.9, random_state=victim_seed)
+        victim_train_indices = v_tr
+        victim_test_indices  = v_te
+
+        print(f"Victim train (member, from trainset): {len(victim_train_indices)}")
+        print(f"Victim test (non-member, from testset): {len(victim_test_indices)}")
+
+        # Shadow: victim이 차지한 풀을 제외한 잔여 풀에서 샘플링(중복 허용)
+        remaining_train = [i for i in train_indices_all if i not in set(victim_train_indices)]
+        remaining_test  = [i for i in test_indices_all if i not in set(victim_test_indices)]
+
+        shadow_splits = {}
+        for shadow_seed in shadow_seeds:
+            s_tr, _ = train_test_split(remaining_train, test_size=0.1, random_state=shadow_seed)
+            s_te, _ = train_test_split(remaining_test,  test_size=0.9, random_state=shadow_seed)
+            shadow_splits[shadow_seed] = {
+                'train_indices': s_tr,  # member (trainset only)
+                'test_indices': s_te    # non-member (testset only)
+            }
+            print(f"Shadow {shadow_seed} train(member, trainset): {len(s_tr)}  test(non-member, testset): {len(s_te)}")
     
     # 저장할 데이터 구조
     data_splits = {
@@ -175,4 +188,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

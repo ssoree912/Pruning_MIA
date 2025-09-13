@@ -70,6 +70,7 @@ parser.add_argument('--threshold_strategy', default='youden', choices=['youden',
                    help="Threshold selection strategy for attacks")
 parser.add_argument('--forward_mode', default='standard', choices=['standard', 'dwa_adaptive', 'scaling', 'dpf'], 
                    help="Forward pass mode for model inference")
+parser.add_argument('--debug', action='store_true', help='Print detailed MIA debug info (splits and basic stats)')
 
 
 def main(args):
@@ -250,10 +251,60 @@ def main(args):
     best_tv = max(acc_scores, key=acc_scores.get)
     victim_model.preferred_type_value = best_tv
     print(f"[Victim] Selected type_value={best_tv} (probe acc~{acc_scores[best_tv]*100:.2f}%)")
-    
+
     victim_model.test(victim_train_loader, "Victim Model Train")
     test_acc, loss = victim_model.test(victim_test_loader, "Victim Model Test")
     print(f"Victim model test accuracy: {test_acc:.3f}")
+
+    # Debug: split integrity and member/non-member gaps
+    if args.debug:
+        try:
+            # 1) Split integrity
+            vt = set(victim_train_indices)
+            vte = set(victim_test_indices)
+            inter = vt.intersection(vte)
+            print(f"[DEBUG] Victim split sizes: train={len(vt)} test={len(vte)} overlap={len(inter)}")
+            if len(inter) > 0:
+                print("[WARN] Victim train/test overlap detected; splits may be invalid.")
+            # Check shadow overlaps with victim train
+            for sid, sdata in (data_splits.get('shadows', {}) or {}).items():
+                st = set(sdata['train_indices'])
+                ov = len(vt.intersection(st))
+                if ov > 0:
+                    print(f"[WARN] Shadow {sid} member set overlaps victim members: {ov} examples")
+        except Exception as e:
+            print(f"[DEBUG] Split integrity check failed: {e}")
+
+        def _basic_stats(model, loader, label):
+            import torch
+            import torch.nn.functional as F
+            model.model.eval()
+            tot_n, loss_sum, conf_sum = 0, 0.0, 0.0
+            with torch.no_grad():
+                for bi, (xb, yb) in enumerate(loader):
+                    xb, yb = xb.to(model.device), yb.to(model.device)
+                    try:
+                        tv = getattr(model, 'preferred_type_value', None)
+                        logits = model.model(xb) if tv is None else model.model(xb, type_value=tv)
+                    except TypeError:
+                        logits = model.model(xb)
+                    probs = torch.softmax(logits, dim=1)
+                    conf, _ = probs.max(1)
+                    ce = F.cross_entropy(logits, yb, reduction='sum')
+                    loss_sum += float(ce.item())
+                    conf_sum += float(conf.sum().item())
+                    tot_n += yb.size(0)
+                    # keep debug pass light
+                    if bi >= 10:
+                        break
+            if tot_n > 0:
+                print(f"[DEBUG] {label}: n~{tot_n} mean_loss={loss_sum/tot_n:.4f} mean_conf={conf_sum/tot_n:.4f}")
+            else:
+                print(f"[DEBUG] {label}: no samples")
+
+        # Victim stats
+        _basic_stats(victim_model, victim_train_loader, 'victim members (train)')
+        _basic_stats(victim_model, victim_test_loader,  'victim non-members (test)')
 
     # Load shadow models with fixed data splits
     shadow_model_list = []
@@ -299,10 +350,15 @@ def main(args):
         print(f"[{i+1}/{total_shadows}] Shadow {shadow_seed}: {len(shadow_train_indices)} members, {len(shadow_test_indices)} non-members")
         shadow_model.test(shadow_train_loader, f"[{i+1}/{total_shadows}] Shadow Model {shadow_seed} Train (Members)")
         shadow_model.test(shadow_test_loader, f"[{i+1}/{total_shadows}] Shadow Model {shadow_seed} Test (Non-members)")
-        
+
         shadow_model_list.append(shadow_model)
         shadow_train_loader_list.append(shadow_train_loader)
         shadow_test_loader_list.append(shadow_test_loader)
+
+        # Debug: print quick stats for first few shadows
+        if args.debug and i < 3:
+            _basic_stats(shadow_model, shadow_train_loader, f'shadow {shadow_seed} members (train)')
+            _basic_stats(shadow_model, shadow_test_loader,  f'shadow {shadow_seed} non-members (test)')
 
     print("Start Membership Inference Attacks")
 
