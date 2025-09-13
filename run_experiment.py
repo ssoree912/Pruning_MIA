@@ -367,8 +367,10 @@ def validate(model, val_loader, criterion, config, logger):
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
-    
+
     model.eval()
+    # Unwrap DataParallel once and reuse safely
+    net = model.module if hasattr(model, 'module') else model
     
     with torch.no_grad():
         end = time.time()
@@ -382,7 +384,6 @@ def validate(model, val_loader, criterion, config, logger):
                     output = model(input, type_val)  # MaskerStatic
                 elif config.pruning.method == 'dpf':
                     # Check if masks are frozen
-                    net = model.module if hasattr(model, 'module') else model
                     if getattr(net, "_masks_frozen", False):
                         type_val = 5
                         output = model(input, type_val)  # MaskerStatic (frozen)
@@ -392,7 +393,7 @@ def validate(model, val_loader, criterion, config, logger):
                 else:
                     type_val = 0
                     output = model(input, type_val)  # Default sparse
-                
+
                 # Validation type_value 로깅 (첫 번째 배치에서만)
                 if i == 0:
                     frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
