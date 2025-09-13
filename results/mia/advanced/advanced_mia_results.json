@@ -1,0 +1,786 @@
+{
+  "dense_cifar10": {
+    "model_info": {
+      "type": "dense",
+      "sparsity": 0.0,
+      "path": "runs/dense/cifar10",
+      "method": "dense"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.38916666666666666,
+        "precision": 0.8489283847360167,
+        "recall": 0.3248,
+        "f1": 0.4698394329524085,
+        "auc": 0.5396662,
+        "member_mean": -3.172728486717303,
+        "member_std": 1.461972382388734,
+        "non_member_mean": -3.0402451352976994,
+        "non_member_std": 1.4010639752365763
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6250694000000001
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.627074
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.620649
+      },
+      "samia": {
+        "accuracy": 0.833,
+        "precision": 0.8357406785354383,
+        "recall": 0.9952,
+        "f1": 0.908526565638123,
+        "auc": 0.6256773
+      }
+    }
+  },
+  "dpf_sparsity_0.7_freeze180_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.7,
+      "path": "runs/dpf/sparsity_0.7_freeze180/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.36966666666666664,
+        "precision": 0.8357221609702316,
+        "recall": 0.3032,
+        "f1": 0.4449662459641914,
+        "auc": 0.4880346,
+        "member_mean": -3.1679674881778768,
+        "member_std": 1.4361640794277473,
+        "non_member_mean": -3.118216631897154,
+        "non_member_std": 1.3733678757216832
+      },
+      "shokri_nn": {
+        "accuracy": 0.8335,
+        "precision": 0.8340290532643179,
+        "recall": 0.999,
+        "f1": 0.9090909090909091,
+        "auc": 0.6228005999999999
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6241322
+      },
+      "class_label_nn": {
+        "accuracy": 0.8338333333333333,
+        "precision": 0.8346430362815582,
+        "recall": 0.9984,
+        "f1": 0.9092068117657772,
+        "auc": 0.6162496
+      },
+      "samia": {
+        "accuracy": 0.8328333333333333,
+        "precision": 0.8376414934955229,
+        "recall": 0.9916,
+        "f1": 0.9081417712244712,
+        "auc": 0.6213353
+      }
+    }
+  },
+  "dpf_sparsity_0.8_freeze180_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.8,
+      "path": "runs/dpf/sparsity_0.8_freeze180/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.38283333333333336,
+        "precision": 0.8596783139212424,
+        "recall": 0.31,
+        "f1": 0.4556813170660003,
+        "auc": 0.5218541999999999,
+        "member_mean": -3.1549464282311797,
+        "member_std": 1.474088321300933,
+        "non_member_mean": -3.109381516088215,
+        "non_member_std": 1.427292335056353
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6250038
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6256068
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6207026
+      },
+      "samia": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6268852
+      }
+    }
+  },
+  "dpf_sparsity_0.8_nofreeze_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.8,
+      "path": "runs/dpf/sparsity_0.8_nofreeze/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.3536666666666667,
+        "precision": 0.8355263157894737,
+        "recall": 0.2794,
+        "f1": 0.4187649880095922,
+        "auc": 0.4937772,
+        "member_mean": -3.1475821247520592,
+        "member_std": 1.454432039423115,
+        "non_member_mean": -3.141255819691674,
+        "non_member_std": 1.4008414021515856
+      },
+      "shokri_nn": {
+        "accuracy": 0.8341666666666666,
+        "precision": 0.8343629988311905,
+        "recall": 0.9994,
+        "f1": 0.9094549094549095,
+        "auc": 0.6494487
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6508258
+      },
+      "class_label_nn": {
+        "accuracy": 0.8326666666666667,
+        "precision": 0.8338903743315508,
+        "recall": 0.998,
+        "f1": 0.9085943190094683,
+        "auc": 0.6396417999999999
+      },
+      "samia": {
+        "accuracy": 0.8345,
+        "precision": 0.8356508627910872,
+        "recall": 0.9976,
+        "f1": 0.9094721487829337,
+        "auc": 0.6507423
+      }
+    }
+  },
+  "dpf_sparsity_0.7_nofreeze_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.7,
+      "path": "runs/dpf/sparsity_0.7_nofreeze/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.3888333333333333,
+        "precision": 0.8440887971089314,
+        "recall": 0.327,
+        "f1": 0.4713853250684734,
+        "auc": 0.5313568,
+        "member_mean": -3.1980216804645005,
+        "member_std": 1.4370911071921386,
+        "non_member_mean": -3.042084946998996,
+        "non_member_std": 1.3714245051100462
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6307768
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6299586
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6278206
+      },
+      "samia": {
+        "accuracy": 0.8331666666666667,
+        "precision": 0.8345323741007195,
+        "recall": 0.9976,
+        "f1": 0.9088093285961557,
+        "auc": 0.6319836
+      }
+    }
+  },
+  "dpf_sparsity_0.95_freeze180_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.95,
+      "path": "runs/dpf/sparsity_0.95_freeze180/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.4061666666666667,
+        "precision": 0.8449351896303409,
+        "recall": 0.352,
+        "f1": 0.49696456303826064,
+        "auc": 0.5290706000000001,
+        "member_mean": -3.1901505065862907,
+        "member_std": 1.4510528819216222,
+        "non_member_mean": -3.0371376814923425,
+        "non_member_std": 1.4030776341748963
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6243678
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6257095
+      },
+      "class_label_nn": {
+        "accuracy": 0.8328333333333333,
+        "precision": 0.8338065809253382,
+        "recall": 0.9984,
+        "f1": 0.908710293983799,
+        "auc": 0.6206459
+      },
+      "samia": {
+        "accuracy": 0.8336666666666667,
+        "precision": 0.8364156018829859,
+        "recall": 0.995,
+        "f1": 0.9088417975886006,
+        "auc": 0.6254474
+      }
+    }
+  },
+  "dpf_sparsity_0.9_nofreeze_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.9,
+      "path": "runs/dpf/sparsity_0.9_nofreeze/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.4545,
+        "precision": 0.8497367355204536,
+        "recall": 0.4196,
+        "f1": 0.5617887267371804,
+        "auc": 0.5173884,
+        "member_mean": -3.2048428044539268,
+        "member_std": 1.4563210232162338,
+        "non_member_mean": -3.0323757454820917,
+        "non_member_std": 1.4267399339932312
+      },
+      "shokri_nn": {
+        "accuracy": 0.8338333333333333,
+        "precision": 0.8353157982911711,
+        "recall": 0.9972,
+        "f1": 0.9091074847296927,
+        "auc": 0.6287505
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6287512
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6258078
+      },
+      "samia": {
+        "accuracy": 0.8326666666666667,
+        "precision": 0.8352348993288591,
+        "recall": 0.9956,
+        "f1": 0.9083941605839416,
+        "auc": 0.6274314
+      }
+    }
+  },
+  "dpf_sparsity_0.95_nofreeze_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.95,
+      "path": "runs/dpf/sparsity_0.95_nofreeze/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.36966666666666664,
+        "precision": 0.8464163822525598,
+        "recall": 0.2976,
+        "f1": 0.44036697247706413,
+        "auc": 0.504219,
+        "member_mean": -3.173786261959976,
+        "member_std": 1.4288572507999182,
+        "non_member_mean": -3.1422475686767704,
+        "non_member_std": 1.393771725947807
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6259975
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6244201
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6139515
+      },
+      "samia": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6265248
+      }
+    }
+  },
+  "dpf_sparsity_0.5_nofreeze_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.5,
+      "path": "runs/dpf/sparsity_0.5_nofreeze/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.6511666666666667,
+        "precision": 0.84,
+        "recall": 0.7182,
+        "f1": 0.7743396226415095,
+        "auc": 0.51997,
+        "member_mean": -3.170187674312878,
+        "member_std": 1.430061705339059,
+        "non_member_mean": -3.104860068948725,
+        "non_member_std": 1.503905042495869
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6260030000000001
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6270439
+      },
+      "class_label_nn": {
+        "accuracy": 0.833,
+        "precision": 0.8333889259506337,
+        "recall": 0.9994,
+        "f1": 0.9088759548926881,
+        "auc": 0.6196697999999999
+      },
+      "samia": {
+        "accuracy": 0.8323333333333334,
+        "precision": 0.8341700133868809,
+        "recall": 0.997,
+        "f1": 0.9083454810495627,
+        "auc": 0.6260674
+      }
+    }
+  },
+  "dpf_sparsity_0.9_freeze180_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.9,
+      "path": "runs/dpf/sparsity_0.9_freeze180/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.3555,
+        "precision": 0.8443768996960487,
+        "recall": 0.2778,
+        "f1": 0.418058690744921,
+        "auc": 0.5285232,
+        "member_mean": -3.1767923955715935,
+        "member_std": 1.4632556776847134,
+        "non_member_mean": -3.123856557539242,
+        "non_member_std": 1.423283596477563
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8334444814938313,
+        "recall": 0.9998,
+        "f1": 0.9090743771594836,
+        "auc": 0.630545
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6315778000000001
+      },
+      "class_label_nn": {
+        "accuracy": 0.8336666666666667,
+        "precision": 0.8342799866354828,
+        "recall": 0.9988,
+        "f1": 0.909157109047879,
+        "auc": 0.6244360999999999
+      },
+      "samia": {
+        "accuracy": 0.8355,
+        "precision": 0.8362661303837774,
+        "recall": 0.998,
+        "f1": 0.9100027354791647,
+        "auc": 0.630894
+      }
+    }
+  },
+  "dpf_sparsity_0.5_freeze180_cifar10": {
+    "model_info": {
+      "type": "dpf",
+      "sparsity": 0.5,
+      "path": "runs/dpf/sparsity_0.5_freeze180/cifar10",
+      "method": "dpf"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.37583333333333335,
+        "precision": 0.8445908841295992,
+        "recall": 0.3076,
+        "f1": 0.4509602697551678,
+        "auc": 0.5200966,
+        "member_mean": -3.1982639127547583,
+        "member_std": 1.4575157375032401,
+        "non_member_mean": -3.14129917965998,
+        "non_member_std": 1.3555544215071558
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6282753999999999
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6245689000000001
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6187515
+      },
+      "samia": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6290172
+      }
+    }
+  },
+  "static_sparsity0.5_cifar10": {
+    "model_info": {
+      "type": "static",
+      "sparsity": 0.5,
+      "path": "runs/static/sparsity_0.5/cifar10",
+      "method": "static"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.37433333333333335,
+        "precision": 0.8408096280087527,
+        "recall": 0.3074,
+        "f1": 0.4502050380785003,
+        "auc": 0.5019718,
+        "member_mean": -3.167300172352403,
+        "member_std": 1.4522212170063582,
+        "non_member_mean": -3.0789469186710465,
+        "non_member_std": 1.361001905241685
+      },
+      "shokri_nn": {
+        "accuracy": 0.8335,
+        "precision": 0.833472245374229,
+        "recall": 1.0,
+        "f1": 0.9091735612328394,
+        "auc": 0.6472806
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6490485
+      },
+      "class_label_nn": {
+        "accuracy": 0.8336666666666667,
+        "precision": 0.8340567612687813,
+        "recall": 0.9992,
+        "f1": 0.9091901728844403,
+        "auc": 0.6380555
+      },
+      "samia": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.833889816360601,
+        "recall": 0.999,
+        "f1": 0.9090081892629663,
+        "auc": 0.6472221
+      }
+    }
+  },
+  "static_sparsity0.8_cifar10": {
+    "model_info": {
+      "type": "static",
+      "sparsity": 0.8,
+      "path": "runs/static/sparsity_0.8/cifar10",
+      "method": "static"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.5605,
+        "precision": 0.8437590922315973,
+        "recall": 0.58,
+        "f1": 0.6874481450752636,
+        "auc": 0.5172283999999999,
+        "member_mean": -3.1430851229072614,
+        "member_std": 1.4271252189837709,
+        "non_member_mean": -3.12099991643338,
+        "non_member_std": 1.4320621549893615
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6350962
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6397424
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6243874
+      },
+      "samia": {
+        "accuracy": 0.8338333333333333,
+        "precision": 0.8344193817878028,
+        "recall": 0.9988,
+        "f1": 0.909239872553482,
+        "auc": 0.6369201999999999
+      }
+    }
+  },
+  "static_sparsity0.9_cifar10": {
+    "model_info": {
+      "type": "static",
+      "sparsity": 0.9,
+      "path": "runs/static/sparsity_0.9/cifar10",
+      "method": "static"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.3575,
+        "precision": 0.8463399879007865,
+        "recall": 0.2798,
+        "f1": 0.4205621524124455,
+        "auc": 0.529372,
+        "member_mean": -3.156645977032692,
+        "member_std": 1.4576702919913913,
+        "non_member_mean": -3.113793797356718,
+        "non_member_std": 1.432915876870238
+      },
+      "shokri_nn": {
+        "accuracy": 0.8336666666666667,
+        "precision": 0.8336112037345782,
+        "recall": 1.0,
+        "f1": 0.9092562284051646,
+        "auc": 0.6175982
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6266603
+      },
+      "class_label_nn": {
+        "accuracy": 0.8335,
+        "precision": 0.8336947456213512,
+        "recall": 0.9996,
+        "f1": 0.9091405184174624,
+        "auc": 0.5991816999999999
+      },
+      "samia": {
+        "accuracy": 0.8336666666666667,
+        "precision": 0.8339452603471295,
+        "recall": 0.9994,
+        "f1": 0.9092066957787481,
+        "auc": 0.6180839
+      }
+    }
+  },
+  "static_sparsity0.7_cifar10": {
+    "model_info": {
+      "type": "static",
+      "sparsity": 0.7,
+      "path": "runs/static/sparsity_0.7/cifar10",
+      "method": "static"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.4726666666666667,
+        "precision": 0.8451127819548873,
+        "recall": 0.4496,
+        "f1": 0.5869451697127938,
+        "auc": 0.5345215999999999,
+        "member_mean": -3.150904975871086,
+        "member_std": 1.431872097254932,
+        "non_member_mean": -3.037780974825615,
+        "non_member_std": 1.4231830758673927
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6170738
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.61956
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6046558
+      },
+      "samia": {
+        "accuracy": 0.833,
+        "precision": 0.8337228714524207,
+        "recall": 0.9988,
+        "f1": 0.9088262056414922,
+        "auc": 0.6170971000000001
+      }
+    }
+  },
+  "static_sparsity0.95_cifar10": {
+    "model_info": {
+      "type": "static",
+      "sparsity": 0.95,
+      "path": "runs/static/sparsity_0.95/cifar10",
+      "method": "static"
+    },
+    "mia_results": {
+      "lira": {
+        "accuracy": 0.35633333333333334,
+        "precision": 0.8354952830188679,
+        "recall": 0.2834,
+        "f1": 0.4232377538829151,
+        "auc": 0.4911698,
+        "member_mean": -3.155219357258582,
+        "member_std": 1.4621398558583292,
+        "non_member_mean": -3.117707180725399,
+        "non_member_std": 1.3902450065199268
+      },
+      "shokri_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6285064
+      },
+      "top3_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6263212
+      },
+      "class_label_nn": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6234591999999999
+      },
+      "samia": {
+        "accuracy": 0.8333333333333334,
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "f1": 0.9090909090909091,
+        "auc": 0.6276229999999999
+      }
+    }
+  }
+}

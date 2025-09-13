@@ -17,7 +17,7 @@ from datetime import datetime
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_epoch=None, total_epochs=None):
+def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_epoch=None, total_epochs=None, seed=42):
     """Create organized save path structure"""
     base_path = Path('./runs')
     
@@ -45,6 +45,10 @@ def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_
         save_path = base_path / method / f'sparsity_{sparsity}{freeze_suffix}' / dataset
     else:
         raise ValueError(f"Unknown method: {method}")
+    
+    # Add seed to path if not default seed
+    if seed != 42:
+        save_path = save_path / f'seed{seed}'
     
     return save_path
 
@@ -236,7 +240,10 @@ def combine_mia_results(results_dir, advanced_success, wemem_success):
         if 'method' in combined_df.columns and 'sparsity' in combined_df.columns:
             combined_df = combined_df.sort_values(['method', 'sparsity'])
         
-        combined_file = results_dir / 'comprehensive_mia_results.csv'
+        mia_filename = 'comprehensive_mia_results.csv'
+        if args.seed != 42:  # Add seed to filename for non-default seeds
+            mia_filename = f'comprehensive_mia_results_seed{args.seed}.csv'
+        combined_file = results_dir / mia_filename
         combined_df.to_csv(combined_file, index=False)
         
         print(f"📊 Combined MIA results saved: {combined_file}")
@@ -297,6 +304,10 @@ def create_training_summary_csv(all_results, experiment_prefix='experiments'):
     # Ensure results directory exists
     results_dir = Path('results')
     results_dir.mkdir(exist_ok=True)
+    
+    # Add seed to filename if provided
+    if seed is not None and seed != 42:  # Don't add seed for default seed 42
+        output_file = output_file.replace('.csv', f'_seed{seed}.csv')
     
     summary_data = []
     
@@ -383,7 +394,10 @@ def log_mia_results_to_wandb(args):
         import wandb
         
         # Check if MIA results file exists
-        mia_results_file = Path('results/mia/comprehensive_mia_results.csv')
+        mia_filename = 'comprehensive_mia_results.csv'
+        if args.seed != 42:  # Add seed to filename for non-default seeds
+            mia_filename = f'comprehensive_mia_results_seed{args.seed}.csv'
+        mia_results_file = Path(f'results/mia/{mia_filename}')
         if not mia_results_file.exists():
             print("⚠️ MIA results file not found, skipping wandb logging")
             return
@@ -582,6 +596,10 @@ def main():
                        help='Wandb entity (username or team)')
     parser.add_argument('--wandb-tags', nargs='*', default=[],
                        help='Wandb tags for experiment')
+    parser.add_argument('--seed', type=int, default=42,
+                       help='Random seed for reproducibility')
+    parser.add_argument('--gpu', type=int, default=0,
+                       help='GPU device ID')
     
     args = parser.parse_args()
     
@@ -624,7 +642,7 @@ def main():
             print(f"{'='*50}")
             
             # Create save path
-            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs)
+            save_path = create_organized_save_path(method, sparsity, args.dataset, args.freeze_epoch, args.epochs, args.seed)
             
             # Skip if results already exist
             if args.skip_existing and save_path.exists():
