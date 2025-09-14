@@ -30,7 +30,8 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
                   prune_method='dwa', prune_type='reactivate_only', 
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
                   split_seed=7, forward_mode='standard', original=False,
-                  attacks='samia,threshold,nn,nn_top3,nn_cls,lira', debug=False):
+                  attacks='samia,threshold,nn,nn_top3,nn_cls,lira', debug=False,
+                  freeze_tag=None):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
@@ -44,16 +45,34 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
     
     base_path = "runs"
     
+    def _resolve_path(method: str, seed: int) -> str:
+        if method == 'dwa':
+            return f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset}/alpha{alpha}_beta{beta}/seed{seed}/best_model.pth"
+        if method == 'static':
+            return f"{base_path}/static/sparsity_{sparsity}/{dataset}/seed{seed}/best_model.pth"
+        if method == 'dpf':
+            # optional freeze_tag: sparsity_<s>_<tag>
+            if freeze_tag:
+                return f"{base_path}/dpf/sparsity_{sparsity}_{freeze_tag}/{dataset}/seed{seed}/best_model.pth"
+            # try to find any matching folder starting with sparsity_<s>
+            root = (REPO_ROOT / base_path / 'dpf').resolve()
+            for cand in root.glob(f"sparsity_{sparsity}*/{dataset}/seed{seed}/best_model.pth"):
+                return str(cand)
+            return f"{base_path}/dpf/sparsity_{sparsity}/{dataset}/seed{seed}/best_model.pth"
+        if method == 'dense':
+            return f"{base_path}/dense/{dataset}/seed{seed}/best_model.pth"
+        return ''
+
     # Victim 모델 확인
-    victim_path = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset}/alpha{alpha}_beta{beta}/seed{victim_seed}/best_model.pth"
+    victim_path = _resolve_path(prune_method, victim_seed)
     if not os.path.exists(victim_path):
         print(f"❌ Victim model not found: {victim_path}")
         return False
     print(f"✅ Found victim model: {victim_path}")
-    
+
     # Shadow 모델들 확인
     for seed in shadow_seeds:
-        shadow_path = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset}/alpha{alpha}_beta{beta}/seed{seed}/best_model.pth"
+        shadow_path = _resolve_path(prune_method, seed)
         if not os.path.exists(shadow_path):
             print(f"❌ Shadow model not found: {shadow_path}")
             return False
@@ -93,8 +112,6 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
         '--dataset_name', dataset,
         # model_name resolved from config; no CLI override
         '--sparsity', str(sparsity),
-        '--alpha', str(alpha),
-        '--beta', str(beta),
         '--victim_seed', str(victim_seed),
         '--seed', str(split_seed),
         '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
@@ -103,6 +120,10 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
         '--forward_mode', forward_mode,
         '--attacks', attacks
     ]
+    if prune_method == 'dwa':
+        cmd += ['--alpha', str(alpha), '--beta', str(beta)]
+    if freeze_tag and prune_method == 'dpf':
+        cmd += ['--freeze_tag', str(freeze_tag)]
     if original:
         cmd.append('--original')
     if debug:
@@ -142,8 +163,8 @@ def main():
     parser.add_argument('--sparsity', default='0.9', help='Sparsity level')
     parser.add_argument('--alpha', default='5.0', help='Alpha value')
     parser.add_argument('--beta', default='5.0', help='Beta value')
-    parser.add_argument('--prune_method', default='dwa', help='Pruning method')
-    parser.add_argument('--prune_type', default='reactivate_only', help='Pruning type')
+    parser.add_argument('--prune_method', default='dwa', choices=['dwa','static','dpf','dense'], help='Pruning method')
+    parser.add_argument('--prune_type', default='reactivate_only', help='Pruning type (DWA mode)')
     parser.add_argument('--victim_seed', type=int, default=42, help='Victim model seed')
     parser.add_argument('--shadow_seeds', nargs='+', type=int, default=[43,44,45,46,47,48,49,50], help='Shadow model seeds')
     parser.add_argument('--device', type=int, default=0, help='GPU ID')
@@ -152,6 +173,7 @@ def main():
     parser.add_argument('--original', action='store_true', help='Attack original (unpruned) models')
     parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
     parser.add_argument('--debug', action='store_true', help='Enable debug prints inside mia_modi.py')
+    parser.add_argument('--freeze_tag', type=str, default=None, help='DPF only: choose sparsity_<s>_<tag> (e.g., freeze180 or nofreeze)')
     
     args = parser.parse_args()
     
@@ -173,7 +195,8 @@ def main():
         forward_mode=args.forward_mode,
         original=args.original,
         attacks=args.attacks,
-        debug=args.debug
+        debug=args.debug,
+        freeze_tag=args.freeze_tag
     )
     
     if success:

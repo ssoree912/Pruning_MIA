@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 """
-DWA 프루닝된 모델에 대한 전체 MIA 파이프라인 실행 스크립트
+MIA pipeline over trained models under runs/ (DWA / Static / DPF / Dense).
 
-Usage:
-python run_mia_pipeline.py --dataset cifar10 --device cuda:0
-
-이 스크립트는:
-1. MIA용 데이터 분할 준비 (필요시)
-2. DWA 훈련 결과에서 모델 찾기
-3. 모든 DWA 모델에 대해 MIA 평가 수행
-4. 결과 요약 및 비교 리포트 생성
+1) Scan runs/ and group seeds per experiment
+2) Ensure fixed MIA splits (pkl)
+3) Run MIA per group (victim + shadows)
+4) Summarize results
 """
 
 import os
@@ -50,55 +46,100 @@ def run_command(cmd, cwd=None):
             print("STDERR:", e.stderr)
         return False
 
-def check_dwa_results(runs_dir):
-    """DWA 훈련 결과 확인 - seed 폴더 구조"""
-    runs_path = Path(runs_dir)
-    dwa_path = runs_path / 'dwa'
-    
-    if not dwa_path.exists():
-        print(f"❌ No DWA results found in {runs_dir}")
-        print("먼저 train_dwa.py를 실행해서 DWA 모델들을 훈련해주세요.")
-        return False, 0, []
-    
-    # seed별 모델 찾기
-    experiments = []
-    model_count = 0
-    
-    for mode_dir in dwa_path.iterdir():
-        if mode_dir.is_dir():
-            for sparsity_dir in mode_dir.iterdir():
-                if sparsity_dir.is_dir() and sparsity_dir.name.startswith('sparsity_'):
-                    sparsity = sparsity_dir.name.split('_')[1]
-                    for dataset_dir in sparsity_dir.iterdir():
-                        if dataset_dir.is_dir():
-                            for alpha_beta_dir in dataset_dir.iterdir():
-                                if alpha_beta_dir.is_dir() and 'alpha' in alpha_beta_dir.name:
-                                    # alpha, beta 추출
-                                    parts = alpha_beta_dir.name.split('_')
-                                    alpha = parts[0].replace('alpha', '')
-                                    beta = parts[1].replace('beta', '')
-                                    
-                                    # seed 폴더들 찾기
-                                    seeds = []
-                                    for seed_dir in alpha_beta_dir.iterdir():
-                                        if seed_dir.is_dir() and seed_dir.name.startswith('seed'):
-                                            if (seed_dir / 'best_model.pth').exists():
-                                                seed_num = int(seed_dir.name.replace('seed', ''))
-                                                seeds.append(seed_num)
-                                                model_count += 1
-                                    
-                                    if len(seeds) >= 2:  # 최소 victim + shadow 1개
-                                        experiments.append({
-                                            'mode': mode_dir.name,
-                                            'sparsity': sparsity,
-                                            'dataset': dataset_dir.name,
-                                            'alpha': alpha,
-                                            'beta': beta,
-                                            'seeds': sorted(seeds)
-                                        })
-    
-    print(f"✅ Found {model_count} trained models in {len(experiments)} experiment groups")
-    return True, model_count, experiments
+def _scan_runs(runs_dir: str, dataset: str):
+    from contextlib import suppress
+    runs = Path(runs_dir)
+    groups = []
+    total = 0
+
+    # DWA
+    dwa = runs / 'dwa'
+    if dwa.exists():
+        for mode in dwa.iterdir():
+            if not mode.is_dir():
+                continue
+            for sp in mode.glob('sparsity_*'):
+                try:
+                    spv = float(sp.name.split('_',1)[1])
+                except Exception:
+                    continue
+                for ds in sp.iterdir():
+                    if not ds.is_dir() or ds.name != dataset:
+                        continue
+                    for ab in ds.glob('alpha*_beta*'):
+                        if not ab.is_dir():
+                            continue
+                        parts = ab.name.split('_')
+                        alpha = parts[0].replace('alpha','')
+                        beta  = parts[1].replace('beta','')
+                        seeds = []
+                        for sdir in ab.glob('seed*'):
+                            if (sdir / 'best_model.pth').exists():
+                                with suppress(Exception):
+                                    seeds.append(int(sdir.name.replace('seed','')))
+                                    total += 1
+                        if len(seeds) >= 2:
+                            groups.append({'method':'dwa','mode':mode.name,'sparsity':spv,'dataset':ds.name,
+                                           'alpha':alpha,'beta':beta,'seeds':sorted(seeds)})
+
+    # Static
+    st = runs / 'static'
+    if st.exists():
+        for sp in st.glob('sparsity_*'):
+            with suppress(Exception):
+                spv = float(sp.name.split('_',1)[1])
+            for ds in sp.iterdir():
+                if not ds.is_dir() or ds.name != dataset:
+                    continue
+                seeds = []
+                for sdir in ds.glob('seed*'):
+                    if (sdir / 'best_model.pth').exists():
+                        with suppress(Exception):
+                            seeds.append(int(sdir.name.replace('seed','')))
+                            total += 1
+                if len(seeds) >= 2:
+                    groups.append({'method':'static','mode':'na','sparsity':spv,'dataset':ds.name,
+                                   'alpha':None,'beta':None,'seeds':sorted(seeds)})
+
+    # DPF
+    dpf = runs / 'dpf'
+    if dpf.exists():
+        for sp in dpf.glob('sparsity_*'):
+            rest = sp.name.split('sparsity_',1)[1]
+            with suppress(Exception):
+                parts = rest.split('_',1)
+                spv = float(parts[0])
+                tag = parts[1] if len(parts) > 1 else None
+            for ds in sp.iterdir():
+                if not ds.is_dir() or ds.name != dataset:
+                    continue
+                seeds = []
+                for sdir in ds.glob('seed*'):
+                    if (sdir / 'best_model.pth').exists():
+                        with suppress(Exception):
+                            seeds.append(int(sdir.name.replace('seed','')))
+                            total += 1
+                if len(seeds) >= 2:
+                    groups.append({'method':'dpf','mode':'na','sparsity':spv,'dataset':ds.name,
+                                   'alpha':None,'beta':None,'seeds':sorted(seeds),'freeze_tag':tag})
+
+    # Dense
+    de = runs / 'dense'
+    if de.exists():
+        ds = de / dataset
+        if ds.exists():
+            seeds = []
+            for sdir in ds.glob('seed*'):
+                if (sdir / 'best_model.pth').exists():
+                    with suppress(Exception):
+                        seeds.append(int(sdir.name.replace('seed','')))
+                        total += 1
+            if len(seeds) >= 2:
+                groups.append({'method':'dense','mode':'na','sparsity':None,'dataset':dataset,
+                               'alpha':None,'beta':None,'seeds':sorted(seeds)})
+
+    print(f"✅ Found {total} checkpoints across {len(groups)} experiment groups")
+    return groups
 
 def main():
     parser = argparse.ArgumentParser(description='DWA MIA Evaluation Pipeline')

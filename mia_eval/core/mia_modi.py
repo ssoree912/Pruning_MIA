@@ -60,8 +60,9 @@ parser.add_argument('--victim_seed', default=42, type=int, help="victim model se
 parser.add_argument('--shadow_seeds', default=[43,44,45,46,47,48,49,50], nargs='+', type=int, help="shadow model seeds")
 parser.add_argument('--alpha', default=5.0, type=float)
 parser.add_argument('--beta', default=5.0, type=float)
-parser.add_argument('--prune_method', default='dwa', type=str)
-parser.add_argument('--prune_type', default='reactivate_only', type=str)
+parser.add_argument('--prune_method', default='dwa', type=str, choices=['dwa','static','dpf','dense'])
+parser.add_argument('--prune_type', default='reactivate_only', type=str, help='DWA mode (ignored for others)')
+parser.add_argument('--freeze_tag', default=None, type=str, help='DPF only: sparsity_<s>_<freeze_tag> selector (e.g., freeze180 or nofreeze)')
 parser.add_argument('--defend', default='', type=str)
 parser.add_argument('--defend_arg', default=4, type=float)
 parser.add_argument('--attacks', default="samia,threshold,nn,nn_top3,nn_cls,lira", type=str)
@@ -95,7 +96,18 @@ def main(args):
     print("Loading data splits (prefer training-time data_prepare.pkl if available)...")
 
     # Try to locate experiment directory for this victim
-    exp_dir = Path(base_path) / args.prune_method / args.prune_type / f"sparsity_{args.sparsity}" / args.dataset_name / f"alpha{args.alpha}_beta{args.beta}"
+    # Locate experiment directory depending on method
+    if args.prune_method == 'dwa':
+        exp_dir = Path(base_path) / args.prune_method / args.prune_type / f"sparsity_{args.sparsity}" / args.dataset_name / f"alpha{args.alpha}_beta{args.beta}"
+    elif args.prune_method == 'static':
+        exp_dir = Path(base_path) / 'static' / f"sparsity_{args.sparsity}" / args.dataset_name
+    elif args.prune_method == 'dpf':
+        tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
+        exp_dir = Path(base_path) / 'dpf' / f"sparsity_{args.sparsity}{tag}" / args.dataset_name
+    elif args.prune_method == 'dense':
+        exp_dir = Path(base_path) / 'dense' / args.dataset_name
+    else:
+        exp_dir = Path(base_path)
     data_prepare_path = exp_dir / 'data_prepare.pkl'
 
     use_training_splits = False
@@ -147,8 +159,20 @@ def main(args):
 
     # Load victim model
     def load_model_from_seed_folder(base_path, seed, dataset_name, model_name, sparsity, alpha, beta, 
-                                   prune_method, prune_type, device, forward_mode='standard', num_cls=10, input_dim=3):
-        model_dir = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}"
+                                   prune_method, prune_type, device, forward_mode='standard', num_cls=10, input_dim=3,
+                                   freeze_tag=None):
+        # Build seed folder by method
+        if prune_method == 'dwa':
+            model_dir = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}"
+        elif prune_method == 'static':
+            model_dir = f"{base_path}/static/sparsity_{sparsity}/{dataset_name}/seed{seed}"
+        elif prune_method == 'dpf':
+            tag = f"_{freeze_tag}" if freeze_tag else ''
+            model_dir = f"{base_path}/dpf/sparsity_{sparsity}{tag}/{dataset_name}/seed{seed}"
+        elif prune_method == 'dense':
+            model_dir = f"{base_path}/dense/{dataset_name}/seed{seed}"
+        else:
+            model_dir = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}"
         model_path = f"{model_dir}/best_model.pth"
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found at {model_path}")
@@ -222,7 +246,7 @@ def main(args):
     victim_model, victim_cfg = load_model_from_seed_folder(
         base_path, args.victim_seed, args.dataset_name, args.model_name, 
         args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
-        device, args.forward_mode, args.num_cls, args.input_dim
+        device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
     )
     # Auto-tune type_value if needed to maximize accuracy on a small sample
     def _sample_accuracy(model, loader, tv=None, max_batches=2):
@@ -322,7 +346,7 @@ def main(args):
         shadow_model, s_cfg = load_model_from_seed_folder(
             base_path, shadow_seed, args.dataset_name, args.model_name,
             args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
-            device, args.forward_mode, args.num_cls, args.input_dim
+            device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
         )
         shadow_cfg_map[str(shadow_seed)] = s_cfg
         # Auto-tune type_value for shadow

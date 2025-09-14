@@ -44,9 +44,8 @@ def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_
     else:
         raise ValueError(f"Unknown method: {method}")
     
-    # Add seed to path if not default seed
-    if seed != 42:
-        save_path = save_path / f'seed{seed}'
+    # Always include seed subfolder to avoid collisions and match observed layout
+    save_path = save_path / f'seed{seed}'
     
     return save_path
 

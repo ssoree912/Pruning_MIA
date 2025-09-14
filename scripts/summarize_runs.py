@@ -18,49 +18,106 @@ import re
 
 
 def parse_path(p: Path):
-    """Parse metadata from a standard DWA path; return dict."""
+    """Parse metadata from runs/ path. Handles dense/static/dpf/dwa layouts."""
+    parts = p.parts
     meta = {
         'path': str(p.parent),
-        'mode': '',
-        'sparsity': None,
-        'dataset': '',
-        'alpha': None,
-        'beta': None,
-        'seed': None,
         'method': '',
+        'mode': '',           # DWA only
+        'sparsity': None,     # static/dpf/dwa
+        'dataset': '',
+        'alpha': None,        # DWA only
+        'beta': None,         # DWA only
+        'seed': None,
+        'freeze_tag': '',     # DPF only (e.g., freeze180 / nofreeze)
     }
-    parts = p.parts
+
+    if 'runs' not in parts:
+        return meta
+
+    i = parts.index('runs')
+    method = parts[i+1] if i+1 < len(parts) else ''
+    meta['method'] = method
+
     try:
-        # .../runs/<method>/<mode>/sparsity_<s>/<dataset>/alpha<a>_beta<b>/seed<seed>/best_model.pth
-        if 'runs' in parts:
-            i = parts.index('runs')
-            meta['method'] = parts[i+1] if i+1 < len(parts) else ''
-            # mode
-            if i+2 < len(parts):
-                meta['mode'] = parts[i+2]
-            # sparsity
-            if i+3 < len(parts) and parts[i+3].startswith('sparsity_'):
+        if method == 'dwa':
+            # runs/dwa/<mode>/sparsity_<s>/<dataset>/alpha<a>_beta<b>/seed<seed>/best_model.pth
+            mode = parts[i+2] if i+2 < len(parts) else ''
+            meta['mode'] = mode
+            sp_token = parts[i+3] if i+3 < len(parts) else ''
+            if sp_token.startswith('sparsity_'):
+                s_str = sp_token.split('sparsity_', 1)[1]
                 try:
-                    meta['sparsity'] = float(parts[i+3].split('_',1)[1])
+                    meta['sparsity'] = float(s_str)
                 except Exception:
                     pass
-            # dataset
-            if i+4 < len(parts):
-                meta['dataset'] = parts[i+4]
-            # alpha_beta
-            if i+5 < len(parts):
-                m = re.match(r'alpha([0-9.]+)_beta([0-9.]+)', parts[i+5])
+            meta['dataset'] = parts[i+4] if i+4 < len(parts) else ''
+            ab_token = parts[i+5] if i+5 < len(parts) else ''
+            m = re.match(r'alpha([0-9.]+)_beta([0-9.]+)', ab_token)
+            if m:
+                meta['alpha'] = float(m.group(1))
+                meta['beta'] = float(m.group(2))
+            seed_token = parts[i+6] if i+6 < len(parts) else ''
+            if seed_token.startswith('seed'):
+                try:
+                    meta['seed'] = int(seed_token.replace('seed', ''))
+                except Exception:
+                    pass
+
+        elif method in ('static', 'dpf'):
+            # static: runs/static/sparsity_<s>/<dataset>/seed<seed>/best_model.pth
+            # dpf   : runs/dpf/sparsity_<s>_<tag>/<dataset>/seed<seed>/best_model.pth
+            sp_token = parts[i+2] if i+2 < len(parts) else ''
+            if sp_token.startswith('sparsity_'):
+                rest = sp_token[len('sparsity_'):]
+                m = re.match(r'([0-9.]+)(?:_(.*))?$', rest)
                 if m:
-                    meta['alpha'] = float(m.group(1))
-                    meta['beta'] = float(m.group(2))
-            # seed
-            if i+6 < len(parts) and parts[i+6].startswith('seed'):
+                    try:
+                        meta['sparsity'] = float(m.group(1))
+                    except Exception:
+                        pass
+                    if m.group(2):
+                        meta['freeze_tag'] = m.group(2)
+            meta['dataset'] = parts[i+3] if i+3 < len(parts) else ''
+            seed_token = parts[i+4] if i+4 < len(parts) else ''
+            if seed_token.startswith('seed'):
                 try:
-                    meta['seed'] = int(parts[i+6].replace('seed',''))
+                    meta['seed'] = int(seed_token.replace('seed', ''))
                 except Exception:
                     pass
+
+        elif method == 'dense':
+            # runs/dense/<dataset>/seed<seed>/best_model.pth
+            meta['dataset'] = parts[i+2] if i+2 < len(parts) else ''
+            seed_token = parts[i+3] if i+3 < len(parts) else ''
+            if seed_token.startswith('seed'):
+                try:
+                    meta['seed'] = int(seed_token.replace('seed', ''))
+                except Exception:
+                    pass
+
+        else:
+            # Best-effort generic: infer seed and dataset by proximity
+            for idx, tok in enumerate(parts):
+                if tok.startswith('seed'):
+                    try:
+                        meta['seed'] = int(tok.replace('seed', ''))
+                    except Exception:
+                        pass
+                    if idx - 1 >= 0:
+                        meta['dataset'] = parts[idx - 1]
+                    break
+            for tok in parts:
+                if tok.startswith('sparsity_') and meta['sparsity'] is None:
+                    try:
+                        num = tok.split('sparsity_', 1)[1].split('_', 1)[0]
+                        meta['sparsity'] = float(num)
+                    except Exception:
+                        pass
+                    break
     except Exception:
         pass
+
     return meta
 
 
@@ -109,6 +166,7 @@ def main():
             'alpha': meta['alpha'],
             'beta': meta['beta'],
             'seed': meta['seed'],
+            'freeze_tag': meta['freeze_tag'],
             'best_acc1': extra.get('best_acc1'),
             'final_acc1': extra.get('final_acc1'),
             'final_loss': extra.get('final_loss'),
@@ -116,7 +174,7 @@ def main():
         rows.append(row)
 
     # Write CSV
-    cols = ['path','method','mode','sparsity','dataset','alpha','beta','seed','best_acc1','final_acc1','final_loss']
+    cols = ['path','method','mode','sparsity','dataset','alpha','beta','seed','freeze_tag','best_acc1','final_acc1','final_loss']
     with open(out_path, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
@@ -129,3 +187,4 @@ def main():
 if __name__ == '__main__':
     main()
 
+# (no helpers)
