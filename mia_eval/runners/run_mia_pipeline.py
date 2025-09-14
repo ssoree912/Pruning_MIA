@@ -158,6 +158,8 @@ def main():
     parser.add_argument('--datapath', type=str, default='~/Datasets', help='Dataset path')
     parser.add_argument('--skip_data_prep', action='store_true', 
                        help='Skip MIA data preparation step')
+    parser.add_argument('--list_missing_seed', type=int, default=None,
+                       help='List experiment groups missing this seed (e.g., 50) and exit')
     
     args = parser.parse_args()
     
@@ -190,6 +192,31 @@ def main():
         else:
             desc = f"dense/{exp['dataset']}"
         print(f"  - [{label}] {desc} ({len(exp['seeds'])} seeds)")
+        if args.debug:
+            print(f"      seeds: {exp['seeds']}")
+
+    # Optional: only list groups missing a specific seed and exit
+    if args.list_missing_seed is not None:
+        target = int(args.list_missing_seed)
+        print(f"\n🔎 Groups missing seed{target}:")
+        missing = 0
+        for exp in experiments:
+            if target not in exp['seeds']:
+                if exp['method'] == 'dwa':
+                    desc = f"{exp['method']}:{exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']}"
+                elif exp['method'] == 'static':
+                    desc = f"static/sparsity_{exp['sparsity']}/{exp['dataset']}"
+                elif exp['method'] == 'dpf':
+                    tag = exp.get('freeze_tag')
+                    tag_s = f"_{tag}" if tag else ''
+                    desc = f"dpf/sparsity_{exp['sparsity']}{tag_s}/{exp['dataset']}"
+                else:
+                    desc = f"dense/{exp['dataset']}"
+                print(f"  - {desc} | seeds={exp['seeds']}")
+                missing += 1
+        if missing == 0:
+            print("  (none)")
+        return
     
     # Step 2: Ensure fixed data splits exist (auto-create if missing)
     print("\n🧩 Step 2: Ensuring fixed MIA data splits...")
