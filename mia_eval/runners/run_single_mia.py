@@ -35,8 +35,16 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
-    print(f"   Sparsity: {sparsity}")
-    print(f"   Alpha: {alpha}, Beta: {beta}")
+    if prune_method == 'dwa':
+        print(f"   Method: DWA / mode={prune_type}")
+        print(f"   Sparsity: {sparsity}")
+        print(f"   Alpha: {alpha}, Beta: {beta}")
+    elif prune_method in ('static','dpf'):
+        tag_info = f" / tag={freeze_tag}" if (prune_method=='dpf' and freeze_tag) else ""
+        print(f"   Method: {prune_method.upper()}{tag_info}")
+        print(f"   Sparsity: {sparsity}")
+    elif prune_method == 'dense':
+        print("   Method: DENSE (no sparsity/alpha/beta)")
     print(f"   Victim seed: {victim_seed}")
     print(f"   Shadow seeds: {shadow_seeds}")
     
@@ -178,7 +186,7 @@ def main():
     args = parser.parse_args()
     
     print("=" * 60)
-    print("🎯 DWA MIA Evaluation Pipeline")
+    print("🎯 Single MIA Evaluation")
     print("=" * 60)
     
     success = run_single_mia(
