@@ -142,7 +142,7 @@ def _scan_runs(runs_dir: str, dataset: str):
     return groups
 
 def main():
-    parser = argparse.ArgumentParser(description='DWA MIA Evaluation Pipeline')
+    parser = argparse.ArgumentParser(description='MIA Evaluation Pipeline (DWA / Static / DPF / Dense)')
     parser.add_argument('--dataset', type=str, default='cifar10', 
                        choices=['cifar10', 'cifar100'], help='Dataset name')
     parser.add_argument('--runs_dir', type=str, default='./runs', 
@@ -152,6 +152,8 @@ def main():
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use')
     parser.add_argument('--split_seed', type=int, default=7, help='Seed used for fixed MIA data splits')
     parser.add_argument('--debug', action='store_true', help='Enable debug prints inside per-run MIA evaluation')
+    parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','dwa_adaptive','scaling','dpf'], help='Model forward mode to pass through')
+    parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--datapath', type=str, default='~/Datasets', help='Dataset path')
     parser.add_argument('--skip_data_prep', action='store_true', 
@@ -159,29 +161,35 @@ def main():
     
     args = parser.parse_args()
     
-    print("🚀 DWA MIA Evaluation Pipeline")
+    print("🚀 MIA Evaluation Pipeline")
     print("=" * 50)
     print(f"Dataset: {args.dataset}")
-    print(f"DWA Results: {args.runs_dir}")
+    print(f"Runs dir: {args.runs_dir}")
     print(f"Output: {args.output_dir}")
     print(f"Device: {args.device}")
     print("=" * 50)
     
-    # Step 1: DWA 훈련 결과 확인
-    print("\n📋 Step 1: Checking DWA training results...")
-    has_results, model_count, experiments = check_dwa_results(args.runs_dir)
-    if not has_results:
-        print("\n💡 DWA 모델을 먼저 훈련하려면:")
-        print("   python train_dwa.py --dwa-modes reactivate_only kill_active_plain_dead kill_and_reactivate")
+    # Step 1: Scan runs directory for all methods
+    print("\n📋 Step 1: Scanning runs/ for experiments...")
+    experiments = _scan_runs(args.runs_dir, args.dataset)
+    if not experiments:
+        print("❌ No trained checkpoints found under runs/.")
+        print("   Make sure to train models or adjust --dataset/--runs_dir.")
         return
-    
-    if model_count == 0:
-        print("❌ No trained models found. Please run train_dwa.py first.")
-        return
-    
     print(f"Found {len(experiments)} experiment groups:")
     for exp in experiments:
-        print(f"  - {exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']} ({len(exp['seeds'])} seeds)")
+        label = exp['method']
+        if exp['method'] == 'dwa':
+            desc = f"{exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']}"
+        elif exp['method'] == 'static':
+            desc = f"static/sparsity_{exp['sparsity']}/{exp['dataset']}"
+        elif exp['method'] == 'dpf':
+            tag = exp.get('freeze_tag')
+            tag_s = f"_{tag}" if tag else ''
+            desc = f"dpf/sparsity_{exp['sparsity']}{tag_s}/{exp['dataset']}"
+        else:
+            desc = f"dense/{exp['dataset']}"
+        print(f"  - [{label}] {desc} ({len(exp['seeds'])} seeds)")
     
     # Step 2: Ensure fixed data splits exist (auto-create if missing)
     print("\n🧩 Step 2: Ensuring fixed MIA data splits...")
@@ -192,7 +200,17 @@ def main():
     
     success_count = 0
     for i, exp in enumerate(experiments, 1):
-        print(f"\n[{i}/{len(experiments)}] Processing {exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}...")
+        if exp['method'] == 'dwa':
+            cur_desc = f"{exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']}"
+        elif exp['method'] == 'static':
+            cur_desc = f"static/sparsity_{exp['sparsity']}/{exp['dataset']}"
+        elif exp['method'] == 'dpf':
+            tag = exp.get('freeze_tag')
+            tag_s = f"_{tag}" if tag else ''
+            cur_desc = f"dpf/sparsity_{exp['sparsity']}{tag_s}/{exp['dataset']}"
+        else:
+            cur_desc = f"dense/{exp['dataset']}"
+        print(f"\n[{i}/{len(experiments)}] Processing [{exp['method']}] {cur_desc}...")
         
         if len(exp['seeds']) < 2:
             print(f"⏭️ Skipping - need at least 2 seeds, found {len(exp['seeds'])}")
@@ -217,26 +235,33 @@ def main():
                 print(f"  ❌ Failed to create data splits for victim_seed={victim_seed}. Skipping.")
                 continue
 
+        # Build command for single runner according to method
+        sparsity = exp.get('sparsity')
+        sparsity_str = str(sparsity if sparsity is not None else 0.0)
         eval_cmd = [
             sys.executable, str(RUN_SINGLE),
             '--dataset', exp['dataset'],
-            '--sparsity', exp['sparsity'],
-            '--alpha', exp['alpha'],
-            '--beta', exp['beta'],
-            '--prune_method', 'dwa',
-            '--prune_type', exp['mode'],
+            '--sparsity', sparsity_str,
+            '--prune_method', exp['method'],
+            '--prune_type', exp.get('mode','na'),
             '--victim_seed', str(victim_seed),
             '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
             '--device', args.device.replace('cuda:', ''),
-            '--split_seed', str(split_seed)
+            '--split_seed', str(split_seed),
+            '--forward_mode', args.forward_mode,
+            '--attacks', args.attacks
         ]
+        if exp['method'] == 'dwa':
+            eval_cmd += ['--alpha', str(exp.get('alpha')), '--beta', str(exp.get('beta'))]
+        if exp['method'] == 'dpf' and exp.get('freeze_tag'):
+            eval_cmd += ['--freeze_tag', str(exp['freeze_tag'])]
         if args.debug:
             eval_cmd.append('--debug')
         
         if run_command(eval_cmd, cwd=str(REPO_ROOT)):
             success_count += 1
         else:
-            print(f"❌ Failed to evaluate {exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}")
+            print(f"❌ Failed to evaluate [{exp['method']}] {cur_desc}")
     
     print(f"\n📊 Completed {success_count}/{len(experiments)} evaluations")
     
