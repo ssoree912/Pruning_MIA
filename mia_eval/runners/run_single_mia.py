@@ -130,16 +130,11 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
             '--shadow_seeds', *[str(s) for s in shadow_seeds]
         ]
         try:
-            mk_res = subprocess.run(mk_cmd, check=True, capture_output=True, text=True, cwd=str(REPO_ROOT))
-            if mk_res.stdout:
-                print(mk_res.stdout)
+            # Stream output live for visibility (dataset load can take time)
+            subprocess.run(mk_cmd, check=True, cwd=str(REPO_ROOT))
             print("✅ Fixed splits created.")
         except subprocess.CalledProcessError as e:
             print(f"❌ Failed to create data splits: {e}")
-            if e.stdout:
-                print("STDOUT:", e.stdout)
-            if e.stderr:
-                print("STDERR:", e.stderr)
             return False
 
     # Step 3: MIA 평가 실행 (설정 파일 없이 직접 파라미터 전달)
