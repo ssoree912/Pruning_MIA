@@ -31,7 +31,7 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
                   split_seed=7, forward_mode='standard', original=False,
                   attacks='samia,threshold,nn,nn_top3,nn_cls,lira', debug=False,
-                  freeze_tag=None):
+                  freeze_tag=None, auto_shadow=False, max_shadows=0):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
@@ -77,6 +77,37 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
         print(f"❌ Victim model not found: {victim_path}")
         return False
     print(f"✅ Found victim model: {victim_path}")
+
+    # Auto-discover shadow seeds if requested
+    if auto_shadow:
+        base = None
+        if prune_method == 'dwa':
+            base = REPO_ROOT / 'runs' / 'dwa' / prune_type / f'sparsity_{sparsity}' / dataset / f'alpha{alpha}_beta{beta}'
+        elif prune_method == 'static':
+            base = REPO_ROOT / 'runs' / 'static' / f'sparsity_{sparsity}' / dataset
+        elif prune_method == 'dpf':
+            tag = f'_{freeze_tag}' if freeze_tag else ''
+            base = REPO_ROOT / 'runs' / 'dpf' / f'sparsity_{sparsity}{tag}' / dataset
+        elif prune_method == 'dense':
+            base = REPO_ROOT / 'runs' / 'dense' / dataset
+        auto_list = []
+        if base and base.exists():
+            for sd in sorted(base.glob('seed*')):
+                cand = sd / 'best_model.pth'
+                if cand.exists():
+                    try:
+                        sid = int(sd.name.replace('seed',''))
+                        if sid != victim_seed:
+                            auto_list.append(sid)
+                    except Exception:
+                        continue
+        if max_shadows and max_shadows > 0:
+            auto_list = auto_list[:max_shadows]
+        if not auto_list:
+            print("❌ Auto shadow discovery found no usable seeds. Provide --shadow_seeds explicitly.")
+            return False
+        print(f"🔎 Auto-discovered {len(auto_list)} shadow seeds: {auto_list}")
+        shadow_seeds = auto_list
 
     # Shadow 모델들 확인
     for seed in shadow_seeds:
@@ -182,6 +213,8 @@ def main():
     parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
     parser.add_argument('--debug', action='store_true', help='Enable debug prints inside mia_modi.py')
     parser.add_argument('--freeze_tag', type=str, default=None, help='DPF only: choose sparsity_<s>_<tag> (e.g., freeze180 or nofreeze)')
+    parser.add_argument('--auto_shadow', action='store_true', help='Auto-discover all available shadow seeds under runs/')
+    parser.add_argument('--max_shadows', type=int, default=0, help='Cap number of shadows when using auto discovery (>0 to cap, 0=all)')
     
     args = parser.parse_args()
     
@@ -204,7 +237,9 @@ def main():
         original=args.original,
         attacks=args.attacks,
         debug=args.debug,
-        freeze_tag=args.freeze_tag
+        freeze_tag=args.freeze_tag,
+        auto_shadow=args.auto_shadow,
+        max_shadows=args.max_shadows
     )
     
     if success:

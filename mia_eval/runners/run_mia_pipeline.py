@@ -164,6 +164,10 @@ def main():
                        help='Skip MIA data preparation step')
     parser.add_argument('--list_missing_seed', type=int, default=None,
                        help='List experiment groups missing this seed (e.g., 50) and exit')
+    parser.add_argument('--victim_seed', type=int, default=None,
+                       help='Override victim seed per group (must exist in group)')
+    parser.add_argument('--max_shadows', type=int, default=0,
+                       help='Limit number of shadow seeds used (>0 to cap, 0=use all)')
     
     args = parser.parse_args()
     
@@ -247,9 +251,14 @@ def main():
             print(f"⏭️ Skipping - need at least 2 seeds, found {len(exp['seeds'])}")
             continue
             
-        # victim은 첫 번째 seed, shadow는 나머지
-        victim_seed = exp['seeds'][0]
-        shadow_seeds = exp['seeds'][1:]
+        # victim은 기본 첫 번째 seed, 필요 시 오버라이드 적용
+        if args.victim_seed is not None and args.victim_seed in exp['seeds']:
+            victim_seed = int(args.victim_seed)
+        else:
+            victim_seed = exp['seeds'][0]
+        shadow_seeds = [s for s in exp['seeds'] if s != victim_seed]
+        if args.max_shadows and args.max_shadows > 0:
+            shadow_seeds = shadow_seeds[:args.max_shadows]
         
         # Ensure pkl exists per victim seed
         split_path = Path(f"mia_data_splits/{exp['dataset']}_seed{split_seed}_victim{victim_seed}.pkl")
