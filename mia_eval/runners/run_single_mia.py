@@ -46,7 +46,7 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
     elif prune_method == 'dense':
         print("   Method: DENSE (no sparsity/alpha/beta)")
     print(f"   Victim seed: {victim_seed}")
-    print(f"   Shadow seeds: {shadow_seeds}")
+    print(f"   Shadow seeds (initial): {shadow_seeds}")
     
     # Step 1: 모델 경로 확인
     print("\n🔍 Step 1: Checking model paths...")
@@ -108,6 +108,8 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
             return False
         print(f"🔎 Auto-discovered {len(auto_list)} shadow seeds: {auto_list}")
         shadow_seeds = auto_list
+    # Log the final list that will actually be used downstream
+    print(f"   Using shadow seeds: {shadow_seeds}")
 
     # Shadow 모델들 확인
     for seed in shadow_seeds:
