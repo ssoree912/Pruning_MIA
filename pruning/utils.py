@@ -4,7 +4,7 @@ import torchvision
 import torchvision.transforms as transforms
 import numpy as np
 
-
+#threshold 갱신
 def get_weight_threshold(model, rate, args):
     importance_all = None
     for name, item in model.module.named_parameters():

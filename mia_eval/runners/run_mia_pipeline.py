@@ -86,8 +86,10 @@ def _scan_runs(runs_dir: str, dataset: str):
     st = runs / 'static'
     if st.exists():
         for sp in st.glob('sparsity_*'):
-            with suppress(Exception):
+            try:
                 spv = float(sp.name.split('_',1)[1])
+            except Exception:
+                continue
             for ds in sp.iterdir():
                 if not ds.is_dir() or ds.name != dataset:
                     continue
@@ -106,10 +108,12 @@ def _scan_runs(runs_dir: str, dataset: str):
     if dpf.exists():
         for sp in dpf.glob('sparsity_*'):
             rest = sp.name.split('sparsity_',1)[1]
-            with suppress(Exception):
-                parts = rest.split('_',1)
+            parts = rest.split('_',1)
+            try:
                 spv = float(parts[0])
-                tag = parts[1] if len(parts) > 1 else None
+            except Exception:
+                continue
+            tag = parts[1] if len(parts) > 1 else None
             for ds in sp.iterdir():
                 if not ds.is_dir() or ds.name != dataset:
                     continue

@@ -39,7 +39,7 @@ class MaskerDynamic(torch.autograd.Function):
 
 class MaskerScalingReactivationOnly(torch.autograd.Function):
     """
-    (1) Reactivation-only:
+    (1) Reactivation-only: 죽인걸 살리는 것 
         g' = g*m + alpha * g * (1-m) * f
       where f = ||w| - tau|
     """
@@ -60,7 +60,7 @@ class MaskerScalingReactivationOnly(torch.autograd.Function):
 
 class MaskerScalingKillActivePlainDead(torch.autograd.Function):
     """
-    (2) Kill-active & Plain-dead:
+    (2) Kill-active & Plain-dead: 살아있는걸 죽이는것만 mask = 1  
         g' = beta * g * m * |w| + g * (1-m)
       활성 가중치는 |w|로 스케일해 '죽이는' 방향으로, 비활성은 평범한 grad (재활성화 효과 없음)
     """

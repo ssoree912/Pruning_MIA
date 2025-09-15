@@ -36,7 +36,7 @@ def _iter_mask_convs(model):
 def _apply_dwa_to_modules(model, forward_type, alpha=None, beta=None, global_threshold=None):
     """모델 내부 MaskConv2d(DWA) 모듈들에 모드/하이퍼파라미터 주입"""
     net = model.module if hasattr(model, 'module') else model
-    for m in net.modules():
+    for m in net.modules(): #모듈 설정 주입
         if isinstance(m, nn.Conv2d) and hasattr(m, 'mask') and hasattr(m, 'forward_type'):
             m.forward_type = forward_type
             if (alpha is not None) and hasattr(m, 'alpha'):
@@ -133,14 +133,14 @@ def main():
 
     # model
     print(f"\n=> creating model '{arch_name}'")
-    if not cfg.pruning.enabled:
+    if not cfg.pruning.enabled: #model init
         model, image_size = models.__dict__[cfg.model.arch](
             data=cfg.data.dataset, num_layers=cfg.model.layers,
             width_mult=cfg.model.width_mult, depth_mult=cfg.model.depth_mult,
             model_mult=cfg.model.model_mult,
         )
     else:
-        pruner_key = (cfg.pruning.method or '').lower()
+        pruner_key = (cfg.pruning.method or '').lower() #프루닝 분기
         if pruner_key in ('dpf', 'dwa', 'static'):
             pruner_key = 'dcil'  # 동일 백엔드 사용
         try:
@@ -158,8 +158,8 @@ def main():
         )
     assert model is not None, "Unavailable model parameters!"
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=cfg.training.lr,
+    criterion = nn.CrossEntropyLoss() #분류 손실함수
+    optimizer = optim.SGD(model.parameters(), lr=cfg.training.lr, #옵티마이저
                           momentum=cfg.training.momentum,
                           weight_decay=cfg.training.weight_decay,
                           nesterov=cfg.training.nesterov)
@@ -306,7 +306,7 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
     - 마스크 갱신은 '공식 블록' 한 번만 수행
     - 프루닝 스텝마다: target_sparsity(pe), threshold, actual sparsity, reactivation 등을 W&B에 iteration 축으로 로깅
     """
-    global iterations
+    global iterations 
 
     batch_time = AverageMeter("Time", ":6.3f")
     data_time  = AverageMeter("Data", ":6.3f")
@@ -332,16 +332,16 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
 
         # ---- pruning schedule + frequency (공식) ----
         if cfg.pruning.enabled and (cfg.pruning.freeze_epoch < 0 or epoch < cfg.pruning.freeze_epoch):
-            # (선택) 분수 에폭 스케줄: 에폭 내에서도 조금씩 증가
+            # 점진적 sparsity 증가
             progress_ratio = min(1.0, (epoch + (i + 1) / num_batches) / max(1, cfg.pruning.target_epoch))
             target_sparsity = cfg.pruning.sparsity * (1 - (1 - progress_ratio) ** 3)
             target_sparsity_updates.append(target_sparsity)
 
             if iterations % cfg.pruning.prune_freq == 0:
-                # 갱신 전 마스크 백업
+                # 1. 기존 마스크 백업
                 old_masks = {id(m): m.mask.data.clone() for _, m in _iter_mask_convs(model)}
 
-                # threshold 계산 & 프루닝  (한 번만!)
+                # threshold 계산 & 프루닝  
                 threshold = pruning.get_weight_threshold(model, target_sparsity, argize(cfg))
                 if threshold is not None:
                     pruning.weight_prune(model, threshold, argize(cfg))
@@ -394,11 +394,11 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
             # 프루닝이 활성화된 상태에서만 DWA 모드 사용
             freeze_epoch = cfg.pruning.freeze_epoch
             if (last_threshold is None) or (epoch <= cfg.training.warmup_lr_epoch) or ((freeze_epoch >= 0) and (epoch >= freeze_epoch)):
-                forward_type = "DPF"
+                forward_type = "DPF" #oneshot
             else:
-                forward_type = cfg.pruning.dwa_mode or "DPF"
+                forward_type = cfg.pruning.dwa_mode or "DPF" #DWA 
         else:
-            forward_type = None
+            forward_type = None #dense
 
         # ---- forward ----
         if forward_type is None:                # dense
@@ -411,16 +411,16 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
             # DWA 3모드만 허용
             ALLOWED = {"reactivate_only", "kill_active_plain_dead", "kill_and_reactivate"}
             assert forward_type in ALLOWED, f"Unknown DWA mode: {forward_type}"
-            _apply_dwa_to_modules(
+            _apply_dwa_to_modules( #모듈 설정 후 
                 model, forward_type,
-                getattr(cfg.pruning, 'dwa_alpha', 1.0),
-                getattr(cfg.pruning, 'dwa_beta', 1.0),
+                getattr(cfg.pruning, 'dwa_alpha', 1.0), #default 1.0
+                getattr(cfg.pruning, 'dwa_beta', 1.0), #default 1.0
                 last_threshold
             )
             # Debug log for DWA activation (첫 번째 배치에서만)
             if i == 0:
                 print(f"[DWA ON] mode={forward_type}, alpha={cfg.pruning.dwa_alpha}, beta={cfg.pruning.dwa_beta}, τ≈{threshold_updates[-1] if threshold_updates else last_threshold}")
-            out = model(inp,"DPF")
+            out = model(inp,"DPF") #dwa 모드로 호출
 
         loss = criterion(out, tgt)
 

@@ -87,9 +87,24 @@ def main(args):
     print(f"Alpha: {args.alpha}, Beta: {args.beta}")
 
     base_path = str(REPO_ROOT / "runs")
-    result_dir = str(REPO_ROOT / 'mia_results' / f"{args.prune_method}_{args.prune_type}")
-    os.makedirs(result_dir, exist_ok=True)
-    result_file = f"{result_dir}/sparsity_{args.sparsity}_alpha{args.alpha}_beta{args.beta}_victim{args.victim_seed}.json"
+    # Result location: keep rich naming for DWA; simplify for others
+    if args.prune_method == 'dwa':
+        result_dir = str(REPO_ROOT / 'mia_results' / f"{args.prune_method}_{args.prune_type}")
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f"{result_dir}/sparsity_{args.sparsity}_alpha{args.alpha}_beta{args.beta}_victim{args.victim_seed}.json"
+    elif args.prune_method == 'dpf':
+        tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
+        result_dir = str(REPO_ROOT / 'mia_results' / f"dpf{tag}")
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
+    elif args.prune_method == 'static':
+        result_dir = str(REPO_ROOT / 'mia_results' / 'static')
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
+    else:  # dense
+        result_dir = str(REPO_ROOT / 'mia_results' / 'dense')
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}.json"
     os.makedirs(REPO_ROOT / 'log' / f'{args.dataset_name}_{args.model_name}', exist_ok=True)
 
     # Load data splits: prefer training-time data_prepare.pkl if available
@@ -179,23 +194,23 @@ def main(args):
 
         print(f"Loading model with forward_mode: {forward_mode}")
 
-        # Prefer DWA-aware loader when prune_method is DWA/static/DPF
+        # Prefer config-aware loading whenever a config.json is found (any method)
         loaded_config = None
-        if prune_method.lower() in {"dwa", "static", "dpf"}:
-            # Try to locate a config.json near the seed folder
-            candidate_cfgs = [
-                os.path.join(model_dir, 'config.json'),
-                os.path.join(os.path.dirname(model_dir), 'config.json'),
-                os.path.join(os.path.dirname(os.path.dirname(model_dir)), 'config.json')
-            ]
-            config_path = None
-            for c in candidate_cfgs:
-                if os.path.exists(c):
-                    config_path = c
-                    break
+        # Try to locate a config.json near the seed folder
+        candidate_cfgs = [
+            os.path.join(model_dir, 'config.json'),
+            os.path.join(os.path.dirname(model_dir), 'config.json'),
+            os.path.join(os.path.dirname(os.path.dirname(model_dir)), 'config.json')
+        ]
+        config_path = None
+        for c in candidate_cfgs:
+            if os.path.exists(c):
+                config_path = c
+                break
+        if config_path:
+            print(f"[Loader] Using config: {config_path}")
+        try:
             if config_path:
-                print(f"[Loader] Using config: {config_path}")
-            try:
                 loaded_model, loaded_config = load_dwa_model(model_path, config_path=config_path, device=device)
                 # Wrap into BaseModel interface for downstream predict_target_sensitivity
                 safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
@@ -225,11 +240,11 @@ def main(args):
                     print("[Loader] Enabled DP forward mode (from args)")
 
                 return wrapper, loaded_config
-            except Exception as e:
-                # Fail fast if config is present but cannot be honored
-                if config_path is not None:
-                    raise RuntimeError(f"Failed to load/apply config at {config_path}: {e}")
-                print(f"Warning: DWA-aware loading failed without config ({e}); falling back to generic model loader.")
+        except Exception as e:
+            # Fail fast if config is present but cannot be honored
+            if config_path is not None:
+                raise RuntimeError(f"Failed to load/apply config at {config_path}: {e}")
+            print(f"Warning: config-aware loading failed ({e}); falling back to generic model loader.")
 
         # Fallback: generic model + state_dict (may be partial)
         safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
@@ -240,6 +255,20 @@ def main(args):
             wrapper.load(model_path, verbose=True)
         except Exception as e:
             print(f"Warning: Fallback load failed ({e}); using randomly initialized weights.")
+        # Provide a minimal synthetic config so result JSON is not null
+        if loaded_config is None:
+            loaded_config = {
+                'pruning': {
+                    'enabled': prune_method.lower() != 'dense',
+                    'method': prune_method,
+                    'sparsity': sparsity,
+                    'dwa_alpha': alpha,
+                    'dwa_beta': beta,
+                    'dwa_mode': prune_type
+                },
+                'data': {'dataset': dataset_name},
+                'model': {'arch': safe_name, 'layers': 18},
+            }
         return wrapper, loaded_config
     
     print(f"Loading victim model (seed {args.victim_seed}) with forward_mode={args.forward_mode}...")
