@@ -312,8 +312,24 @@ def main():
                         config = data['config']
                         results = data['results']
                         
+                        # Build a readable mode label that encodes method for non-DWA
+                        method = (config.get('prune_method') or 'unknown').lower()
+                        prune_type = config.get('prune_type', 'na')
+                        freeze_tag = config.get('freeze_tag')
+                        if method == 'dwa':
+                            mode_label = prune_type
+                        elif method == 'dpf':
+                            tag = freeze_tag if freeze_tag else 'nofreeze'
+                            mode_label = f'dpf:{tag}'
+                        elif method == 'static':
+                            mode_label = 'static'
+                        elif method == 'dense':
+                            mode_label = 'dense'
+                        else:
+                            mode_label = f'{method}:{prune_type}'
+
                         summary = {
-                            'mode': config.get('prune_type', 'unknown'),
+                            'mode': mode_label,
                             'sparsity': config.get('sparsity', 0),
                             'victim_seed': config.get('victim_seed', 0),
                             'victim_acc': data.get('victim_test_acc', 0),
