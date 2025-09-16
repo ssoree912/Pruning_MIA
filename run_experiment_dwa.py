@@ -21,6 +21,15 @@ except ImportError:
 import models
 import pruning
 from utils.utils import *    # AverageMeter/ProgressMeter/accuracy/schedulers/SummaryLogger
+# Compatibility aliases: older code expects AverageMeter/ProgressMeter symbols
+try:
+    AverageMeter  # type: ignore[name-defined]
+except NameError:
+    from utils.utils import LightAverageMeter as AverageMeter  # fallback
+try:
+    ProgressMeter  # type: ignore[name-defined]
+except NameError:
+    from utils.utils import LightProgressMeter as ProgressMeter  # fallback
 from data import DataLoader
 
 from configs.config import parse_config_args, setup_reproducibility

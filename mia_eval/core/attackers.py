@@ -156,6 +156,18 @@ class MiaAttack:
             probs = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
         y_true = victim_labels.cpu().numpy()
         y_pred = (probs >= 0.5).astype(int)
+        # TPR@1%FPR helper
+        def _tpr_at_fpr(y_true, y_score, fpr_target=0.01):
+            y_true = np.asarray(y_true)
+            y_score = np.asarray(y_score)
+            non_member = y_score[y_true == 0]
+            if non_member.size == 0:
+                return 0.0
+            tau = np.quantile(non_member, 1.0 - fpr_target)
+            member = y_score[y_true == 1]
+            if member.size == 0:
+                return 0.0
+            return float((member >= tau).mean())
         # Advantage = TPR - FPR
         tp = np.sum((y_pred == 1) & (y_true == 1))
         fn = np.sum((y_pred == 0) & (y_true == 1))
@@ -170,7 +182,8 @@ class MiaAttack:
             'recall': float(recall_score(y_true, y_pred, zero_division=0)),
             'f1': float(f1_score(y_true, y_pred, zero_division=0)),
             'auc': float(roc_auc_score(y_true, probs)) if len(np.unique(y_true)) > 1 else 0.0,
-            'advantage': float(tpr - fpr)
+            'advantage': float(tpr - fpr),
+            'tpr_at_1fpr': _tpr_at_fpr(y_true, probs, 0.01),
         }
         return result
 
@@ -218,6 +231,18 @@ class MiaAttack:
         y_true = np.concatenate([np.ones_like(v_train_lr), np.zeros_like(v_test_lr)])
         y_score = np.concatenate([v_train_lr, v_test_lr])
         y_pred = (y_score > 1.0).astype(int)  # LR>1 ⇒ member
+        # TPR@1%FPR helper
+        def _tpr_at_fpr(y_true, y_score, fpr_target=0.01):
+            y_true = np.asarray(y_true)
+            y_score = np.asarray(y_score)
+            non_member = y_score[y_true == 0]
+            if non_member.size == 0:
+                return 0.0
+            tau = np.quantile(non_member, 1.0 - fpr_target)
+            member = y_score[y_true == 1]
+            if member.size == 0:
+                return 0.0
+            return float((member >= tau).mean())
 
         # Metrics
         tp = np.sum((y_pred == 1) & (y_true == 1))
@@ -236,6 +261,7 @@ class MiaAttack:
             'member_std': std_in,
             'nonmember_mean': mu_out,
             'nonmember_std': std_out,
+            'tpr_at_1fpr': _tpr_at_fpr(y_true, y_score, 0.01),
         }
 
     def threshold_attack(self):

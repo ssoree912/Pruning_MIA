@@ -449,7 +449,7 @@ def main(args):
         print(f"Modified entropy attack accuracy: {mentr:.3f}")
         print(f"Top1 confidence attack accuracy: {top1_conf:.3f}")
         
-        # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold
+        # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold, and TPR@1%FPR
         try:
             from sklearn.metrics import roc_auc_score, balanced_accuracy_score
             import numpy as _np
@@ -470,14 +470,23 @@ def main(args):
                     best_adv, best_thr = adv, thr
             y_pred = (y_score >= best_thr).astype(int)
             bal_acc = float(balanced_accuracy_score(y_true, y_pred))
+            # TPR@1%FPR via 99th percentile of non-member scores
+            non_member = y_score[y_true == 0]
+            tpr_at_1fpr = 0.0
+            if non_member.size > 0:
+                tau = _np.quantile(non_member, 0.99)
+                member = y_score[y_true == 1]
+                if member.size > 0:
+                    tpr_at_1fpr = float((member >= tau).mean())
             results['confidence_extended'] = {
                 'auroc': auroc,
                 'balanced_accuracy': bal_acc,
                 'advantage': float(best_adv),
-                'threshold': float(best_thr)
+                'threshold': float(best_thr),
+                'tpr_at_1fpr': tpr_at_1fpr
             }
             results['threshold_strategy'] = 'youden'
-            print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}")
+            print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}, TPR@1%FPR={tpr_at_1fpr:.4f}")
         except Exception as e:
             print(f"Could not compute extended metrics inline: {e}")
     
