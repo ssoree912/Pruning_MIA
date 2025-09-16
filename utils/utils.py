@@ -66,14 +66,19 @@ from os.path import isfile
 
 class TrainAverageMeter(object):
     def __init__(self, name, fmt=':f'):
-        self.name, self.fmt = name, fmt
+        # tolerate formats passed as ':6.3f' by stripping leading ':'
+        self.name = name
+        self.fmt = fmt.lstrip(':') if isinstance(fmt, str) else 'f'
         self.reset()
     def reset(self):
         self.val = self.avg = self.sum = self.count = 0
     def update(self, val, n=1):
         self.val = val; self.sum += val * n; self.count += n; self.avg = self.sum / self.count
     def __str__(self):
-        return f"{self.name} {self.val:{self.fmt}} ({self.avg:{self.fmt}})"
+        try:
+            return f"{self.name} {self.val:{self.fmt}} ({self.avg:{self.fmt}})"
+        except Exception:
+            return f"{self.name} {self.val} ({self.avg})"
 
 
 class TrainProgressMeter(object):
@@ -238,14 +243,19 @@ import pathlib
 
 class LightAverageMeter(object):
     def __init__(self, name, fmt=':f'):
-        self.name, self.fmt = name, fmt
+        # tolerate formats passed as ':6.3f' by stripping leading ':'
+        self.name = name
+        self.fmt = fmt.lstrip(':') if isinstance(fmt, str) else 'f'
         self.reset()
     def reset(self):
         self.val = self.avg = self.sum = self.count = 0
     def update(self, val, n=1):
         self.val = val; self.sum += val * n; self.count += n; self.avg = self.sum / self.count
     def __str__(self):
-        return f"{self.name} {self.val:{self.fmt}} ({self.avg:{self.fmt}})"
+        try:
+            return f"{self.name} {self.val:{self.fmt}} ({self.avg:{self.fmt}})"
+        except Exception:
+            return f"{self.name} {self.val} ({self.avg})"
 
 class LightProgressMeter(object):
     def __init__(self, num_batches, *meters, prefix=""):
