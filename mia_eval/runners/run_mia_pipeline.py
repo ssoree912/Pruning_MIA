@@ -158,6 +158,7 @@ def main():
     parser.add_argument('--debug', action='store_true', help='Enable debug prints inside per-run MIA evaluation')
     parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','dwa_adaptive','scaling','dpf'], help='Model forward mode to pass through')
     parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
+    parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5', help='Comma-separated FPR percentages for TPR@FPR (e.g., 0.1,1,5)')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--datapath', type=str, default='~/Datasets', help='Dataset path')
     parser.add_argument('--skip_data_prep', action='store_true', 
@@ -289,7 +290,8 @@ def main():
             '--device', args.device.replace('cuda:', ''),
             '--split_seed', str(split_seed),
             '--forward_mode', args.forward_mode,
-            '--attacks', args.attacks
+            '--attacks', args.attacks,
+            '--tpr_fprs', args.tpr_fprs
         ]
         if exp['method'] == 'dwa':
             eval_cmd += ['--alpha', str(exp.get('alpha')), '--beta', str(exp.get('beta'))]

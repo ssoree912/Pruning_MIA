@@ -31,7 +31,7 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
                   victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], device=0,
                   split_seed=7, forward_mode='standard', original=False,
                   attacks='samia,threshold,nn,nn_top3,nn_cls,lira', debug=False,
-                  freeze_tag=None, auto_shadow=False, max_shadows=0):
+                  freeze_tag=None, auto_shadow=False, max_shadows=0, tpr_fprs='0.1,1,5'):
     """같은 sparsity, 다른 seed 모델들에 대한 MIA 평가 실행"""
     
     print(f"🚀 Running MIA evaluation for dataset={dataset} (arch=auto from config)")
@@ -156,6 +156,8 @@ def run_single_mia(dataset='cifar10', sparsity='0.9', alpha='5.0', beta='5.0',
         '--forward_mode', forward_mode,
         '--attacks', attacks
     ]
+    if tpr_fprs:
+        cmd += ['--tpr_fprs', str(tpr_fprs)]
     if prune_method == 'dwa':
         cmd += ['--alpha', str(alpha), '--beta', str(beta)]
     if freeze_tag and prune_method == 'dpf':
@@ -212,6 +214,7 @@ def main():
     parser.add_argument('--freeze_tag', type=str, default=None, help='DPF only: choose sparsity_<s>_<tag> (e.g., freeze180 or nofreeze)')
     parser.add_argument('--auto_shadow', action='store_true', help='Auto-discover all available shadow seeds under runs/')
     parser.add_argument('--max_shadows', type=int, default=0, help='Cap number of shadows when using auto discovery (>0 to cap, 0=all)')
+    parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5', help='Comma-separated FPR percentages for TPR@FPR (e.g., 0.1,1,5)')
     
     args = parser.parse_args()
     
@@ -236,7 +239,8 @@ def main():
         debug=args.debug,
         freeze_tag=args.freeze_tag,
         auto_shadow=args.auto_shadow,
-        max_shadows=args.max_shadows
+        max_shadows=args.max_shadows,
+        tpr_fprs=args.tpr_fprs
     )
     
     if success:
