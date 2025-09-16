@@ -194,77 +194,79 @@ def main():
                 for sp in args.sparsities:
                     for cur_seed in seed_list:
                         exp_name = f"dwa_{mode}"
-                    if alpha != 1.0: exp_name += f"_alpha{alpha}"
-                    if beta  != 1.0: exp_name += f"_beta{beta}"
-                    exp_name += f"_sparsity_{sp}_{args.dataset}_{args.arch}_seed{cur_seed}"
+                        if alpha != 1.0:
+                            exp_name += f"_alpha{alpha}"
+                        if beta  != 1.0:
+                            exp_name += f"_beta{beta}"
+                        exp_name += f"_sparsity_{sp}_{args.dataset}_{args.arch}_seed{cur_seed}"
 
-                    print("\n" + "="*50)
-                    print(f"Running experiment: {exp_name}")
-                    print(f"DWA Mode: {mode}, Alpha: {alpha}, Beta: {beta}, Sparsity: {sp}")
-                    print("="*50)
+                        print("\n" + "="*50)
+                        print(f"Running experiment: {exp_name}")
+                        print(f"DWA Mode: {mode}, Alpha: {alpha}, Beta: {beta}, Sparsity: {sp}")
+                        print("="*50)
 
-                    save_path = Path('./runs/dwa')/mode/f'sparsity_{sp}'/args.dataset
-                    if alpha != 1.0 or beta != 1.0:
-                        save_path = save_path / f'alpha{alpha}_beta{beta}'
-                    # 항상 seed 하위 폴더에 저장
-                    save_path = save_path / f'seed{cur_seed}'
-                    save_path.mkdir(parents=True, exist_ok=True)
+                        save_path = Path('./runs/dwa')/mode/f'sparsity_{sp}'/args.dataset
+                        if alpha != 1.0 or beta != 1.0:
+                            save_path = save_path / f'alpha{alpha}_beta{beta}'
+                        # 항상 seed 하위 폴더에 저장
+                        save_path = save_path / f'seed{cur_seed}'
+                        save_path.mkdir(parents=True, exist_ok=True)
 
-                    if args.skip_existing and ((save_path/'best_model.pth').exists() or (save_path/'experiment_summary.json').exists()):
-                        print(f"Results already exist for {exp_name}, skipping...")
-                        continue
+                        if args.skip_existing and ((save_path/'best_model.pth').exists() or (save_path/'experiment_summary.json').exists()):
+                            print(f"Results already exist for {exp_name}, skipping...")
+                            continue
 
-                    cfg_kwargs = {
-                        'name': exp_name,
-                        'save-dir': str(save_path),
+                        cfg_kwargs = {
+                            'name': exp_name,
+                            'save-dir': str(save_path),
 
-                        'dataset': args.dataset,
-                        'arch': args.arch,
-                        'epochs': args.epochs,
+                            'dataset': args.dataset,
+                            'arch': args.arch,
+                            'epochs': args.epochs,
 
-                        # ✅ DWA는 dcil 백엔드 사용 (dpf 말고 dcil)
-                        'prune': True,
-                        'prune-method': 'dcil',
-                        'sparsity': sp,
+                            # ✅ DWA는 dcil 백엔드 사용 (dpf 말고 dcil)
+                            'prune': True,
+                            'prune-method': 'dcil',
+                            'sparsity': sp,
 
-                        # ✅ 스케줄/빈도 전달 (오케스트레이터 인자에서 받아와야 함)
-                        'target-epoch': args.target_epoch,
-                        'prune-freq': args.prune_freq,
-                        'freeze-epoch': getattr(args, 'freeze_epoch', -1),
+                            # ✅ 스케줄/빈도 전달 (오케스트레이터 인자에서 받아와야 함)
+                            'target-epoch': args.target_epoch,
+                            'prune-freq': args.prune_freq,
+                            'freeze-epoch': getattr(args, 'freeze_epoch', -1),
 
-                        # DWA
-                        'dwa-mode': mode,
-                        'dwa-alpha': alpha,
-                        'dwa-beta': beta,
-                        'dwa-threshold-percentile': args.dwa_threshold_percentile,
+                            # DWA
+                            'dwa-mode': mode,
+                            'dwa-alpha': alpha,
+                            'dwa-beta': beta,
+                            'dwa-threshold-percentile': args.dwa_threshold_percentile,
 
-                        # 새로 추가: seed와 gpu
-                        'seed': cur_seed,
-                        'gpu': args.gpu,
-                    }
-                    if args.wandb:
-                        wandb_tags = args.wandb_tags + ['dwa', mode, args.dataset, args.arch]
-                        wandb_tags.append(f'seed{cur_seed}')
-                        cfg_kwargs.update({
-                            'wandb': True,
-                            'wandb_project': args.wandb_project,  # 하이픈 접근 버그 수정
-                            'wandb_entity': args.wandb_entity,
-                            'wandb_name': exp_name,
-                            'wandb_tags': wandb_tags,
-                        })
+                            # 새로 추가: seed와 gpu
+                            'seed': cur_seed,
+                            'gpu': args.gpu,
+                        }
+                        if args.wandb:
+                            wandb_tags = args.wandb_tags + ['dwa', mode, args.dataset, args.arch]
+                            wandb_tags.append(f'seed{cur_seed}')
+                            cfg_kwargs.update({
+                                'wandb': True,
+                                'wandb_project': args.wandb_project,  # 하이픈 접근 버그 수정
+                                'wandb_entity': args.wandb_entity,
+                                'wandb_name': exp_name,
+                                'wandb_tags': wandb_tags,
+                            })
 
-                    if args.dry_run:
-                        # Print the would-be command assembled in run_training
-                        print(f"[DRY RUN] Would run: {RUN_SCRIPT} with args {cfg_kwargs}")
-                        ok, out = True, "dry-run"
-                    else:
-                        ok, out = run_training(cfg_kwargs)
-                    if not ok:
-                        print(f"Training failed for {exp_name}: {out}")
-                        failed.append((exp_name, 'training', out))
-                        continue
+                        if args.dry_run:
+                            # Print the would-be command assembled in run_training
+                            print(f"[DRY RUN] Would run: {RUN_SCRIPT} with args {cfg_kwargs}")
+                            ok, out = True, "dry-run"
+                        else:
+                            ok, out = run_training(cfg_kwargs)
+                        if not ok:
+                            print(f"Training failed for {exp_name}: {out}")
+                            failed.append((exp_name, 'training', out))
+                            continue
 
-                    print(f"Experiment {exp_name} completed")
+                        print(f"Experiment {exp_name} completed")
 
     print("\n" + "="*50)
     print("Creating training summary...")
