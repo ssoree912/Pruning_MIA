@@ -258,6 +258,11 @@ class LightProgressMeter(object):
         num_digits = len(str(num_batches // 1)); fmt = '{:' + str(num_digits) + 'd}'
         return '[' + fmt + '/' + fmt.format(num_batches) + ']'
 
+# --- Backward-compatibility aliases ---
+# Older runners expect AverageMeter/ProgressMeter symbols
+AverageMeter = LightAverageMeter
+ProgressMeter = LightProgressMeter
+
 class SummaryLogger(SummaryWriter):
     def __init__(self, path):
         super().__init__()
@@ -300,4 +305,6 @@ __all__ = [
     'save_ckpt', 'save_summary', 'save_eval',
     # light utils
     'LightAverageMeter', 'LightProgressMeter', 'SummaryLogger', 'save_model_simple',
+    # compat aliases
+    'AverageMeter', 'ProgressMeter',
 ]
