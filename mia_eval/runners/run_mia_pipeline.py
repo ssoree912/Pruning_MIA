@@ -368,6 +368,26 @@ def main():
                             summary['confidence_extended_balacc'] = ext.get('balanced_accuracy')
                             summary['confidence_extended_adv'] = ext.get('advantage')
                             summary['confidence_extended_thr'] = ext.get('threshold')
+                            # TPR@FPRs (multi)
+                            tprs = ext.get('tpr_at_fprs') or {}
+                            if isinstance(tprs, dict):
+                                for fk, fv in tprs.items():
+                                    key = f"tpr_at_fpr_{str(fk).replace('.', '_')}"
+                                    summary[key] = fv
+                            # Back-compat single 1%% key if present
+                            if 'tpr_at_1fpr' in ext:
+                                summary['tpr_at_fpr_1'] = ext.get('tpr_at_1fpr')
+                        
+                        # Shadow count (after possible filtering)
+                        exp_info = data.get('experiment_info') or {}
+                        sc_map = exp_info.get('shadow_configs') or {}
+                        if isinstance(sc_map, dict):
+                            summary['shadow_count'] = len(sc_map)
+                        else:
+                            # fallback to CLI config shadow list length
+                            ss = config.get('shadow_seeds')
+                            if isinstance(ss, list):
+                                summary['shadow_count'] = len(ss)
                         # Classifier-based
                         for name in ['samia','nn','nn_top3','nn_cls','lira']:
                             pull_attack(summary, name)
@@ -387,11 +407,12 @@ def main():
                         print(f"{'':20s} Conf: {result['confidence']:5.3f}")
                     print()
 
-                # Write CSV summary
+                # Write CSV summary (with dynamic TPR columns)
                 import csv
                 summary_file = result_dir / 'summary.csv'
-                fieldnames = [
-                    'mode', 'sparsity', 'victim_seed', 'victim_acc',
+                # Base headers
+                base_fields = [
+                    'mode', 'sparsity', 'victim_seed', 'victim_acc', 'shadow_count',
                     'confidence', 'entropy', 'modified_entropy', 'top1_conf',
                     'confidence_extended_auroc', 'confidence_extended_balacc', 'confidence_extended_adv', 'confidence_extended_thr',
                     'samia_acc','samia_auc','samia_balacc','samia_adv',
@@ -400,6 +421,13 @@ def main():
                     'nn_cls_acc','nn_cls_auc','nn_cls_balacc','nn_cls_adv',
                     'lira_acc','lira_auc','lira_balacc','lira_adv'
                 ]
+                # Dynamic TPR@FPR keys discovered
+                dyn_tpr_keys = set()
+                for r in all_results:
+                    for k in r.keys():
+                        if k.startswith('tpr_at_fpr_'):
+                            dyn_tpr_keys.add(k)
+                fieldnames = base_fields + sorted(dyn_tpr_keys, key=lambda x: float(x.rsplit('_',1)[-1].replace('_','.')) if x.rsplit('_',1)[-1].replace('_','.').replace('.','',1).isdigit() else x)
                 with open(summary_file, 'w', newline='') as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()

@@ -72,6 +72,8 @@ parser.add_argument('--threshold_strategy', default='youden', choices=['youden',
 parser.add_argument('--forward_mode', default='standard', choices=['standard', 'dwa_adaptive', 'scaling', 'dpf'], 
                    help="Forward pass mode for model inference")
 parser.add_argument('--debug', action='store_true', help='Print detailed MIA debug info (splits and basic stats)')
+parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5',
+                    help='Comma-separated FPR percentages to report TPR@FPR (e.g., "0.1,1,5")')
 
 
 def main(args):
@@ -359,6 +361,29 @@ def main(args):
         _basic_stats(victim_model, victim_train_loader, 'victim members (train)')
         _basic_stats(victim_model, victim_test_loader,  'victim non-members (test)')
 
+    # Helper: extract minimal training meta from saved config.json
+    def _extract_training_meta(cfg_dict):
+        if not isinstance(cfg_dict, dict):
+            return None
+        pr = (cfg_dict.get('pruning') or {})
+        enabled = bool(pr.get('enabled', True))
+        method = (pr.get('method') or ('dense' if not enabled else '')).lower()
+        sparsity = pr.get('sparsity', None)
+        seed = cfg_dict.get('seed')
+        if seed is None:
+            seed = (cfg_dict.get('system') or {}).get('seed')
+        if seed is None:
+            seed = (cfg_dict.get('training') or {}).get('seed')
+        try:
+            seed = int(seed) if seed is not None else None
+        except Exception:
+            pass
+        return {'enabled': enabled, 'method': method, 'sparsity': sparsity, 'seed': seed}
+
+    victim_meta = _extract_training_meta(victim_cfg)
+    if args.debug and victim_meta:
+        print(f"[DEBUG] Victim meta: enabled={victim_meta['enabled']} method={victim_meta['method']} sparsity={victim_meta['sparsity']} seed={victim_meta['seed']}")
+
     # Load shadow models with fixed data splits
     shadow_model_list = []
     shadow_train_loader_list = []
@@ -378,6 +403,40 @@ def main(args):
             device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
         )
         shadow_cfg_map[str(shadow_seed)] = s_cfg
+
+        # Validate shadow config vs victim to guard against misfoldered runs
+        s_meta = _extract_training_meta(s_cfg)
+        problems = []
+        if s_meta is None:
+            problems.append('no_config')
+        else:
+            # Folder seed vs config seed
+            if s_meta.get('seed') is not None and s_meta['seed'] != shadow_seed:
+                problems.append(f"seed_mismatch(cfg={s_meta['seed']} vs folder={shadow_seed})")
+            if victim_meta is not None:
+                # Dense vs pruned must match
+                if s_meta['enabled'] != victim_meta['enabled']:
+                    problems.append(f"enabled_mismatch(shadow={s_meta['enabled']} vs victim={victim_meta['enabled']})")
+                # Sparsity must match when pruned
+                if s_meta['enabled']:
+                    try:
+                        vs = float(victim_meta.get('sparsity', args.sparsity))
+                        ss = float(s_meta.get('sparsity', -1))
+                        if abs(vs - ss) > 1e-6:
+                            problems.append(f"sparsity_mismatch(shadow={ss} vs victim={vs})")
+                    except Exception:
+                        pass
+                # Method check (be lenient with 'dcil' backend)
+                vm = (victim_meta.get('method') or '').lower()
+                sm = (s_meta.get('method') or '').lower()
+                def _norm(m):
+                    return 'dense' if m in ('', None) else ('pruned' if m in ('dcil','dwa','static','dpf') else m)
+                if _norm(vm) != _norm(sm):
+                    problems.append(f"method_mismatch(shadow={sm} vs victim={vm})")
+
+        if problems:
+            print(f"[WARN] Skipping shadow seed {shadow_seed}: {'; '.join(problems)}")
+            continue
         # Auto-tune type_value for shadow
         acc_scores = {tv: _sample_accuracy(shadow_model, victim_train_loader, tv=tv, max_batches=2) for tv in candidate_tvs}
         best_tv = max(acc_scores, key=acc_scores.get)
@@ -449,7 +508,8 @@ def main(args):
         print(f"Modified entropy attack accuracy: {mentr:.3f}")
         print(f"Top1 confidence attack accuracy: {top1_conf:.3f}")
         
-        # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold, and TPR@1%FPR
+        # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold,
+        # and TPR@X%FPR for requested X values
         try:
             from sklearn.metrics import roc_auc_score, balanced_accuracy_score
             import numpy as _np
@@ -470,23 +530,34 @@ def main(args):
                     best_adv, best_thr = adv, thr
             y_pred = (y_score >= best_thr).astype(int)
             bal_acc = float(balanced_accuracy_score(y_true, y_pred))
-            # TPR@1%FPR via 99th percentile of non-member scores
+            # TPR@X%FPR via quantiles of non-member scores
             non_member = y_score[y_true == 0]
-            tpr_at_1fpr = 0.0
-            if non_member.size > 0:
-                tau = _np.quantile(non_member, 0.99)
-                member = y_score[y_true == 1]
-                if member.size > 0:
-                    tpr_at_1fpr = float((member >= tau).mean())
+            member = y_score[y_true == 1]
+            tpr_levels = {}
+            try:
+                want_fprs = [float(s.strip()) for s in (args.tpr_fprs or '').split(',') if s.strip()]
+            except Exception:
+                want_fprs = [1.0]
+            if non_member.size > 0 and member.size > 0:
+                for fpr_pct in want_fprs:
+                    q = max(0.0, min(1.0, 1.0 - (fpr_pct/100.0)))
+                    tau = _np.quantile(non_member, q)
+                    tpr_val = float((member >= tau).mean())
+                    key = f"{fpr_pct:g}"
+                    tpr_levels[key] = tpr_val
+            # Back-compat single 1%% metric if requested
+            tpr_at_1fpr = tpr_levels.get('1', None)
             results['confidence_extended'] = {
                 'auroc': auroc,
                 'balanced_accuracy': bal_acc,
                 'advantage': float(best_adv),
                 'threshold': float(best_thr),
-                'tpr_at_1fpr': tpr_at_1fpr
+                'tpr_at_fprs': tpr_levels,
+                **({'tpr_at_1fpr': tpr_at_1fpr} if tpr_at_1fpr is not None else {})
             }
             results['threshold_strategy'] = 'youden'
-            print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}, TPR@1%FPR={tpr_at_1fpr:.4f}")
+            tprs_msg = ", ".join([f"TPR@{k}%FPR={v:.4f}" for k, v in sorted(tpr_levels.items(), key=lambda x: float(x[0]))]) if tpr_levels else ""
+            print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}{(' | ' + tprs_msg) if tprs_msg else ''}")
         except Exception as e:
             print(f"Could not compute extended metrics inline: {e}")
     

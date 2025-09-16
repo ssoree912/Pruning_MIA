@@ -305,8 +305,32 @@ def _run_train(cfg, model, train_loader, val_loader, criterion, optimizer, sched
     print("====> validation time: {}h {}m {:.2f}s".format(int(validate_time//3600), int((validate_time%3600)//60), validate_time%60))
     print("====> total training time: {}h {}m {:.2f}s".format(int(total_train_time//3600), int((total_train_time%3600)//60), total_train_time%60))
 
-    # Skip saving validation_history.json and experiment_summary.json (will be aggregated later)
-    
+    # Save validation_history.json and experiment_summary.json for aggregation
+    try:
+        import json as _json
+        (experiment_dir / 'validation_history.json').write_text(
+            _json.dumps(validation_history, indent=2)
+        )
+        last_val = validation_history[-1] if validation_history else {}
+        summary = {
+            'best_metrics': {
+                'best_acc1': best_acc1,
+                'best_loss': best_loss,
+            },
+            'final_metrics': {
+                'acc1': last_val.get('acc1'),
+                'acc5': last_val.get('acc5'),
+                'loss': last_val.get('loss'),
+            },
+            'total_duration': (train_time + validate_time),
+            'epochs': getattr(cfg.training, 'epochs', None),
+        }
+        (experiment_dir / 'experiment_summary.json').write_text(
+            _json.dumps(summary, indent=2)
+        )
+    except Exception as e:
+        log_message(f"⚠️ Failed to write history/summary JSON: {e}")
+
     return best_acc1
 
 
