@@ -275,12 +275,14 @@ ProgressMeter = LightProgressMeter
 
 class SummaryLogger(SummaryWriter):
     def __init__(self, path):
-        super().__init__()
+        # Avoid creating default runs/Sep* folders by specifying log_dir explicitly
         file_path = "./logs/" + path
-        self.logger = SummaryWriter(file_path)
+        super().__init__(log_dir=file_path)
+        # keep compatibility with previous usage via self.logger
+        self.logger = self
     def add_scalar_group(self, main_tag, tag_scalar_dict, global_step):
         for sub_tag, scalar in tag_scalar_dict.items():
-            self.logger.add_scalar(main_tag + f"/{sub_tag}", scalar, global_step)
+            self.add_scalar(main_tag + f"/{sub_tag}", scalar, global_step)
     def add_max_acc(self, main_tag, tag_scalar_dict):
         for sub_tag, scalar in tag_scalar_dict.items():
             var = main_tag.split("/")[0] + f"_{sub_tag}"
@@ -288,7 +290,7 @@ class SummaryLogger(SummaryWriter):
                 setattr(self, var, -1)
             cur = getattr(self, var)
             if cur <= scalar:
-                self.logger.add_scalar(main_tag + f"/{sub_tag}", scalar, 0)
+                self.add_scalar(main_tag + f"/{sub_tag}", scalar, 0)
                 setattr(self, var, scalar)
 
 def save_model_simple(arch_name, dataset, state, ckpt_name="ckpt_best.pth"):
