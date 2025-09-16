@@ -467,6 +467,38 @@ def train_one_epoch(cfg, train_loader, epoch, model, criterion, optimizer, logge
     }
 
     print("====> Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}".format(top1=top1, top5=top5))
+
+    # Persist validation history and experiment summary
+    try:
+        import json as _json
+        # Write validation history per epoch
+        (experiment_dir / 'validation_history.json').write_text(
+            _json.dumps(validation_history, indent=2)
+        )
+        # Build concise summary
+        last_val = validation_history[-1] if validation_history else {}
+        summary = {
+            'best_metrics': {
+                'best_acc1': best_acc1,
+                'best_loss': best_loss,
+            },
+            'final_metrics': {
+                'acc1': last_val.get('acc1'),
+                'acc5': last_val.get('acc5'),
+                'loss': last_val.get('loss'),
+            },
+            'total_duration': (train_time + validate_time),
+            'epochs': getattr(cfg.training, 'epochs', None),
+        }
+        (experiment_dir / 'experiment_summary.json').write_text(
+            _json.dumps(summary, indent=2)
+        )
+    except Exception as e:
+        try:
+            log_message(f"⚠️ Failed to write history/summary JSON: {e}")
+        except Exception:
+            print(f"⚠️ Failed to write history/summary JSON: {e}")
+
     return metrics, last_threshold
 
 
