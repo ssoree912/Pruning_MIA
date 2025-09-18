@@ -49,7 +49,7 @@ def _ensure_split_pkl(victim: int, shadows: list, args) -> bool:
         return False
 
 
-def run_one(victim: int, shadows: list, args) -> bool:
+def run_one(victim: int, shadows: list, args, sparsity: float, prune_type: str) -> bool:
     # Ensure fixed split exists for this victim
     if not _ensure_split_pkl(victim, shadows, args):
         return False
@@ -57,13 +57,13 @@ def run_one(victim: int, shadows: list, args) -> bool:
         sys.executable, str(MIA_CORE),
         '--device', str(args.device),
         '--dataset_name', args.dataset,
-        '--sparsity', str(args.sparsity),
+        '--sparsity', str(sparsity),
         '--victim_seed', str(victim),
         '--seed', str(args.split_seed),
         '--alpha', str(args.alpha),
         '--beta', str(args.beta),
         '--prune_method', args.prune_method,
-        '--prune_type', args.prune_type,
+        '--prune_type', prune_type,
         '--forward_mode', args.forward_mode,
         '--attacks', args.attacks,
         '--tpr_fprs', args.tpr_fprs,
@@ -75,7 +75,7 @@ def run_one(victim: int, shadows: list, args) -> bool:
     if args.debug:
         cmd.append('--debug')
 
-    print(f"\n▶️ Victim {victim} | Shadows {shadows}")
+    print(f"\n▶️ Victim {victim} | Shadows {shadows} | sparsity={sparsity} | mode={prune_type}")
     print('   $ ' + ' '.join(cmd))
     try:
         res = subprocess.run(cmd, check=True)
@@ -90,8 +90,10 @@ def main():
     ap.add_argument('--device', type=int, default=0)
     ap.add_argument('--dataset', type=str, default='cifar10')
     ap.add_argument('--prune_method', type=str, default='dwa', choices=['dwa','static','dpf','dense'])
-    ap.add_argument('--prune_type', type=str, default='kill_active_plain_dead')
-    ap.add_argument('--sparsity', type=float, default=0.9)
+    ap.add_argument('--prune_type', type=str, default='kill_active_plain_dead', help='Single mode (DWA only) if --modes not given')
+    ap.add_argument('--modes', type=str, nargs='+', default=None, help='Multiple modes for DWA (e.g., reactivate_only kill_active_plain_dead kill_and_reactivate)')
+    ap.add_argument('--sparsity', type=float, default=None, help='Single sparsity if --sparsities not given')
+    ap.add_argument('--sparsities', type=float, nargs='+', default=None, help='Multiple sparsities to iterate')
     ap.add_argument('--alpha', type=float, default=5.0)
     ap.add_argument('--beta', type=float, default=5.0)
     ap.add_argument('--seeds', type=int, nargs='+', required=True, help='Seed set to rotate as victim')
@@ -104,16 +106,24 @@ def main():
     args = ap.parse_args()
 
     seeds = sorted(set(args.seeds))
+    # Build lists
+    sparsity_list = args.sparsities if args.sparsities else ([args.sparsity] if args.sparsity is not None else [])
+    if not sparsity_list:
+        sparsity_list = [0.0] if args.prune_method == 'dense' else [0.9]
+    mode_list = args.modes if (args.modes and args.prune_method == 'dwa') else [args.prune_type]
     ok, fail = 0, 0
-    for v in seeds:
-        shadows = [s for s in seeds if s != v]
-        if not shadows:
-            print(f"⚠️ Skip victim {v}: need at least 1 shadow seed")
-            continue
-        if run_one(v, shadows, args):
-            ok += 1
-        else:
-            fail += 1
+    for sp in sparsity_list:
+        for mode in mode_list:
+            print(f"\n==== Running MIA: method={args.prune_method} mode={mode} sparsity={sp} seeds={seeds} ====")
+            for v in seeds:
+                shadows = [s for s in seeds if s != v]
+                if not shadows:
+                    print(f"⚠️ Skip victim {v}: need at least 1 shadow seed")
+                    continue
+                if run_one(v, shadows, args, sparsity=sp, prune_type=mode):
+                    ok += 1
+                else:
+                    fail += 1
 
     print(f"\nDone. Victims OK={ok}, Fail={fail}")
 
