@@ -4,10 +4,15 @@ import torchvision
 import torchvision.transforms as transforms
 import numpy as np
 
+def _unwrap(model):
+    """Return underlying module if DataParallel/Distributed, else the model itself."""
+    return getattr(model, 'module', model)
+
 #threshold 갱신
 def get_weight_threshold(model, rate, args):
     importance_all = None
-    for name, item in model.module.named_parameters():
+    m = _unwrap(model)
+    for name, item in m.named_parameters():
         # if len(item.size())==4 and 'mask' not in name:
         if ('conv' in name or 'downsample_p.0' in name) and 'mask' not in name:
             weights = item.data.view(-1).cpu()
@@ -33,8 +38,9 @@ def get_weight_threshold(model, rate, args):
 
 
 def weight_prune(model, threshold, args):
-    state = model.state_dict()
-    for name, item in model.named_parameters():
+    m = _unwrap(model)
+    state = m.state_dict()
+    for name, item in m.named_parameters():
         if 'weight' in name:
             key = name.replace('weight', 'mask')
             if key in state.keys():
@@ -51,7 +57,8 @@ def weight_prune(model, threshold, args):
 
 def get_filter_mask(model, rate, args):
     importance_all = None
-    for name, item in model.named_parameters():
+    m = _unwrap(model)
+    for name, item in m.named_parameters():
         if len(item.size()) == 4 and 'weight' in name:
             filters = item.data.view(item.size(0), -1).cpu()
             weight_len = filters.size(1)
@@ -73,7 +80,8 @@ def get_filter_mask(model, rate, args):
 
 def filter_prune(model, filter_mask):
     idx = 0
-    for name, item in model.named_parameters():
+    m = _unwrap(model)
+    for name, item in m.named_parameters():
         if len(item.size()) == 4 and 'mask' in name:
             for i in range(item.size(0)):
                 item.data[i, :, :, :] = 1 if filter_mask[idx] else 0
@@ -86,7 +94,8 @@ def cal_sparsity(model):
     mask_length = 0
     total_weights = 0
 
-    for name, item in model.module.named_parameters():
+    m = _unwrap(model)
+    for name, item in m.named_parameters():
         if 'mask' in name:
             flatten = item.data.view(-1)
             np_flatten = flatten.cpu().numpy()

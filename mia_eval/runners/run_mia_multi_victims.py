@@ -21,7 +21,17 @@ from pathlib import Path
 
 
 THIS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = THIS_DIR.parents[2]
+
+def _find_repo_root(start: Path) -> Path:
+    """Robustly locate project root by markers instead of assuming fixed depth."""
+    for cand in [start] + list(start.parents):
+        if (cand / '.git').exists():
+            return cand
+        if (cand / 'base_model.py').exists() and (cand / 'mia_eval').exists():
+            return cand
+    return start
+
+REPO_ROOT = _find_repo_root(THIS_DIR)
 MIA_CORE = REPO_ROOT / 'mia_eval' / 'core' / 'mia_modi.py'
 CREATE_SPLITS = REPO_ROOT / 'mia_eval' / 'create_data' / 'create_fixed_data_splits.py'
 
@@ -42,7 +52,7 @@ def _ensure_split_pkl(victim: int, shadows: list, args) -> bool:
     print('   [+] Creating split pkl: ' + str(pkl))
     print('       $ ' + ' '.join(cmd))
     try:
-        res = subprocess.run(cmd, check=True)
+        res = subprocess.run(cmd, check=True, cwd=str(REPO_ROOT))
         return res.returncode == 0 and pkl.exists()
     except subprocess.CalledProcessError as e:
         print(f"   ❌ Failed to create split pkl for victim {victim}: {e}")
@@ -78,7 +88,7 @@ def run_one(victim: int, shadows: list, args, sparsity: float, prune_type: str) 
     print(f"\n▶️ Victim {victim} | Shadows {shadows} | sparsity={sparsity} | mode={prune_type}")
     print('   $ ' + ' '.join(cmd))
     try:
-        res = subprocess.run(cmd, check=True)
+        res = subprocess.run(cmd, check=True, cwd=str(REPO_ROOT))
         return res.returncode == 0
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed for victim {victim}: {e}")
