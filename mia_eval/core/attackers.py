@@ -142,8 +142,11 @@ class MiaAttack:
             attack_test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=4, pin_memory=True,
             worker_init_fn=seed_worker)
 
+        # Membership classifier: binary output (2), input dim = feature length
+        feat_dim = new_victim_data.size(1)
         attack_model = BaseModel(
-            model_name, device=self.device, num_cls=new_victim_data.size(1), optimizer=self.optimizer, lr=self.lr,
+            model_name, device=self.device, num_cls=2, input_dim=feat_dim,
+            optimizer=self.optimizer, lr=self.lr,
             weight_decay=self.weight_decay, epochs=self.epochs)
 
         for epoch in range(self.epochs):
@@ -265,15 +268,15 @@ class MiaAttack:
         }
 
     def threshold_attack(self):
-        victim_in_predicts = self.victim_in_predicts.numpy()
-        victim_out_predicts = self.victim_out_predicts.numpy()
+        victim_in_predicts = self.victim_in_predicts.detach().cpu().numpy()
+        victim_out_predicts = self.victim_out_predicts.detach().cpu().numpy()
 
-        attack_in_predicts = self.attack_in_predicts.numpy()
-        attack_out_predicts = self.attack_out_predicts.numpy()
-        attacker = ThresholdAttacker((attack_in_predicts, self.attack_in_targets.numpy()),
-                                 (attack_out_predicts, self.attack_out_targets.numpy()),
-                                 (victim_in_predicts, self.victim_in_targets.numpy()),
-                                 (victim_out_predicts, self.victim_out_targets.numpy()),
+        attack_in_predicts = self.attack_in_predicts.detach().cpu().numpy()
+        attack_out_predicts = self.attack_out_predicts.detach().cpu().numpy()
+        attacker = ThresholdAttacker((attack_in_predicts, self.attack_in_targets.detach().cpu().numpy()),
+                                 (attack_out_predicts, self.attack_out_targets.detach().cpu().numpy()),
+                                 (victim_in_predicts, self.victim_in_targets.detach().cpu().numpy()),
+                                 (victim_out_predicts, self.victim_out_targets.detach().cpu().numpy()),
                                  self.num_cls)
         confidence, entropy, modified_entropy = attacker._mem_inf_benchmarks()
         top1_conf, _, _ = attacker._mem_inf_benchmarks_non_cls()

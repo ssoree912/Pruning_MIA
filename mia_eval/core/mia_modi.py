@@ -279,6 +279,16 @@ def main(args):
         args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
         device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
     )
+    # Also prepare a dense (unpruned) victim model for original-mode comparison
+    try:
+        victim_dense_model, _ = load_model_from_seed_folder(
+            base_path, args.victim_seed, args.dataset_name, args.model_name,
+            0.0, args.alpha, args.beta, 'dense', args.prune_type,
+            device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
+        )
+    except Exception as e:
+        print(f"[WARN] Failed to load dense victim model for seed {args.victim_seed}: {e}")
+        victim_dense_model = victim_model
     # Auto-tune type_value if needed to maximize accuracy on a small sample
     def _sample_accuracy(model, loader, tv=None, max_batches=2):
         model.model.eval()
@@ -385,7 +395,8 @@ def main(args):
         print(f"[DEBUG] Victim meta: enabled={victim_meta['enabled']} method={victim_meta['method']} sparsity={victim_meta['sparsity']} seed={victim_meta['seed']}")
 
     # Load shadow models with fixed data splits
-    shadow_model_list = []
+    shadow_model_list = []          # pruned shadows
+    shadow_dense_model_list = []    # dense shadows
     shadow_train_loader_list = []
     shadow_test_loader_list = []
     shadow_cfg_map = {}
@@ -402,6 +413,16 @@ def main(args):
             args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
             device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
         )
+        # dense counterpart for original-mode comparison
+        try:
+            shadow_dense_model, _ = load_model_from_seed_folder(
+                base_path, shadow_seed, args.dataset_name, args.model_name,
+                0.0, args.alpha, args.beta, 'dense', args.prune_type,
+                device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
+            )
+        except Exception as e:
+            print(f"[WARN] Failed to load dense shadow model for seed {shadow_seed}: {e}")
+            shadow_dense_model = shadow_model
         shadow_cfg_map[str(shadow_seed)] = s_cfg
 
         # Validate shadow config vs victim to guard against misfoldered runs
@@ -464,6 +485,7 @@ def main(args):
         shadow_model.test(shadow_test_loader, f"[{i+1}/{total_shadows}] Shadow Model {shadow_seed} Test (Non-members)")
 
         shadow_model_list.append(shadow_model)
+        shadow_dense_model_list.append(shadow_dense_model)
         shadow_train_loader_list.append(shadow_train_loader)
         shadow_test_loader_list.append(shadow_test_loader)
 
@@ -482,8 +504,8 @@ def main(args):
     print(f"Attack mode: {'Original models' if attack_original else 'Pruned models'}")
     
     attacker = MiaAttack(
-        victim_model, victim_model, victim_train_loader, victim_test_loader,
-        shadow_model_list, shadow_model_list, shadow_train_loader_list, shadow_test_loader_list,
+        victim_dense_model, victim_model, victim_train_loader, victim_test_loader,
+        shadow_dense_model_list, shadow_model_list, shadow_train_loader_list, shadow_test_loader_list,
         num_cls=args.num_cls, device=device, batch_size=args.batch_size,
         attack_original=attack_original  # 🔥 이제 제대로 전달됨
     )
@@ -513,8 +535,8 @@ def main(args):
         try:
             from sklearn.metrics import roc_auc_score, balanced_accuracy_score
             import numpy as _np
-            vin = attacker.victim_in_predicts.max(dim=1)[0].numpy()
-            vout = attacker.victim_out_predicts.max(dim=1)[0].numpy()
+            vin = attacker.victim_in_predicts.max(dim=1)[0].detach().cpu().numpy()
+            vout = attacker.victim_out_predicts.max(dim=1)[0].detach().cpu().numpy()
             y_true = _np.concatenate([_np.ones_like(vin), _np.zeros_like(vout)])
             y_score = _np.concatenate([vin, vout])
             auroc = float(roc_auc_score(y_true, y_score)) if len(_np.unique(y_true)) > 1 else 0.0

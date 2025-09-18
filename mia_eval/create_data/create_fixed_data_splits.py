@@ -11,6 +11,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import ConcatDataset, Subset
+import numpy as np
 
 # datasets.py import
 import sys
@@ -39,8 +40,20 @@ except:
         else:
             raise ValueError(f"Unsupported dataset: {name}")
 
+def _get_labels(ds):
+    """Extract labels from a torchvision-style dataset (targets/labels/y)."""
+    for attr in ['targets', 'labels', 'y']:
+        if hasattr(ds, attr):
+            arr = getattr(ds, attr)
+            return np.array(arr if isinstance(arr, (list, np.ndarray)) else list(arr))
+    raise AttributeError("Dataset has no targets/labels attribute")
+
+
 def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], 
-                      save_dir="mia_data_splits"):
+                      save_dir="mia_data_splits",
+                      train_frac_member=0.9,   # fraction of train used as members
+                      test_frac_nonmember=0.1, # fraction of test used as non-members
+                      disjoint_shadows=False):
     """
     고정 MIA 데이터 분할 생성 (훈련/테스트 분리 일관성 유지)
 
@@ -64,15 +77,31 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
     if testset is None:
         total_dataset = trainset
         print(f"Using trainset only: {len(trainset)} samples")
-        # Train-only 환경에서는 엄밀한 MIA 정의가 어렵지만, 동일 분포 내에서 분할
-        total_indices = list(range(len(total_dataset)))
-        victim_train_indices, victim_test_indices = train_test_split(
-            total_indices, test_size=0.1, random_state=victim_seed
+        # Train-only 환경에서는 엄밀한 MIA 정의가 어렵지만, 동일 분포 내에서 분할 (층화)
+        labels = _get_labels(trainset)
+        total_indices = np.arange(len(total_dataset))
+        v_tr, v_te = train_test_split(
+            total_indices,
+            train_size=1.0 - test_frac_nonmember,
+            random_state=victim_seed,
+            stratify=labels[total_indices]
         )
+        victim_train_indices = v_tr.tolist()
+        victim_test_indices  = v_te.tolist()
+
         shadow_splits = {}
+        used = set()
         for shadow_seed in shadow_seeds:
-            s_tr, s_te = train_test_split(total_indices, test_size=0.1, random_state=shadow_seed)
-            shadow_splits[shadow_seed] = {'train_indices': s_tr, 'test_indices': s_te}
+            pool = np.array([i for i in total_indices if i not in used]) if disjoint_shadows else total_indices
+            s_tr, s_te = train_test_split(
+                pool,
+                train_size=1.0 - test_frac_nonmember,
+                random_state=shadow_seed,
+                stratify=labels[pool]
+            )
+            if disjoint_shadows:
+                used.update(s_tr.tolist()); used.update(s_te.tolist())
+            shadow_splits[shadow_seed] = {'train_indices': s_tr.tolist(), 'test_indices': s_te.tolist()}
             print(f"Shadow {shadow_seed} train(member): {len(s_tr)}, test(non-member): {len(s_te)}")
     else:
         total_dataset = ConcatDataset([trainset, testset])
@@ -81,29 +110,62 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
         # ConcatDataset 인덱스 공간으로 변환
         train_offset = 0
         test_offset = len(trainset)
-        train_indices_all = list(range(train_offset, train_offset + len(trainset)))
-        test_indices_all  = list(range(test_offset,  test_offset  + len(testset)))
+        train_indices_all = np.arange(train_offset, train_offset + len(trainset))
+        test_indices_all  = np.arange(test_offset,  test_offset  + len(testset))
+
+        # Labels for stratification
+        train_labels = _get_labels(trainset)
+        test_labels  = _get_labels(testset)
 
         # Victim: train에서 멤버, test에서 비멤버
-        v_tr, _ = train_test_split(train_indices_all, test_size=0.1, random_state=victim_seed)
-        v_te, _ = train_test_split(test_indices_all,  test_size=0.9, random_state=victim_seed)
-        victim_train_indices = v_tr
-        victim_test_indices  = v_te
+        v_tr, _ = train_test_split(
+            train_indices_all,
+            train_size=train_frac_member,
+            random_state=victim_seed,
+            stratify=train_labels[train_indices_all - train_offset]
+        )
+        v_te, _ = train_test_split(
+            test_indices_all,
+            train_size=test_frac_nonmember,
+            random_state=victim_seed,
+            stratify=test_labels[test_indices_all - test_offset]
+        )
+        victim_train_indices = v_tr.tolist()
+        victim_test_indices  = v_te.tolist()
 
         print(f"Victim train (member, from trainset): {len(victim_train_indices)}")
         print(f"Victim test (non-member, from testset): {len(victim_test_indices)}")
 
         # Shadow: victim이 차지한 풀을 제외한 잔여 풀에서 샘플링(중복 허용)
-        remaining_train = [i for i in train_indices_all if i not in set(victim_train_indices)]
-        remaining_test  = [i for i in test_indices_all if i not in set(victim_test_indices)]
+        remaining_train = np.setdiff1d(train_indices_all, v_tr, assume_unique=False)
+        remaining_test  = np.setdiff1d(test_indices_all,  v_te, assume_unique=False)
 
         shadow_splits = {}
+        used_train, used_test = set(), set()
         for shadow_seed in shadow_seeds:
-            s_tr, _ = train_test_split(remaining_train, test_size=0.1, random_state=shadow_seed)
-            s_te, _ = train_test_split(remaining_test,  test_size=0.9, random_state=shadow_seed)
+            if disjoint_shadows:
+                pool_tr = np.array([i for i in remaining_train if i not in used_train])
+                pool_te = np.array([i for i in remaining_test  if i not in used_test])
+            else:
+                pool_tr, pool_te = remaining_train, remaining_test
+
+            s_tr, _ = train_test_split(
+                pool_tr,
+                train_size=train_frac_member,
+                random_state=shadow_seed,
+                stratify=train_labels[pool_tr - train_offset]
+            )
+            s_te, _ = train_test_split(
+                pool_te,
+                train_size=test_frac_nonmember,
+                random_state=shadow_seed,
+                stratify=test_labels[pool_te - test_offset]
+            )
+            if disjoint_shadows:
+                used_train.update(s_tr.tolist()); used_test.update(s_te.tolist())
             shadow_splits[shadow_seed] = {
-                'train_indices': s_tr,  # member (trainset only)
-                'test_indices': s_te    # non-member (testset only)
+                'train_indices': s_tr.tolist(),  # member (trainset only)
+                'test_indices': s_te.tolist()    # non-member (testset only)
             }
             print(f"Shadow {shadow_seed} train(member, trainset): {len(s_tr)}  test(non-member, testset): {len(s_te)}")
     
@@ -169,6 +231,9 @@ def main():
     parser.add_argument('--shadow_seeds', nargs='+', type=int, 
                        default=[43,44,45,46,47,48,49,50], help='Shadow model seeds')
     parser.add_argument('--save_dir', default='mia_data_splits', help='Directory to save splits')
+    parser.add_argument('--train_frac_member', type=float, default=0.9, help='Fraction of trainset used as members')
+    parser.add_argument('--test_frac_nonmember', type=float, default=0.1, help='Fraction of testset used as non-members')
+    parser.add_argument('--disjoint_shadows', action='store_true', help='Force shadow splits to be disjoint from each other')
     parser.add_argument('--verify', action='store_true', help='Verify after creation')
     
     args = parser.parse_args()
@@ -179,7 +244,10 @@ def main():
         seed=args.seed,
         victim_seed=args.victim_seed,
         shadow_seeds=args.shadow_seeds,
-        save_dir=args.save_dir
+        save_dir=args.save_dir,
+        train_frac_member=args.train_frac_member,
+        test_frac_nonmember=args.test_frac_nonmember,
+        disjoint_shadows=args.disjoint_shadows
     )
     
     # 검증

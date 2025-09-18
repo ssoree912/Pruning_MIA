@@ -31,7 +31,10 @@ class BaseModel:
         self.num_cls = num_cls
 
         if attack_model_type:
-            self.attack_model = get_model(attack_model_type, num_cls*2, 2)
+            # For membership classifier: output is always 2 (member/non-member)
+            # Input feature typically concatenates predicts and one-hot targets → 2*num_cls
+            attack_in_dim = num_cls * 2
+            self.attack_model = get_model(attack_model_type, num_cls=2, input_dim=attack_in_dim)
             self.attack_model.to(device)
             self.attack_model.apply(weight_init)
             self.attack_model_optim = get_optimizer("adam", self.attack_model.parameters(), lr=0.001, weight_decay=5e-4)
