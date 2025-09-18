@@ -140,6 +140,34 @@ def optional_files(root: Path):
                 acc['final_loss'] = s.get('final_metrics',{}).get('loss')
         except Exception:
             pass
+    # Fallback: parse *_acc_log.txt when summary is missing
+    if 'best_acc1' not in acc or acc.get('best_acc1') is None:
+        try:
+            # Find acc log file
+            logs = list(root.glob('*_acc_log.txt'))
+            if logs:
+                path = logs[0]
+                last = None
+                with open(path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith('epoch'):
+                            continue
+                        last = line
+                if last:
+                    # Format: epoch\tacc1_train\tacc1_valid\tbest_acc1
+                    parts = last.split('\t')
+                    if len(parts) >= 4:
+                        try:
+                            acc['final_acc1'] = float(parts[2])
+                        except Exception:
+                            pass
+                        try:
+                            acc['best_acc1'] = float(parts[3])
+                        except Exception:
+                            pass
+        except Exception:
+            pass
     return acc
 
 

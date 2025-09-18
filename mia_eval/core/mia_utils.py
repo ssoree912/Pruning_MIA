@@ -112,7 +112,10 @@ def get_model(model_type, num_cls, input_dim):
         m.maxpool = nn.Identity()
         return m
     elif model_type in ["mia_fc", "transformer"]:
-        feature_dim = num_cls  # 관례상 feature_dim을 num_cls로 전달
+        # 공격(멤버십 분류) 모델의 입력 차원은 "특징 벡터 길이"여야 함
+        # BaseModel에서 num_cls는 출력 클래스 수(=2)를 전달하므로
+        # 여기서는 input_dim을 feature_dim으로 사용해야 차원 불일치가 발생하지 않음.
+        feature_dim = input_dim
         return MIAFC(feature_dim)
     else:
         raise ValueError(f"Unknown model_type={model_type}")
