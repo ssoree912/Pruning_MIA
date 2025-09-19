@@ -27,7 +27,8 @@ class MiaAttack:
                  num_cls=10, batch_size=128,  device="cuda",
                  lr=0.001, optimizer="sgd", epochs=100, weight_decay=5e-4,
                  # lr=0.001, optimizer="adam", epochs=100, weight_decay=5e-4,
-                 attack_original=False
+                 attack_original=False,
+                 tpr_fprs: str = '0.1,1,5'
                  ):
         self.victim_model = victim_model
         self.victim_pruned_model = victim_pruned_model
@@ -45,7 +46,31 @@ class MiaAttack:
         self.epochs = epochs
         self.batch_size = batch_size
         self.attack_original = attack_original
+        # Parse TPR@FPR levels once
+        try:
+            self.tpr_fprs = [float(s.strip()) for s in (tpr_fprs or '').split(',') if s.strip()]
+        except Exception:
+            self.tpr_fprs = [0.1, 1.0, 5.0]
         self._prepare()
+
+    @staticmethod
+    def _tpr_at_fprs(y_true, y_score, fprs):
+        import numpy as _np
+        y_true = _np.asarray(y_true)
+        y_score = _np.asarray(y_score)
+        non_member = y_score[y_true == 0]
+        member = y_score[y_true == 1]
+        out = {}
+        if non_member.size == 0 or member.size == 0:
+            return out
+        for fpr_pct in fprs:
+            try:
+                q = max(0.0, min(1.0, 1.0 - (float(fpr_pct)/100.0)))
+                tau = float(_np.quantile(non_member, q))
+                out[f"{float(fpr_pct):g}"] = float((member >= tau).mean())
+            except Exception:
+                continue
+        return out
 
     def _prepare(self):
         print("[MIA] Preparing attack data ...")
@@ -159,18 +184,8 @@ class MiaAttack:
             probs = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
         y_true = victim_labels.cpu().numpy()
         y_pred = (probs >= 0.5).astype(int)
-        # TPR@1%FPR helper
-        def _tpr_at_fpr(y_true, y_score, fpr_target=0.01):
-            y_true = np.asarray(y_true)
-            y_score = np.asarray(y_score)
-            non_member = y_score[y_true == 0]
-            if non_member.size == 0:
-                return 0.0
-            tau = np.quantile(non_member, 1.0 - fpr_target)
-            member = y_score[y_true == 1]
-            if member.size == 0:
-                return 0.0
-            return float((member >= tau).mean())
+        # TPR@FPR suite
+        tpr_suite = self._tpr_at_fprs(y_true, probs, self.tpr_fprs)
         # Advantage = TPR - FPR
         tp = np.sum((y_pred == 1) & (y_true == 1))
         fn = np.sum((y_pred == 0) & (y_true == 1))
@@ -186,7 +201,8 @@ class MiaAttack:
             'f1': float(f1_score(y_true, y_pred, zero_division=0)),
             'auc': float(roc_auc_score(y_true, probs)) if len(np.unique(y_true)) > 1 else 0.0,
             'advantage': float(tpr - fpr),
-            'tpr_at_1fpr': _tpr_at_fpr(y_true, probs, 0.01),
+            'tpr_at_1fpr': tpr_suite.get('1', None),
+            'tpr_at_fprs': tpr_suite,
         }
         return result
 
@@ -234,18 +250,8 @@ class MiaAttack:
         y_true = np.concatenate([np.ones_like(v_train_lr), np.zeros_like(v_test_lr)])
         y_score = np.concatenate([v_train_lr, v_test_lr])
         y_pred = (y_score > 1.0).astype(int)  # LR>1 ⇒ member
-        # TPR@1%FPR helper
-        def _tpr_at_fpr(y_true, y_score, fpr_target=0.01):
-            y_true = np.asarray(y_true)
-            y_score = np.asarray(y_score)
-            non_member = y_score[y_true == 0]
-            if non_member.size == 0:
-                return 0.0
-            tau = np.quantile(non_member, 1.0 - fpr_target)
-            member = y_score[y_true == 1]
-            if member.size == 0:
-                return 0.0
-            return float((member >= tau).mean())
+        # TPR@FPR suite
+        tpr_suite = self._tpr_at_fprs(y_true, y_score, self.tpr_fprs)
 
         # Metrics
         tp = np.sum((y_pred == 1) & (y_true == 1))
@@ -264,7 +270,8 @@ class MiaAttack:
             'member_std': std_in,
             'nonmember_mean': mu_out,
             'nonmember_std': std_out,
-            'tpr_at_1fpr': _tpr_at_fpr(y_true, y_score, 0.01),
+            'tpr_at_1fpr': tpr_suite.get('1', None),
+            'tpr_at_fprs': tpr_suite,
         }
 
     def threshold_attack(self):

@@ -75,6 +75,15 @@ def flatten_metrics(data: dict) -> dict:
             row[f'{prefix}_auc'] = v.get('auc')
             row[f'{prefix}_balacc'] = v.get('balanced_accuracy')
             row[f'{prefix}_adv'] = v.get('advantage')
+            # Pull per-attack TPR@FPR if present
+            tprs = v.get('tpr_at_fprs') or {}
+            if isinstance(tprs, dict):
+                for fk, fv in tprs.items():
+                    key = f"{prefix}_tpr_at_fpr_{str(fk).replace('.', '_')}"
+                    row[key] = fv
+            # Back-compat single 1% column if dict absent
+            if 'tpr_at_1fpr' in v and not any(k.startswith(f'{prefix}_tpr_at_fpr_') for k in row.keys()):
+                row[f'{prefix}_tpr_at_fpr_1'] = v.get('tpr_at_1fpr')
 
     for name in ['samia','nn','nn_top3','nn_cls','lira']:
         pull_attack(name)

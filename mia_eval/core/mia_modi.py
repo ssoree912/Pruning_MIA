@@ -507,7 +507,8 @@ def main(args):
         victim_dense_model, victim_model, victim_train_loader, victim_test_loader,
         shadow_dense_model_list, shadow_model_list, shadow_train_loader_list, shadow_test_loader_list,
         num_cls=args.num_cls, device=device, batch_size=args.batch_size,
-        attack_original=attack_original  # 🔥 이제 제대로 전달됨
+        attack_original=attack_original,
+        tpr_fprs=args.tpr_fprs  # propagate desired FPR levels
     )
 
     attacks = args.attacks.split(',')
