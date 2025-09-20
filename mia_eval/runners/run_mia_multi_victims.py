@@ -79,6 +79,9 @@ def run_one(victim: int, shadows: list, args, sparsity: float, prune_type: str) 
         '--tpr_fprs', args.tpr_fprs,
         '--batch_size', str(args.batch_size),
     ]
+    # DPF freeze tag support
+    if args.prune_method == 'dpf' and getattr(args, 'freeze_tag', None):
+        cmd += ['--freeze_tag', str(args.freeze_tag)]
     # shadow seeds (space separated)
     cmd.append('--shadow_seeds')
     cmd.extend([str(s) for s in shadows])
@@ -111,6 +114,7 @@ def main():
     ap.add_argument('--attacks', type=str, default='samia,threshold,nn,nn_top3,nn_cls,lira')
     ap.add_argument('--tpr_fprs', type=str, default='0.1,1,5')
     ap.add_argument('--batch_size', type=int, default=128)
+    ap.add_argument('--freeze_tag', type=str, default=None, help='DPF only: freeze tag in runs path (e.g., freeze180 or nofreeze)')
     ap.add_argument('--split_seed', type=int, default=7, help='Seed for fixed MIA data splits')
     ap.add_argument('--debug', action='store_true')
     args = ap.parse_args()
