@@ -57,6 +57,10 @@ def parse_args():
                     help='Assert equal n across methods within each (dataset,sparsity,attack,metric) block after filtering')
     ap.add_argument('--pair_then_match', action='store_true',
                     help='First fix common seeds within each block, then apply joint accuracy matching across methods')
+    ap.add_argument('--write_wide', action='store_true',
+                    help='Also write a wide, per-experiment CSV (threshold scalars + attack metrics as columns)')
+    ap.add_argument('--wide_filename', default='results_raw_wide.csv',
+                    help='Filename for wide CSV (under --out_dir)')
     return ap.parse_args()
 
 
@@ -149,9 +153,22 @@ def parse_one_json(fp: Path):
         auroc = block.get('auc', block.get('auroc', None))
         if auroc is not None:
             rows.append({'attack': name, 'metric': 'auroc', 'value': auroc})
+        # Average Precision (PR-AUC)
+        ap = block.get('ap', block.get('average_precision', None))
+        if ap is not None:
+            rows.append({'attack': name, 'metric': 'ap', 'value': ap})
         # Advantage
         if 'advantage' in block:
             rows.append({'attack': name, 'metric': 'advantage', 'value': block['advantage']})
+        # Accuracy / Balanced Accuracy
+        if 'accuracy' in block:
+            rows.append({'attack': name, 'metric': 'accuracy', 'value': block['accuracy']})
+        if 'balanced_accuracy' in block:
+            rows.append({'attack': name, 'metric': 'balanced_accuracy', 'value': block['balanced_accuracy']})
+        # Precision/Recall/F1 if present
+        for m in ('precision', 'recall', 'f1'):
+            if m in block:
+                rows.append({'attack': name, 'metric': m, 'value': block[m]})
         # TPR suite normalization
         tprs = block.get('tpr_at_fprs') or {}
         if not tprs and ('tpr_at_1fpr' in block):
@@ -179,6 +196,139 @@ def parse_one_json(fp: Path):
     for r in rows:
         r.update(meta)
     return rows
+
+
+def parse_one_json_wide(fp: Path):
+    """Parse a single JSON into a single-row wide dict with useful columns.
+    Includes threshold scalars, confidence-extended metrics (AUROC/adv/TPRs),
+    and classifier-based metrics for samia/nn/nn_top3/nn_cls/lira.
+    """
+    try:
+        data = json.loads(fp.read_text())
+    except Exception:
+        return None
+
+    cfg = data.get('config', {})
+    exp = data.get('experiment_info', {})
+    res = data.get('results', {})
+
+    row = {
+        'file': str(fp),
+        'dataset': cfg.get('dataset_name') or data.get('dataset') or '',
+        'arch': (data.get('victim_config') or {}).get('model', {}).get('arch', ''),
+        'method': (cfg.get('prune_method') or '').lower(),
+        'mode': derive_mode_label(cfg),
+        'forward_mode': exp.get('forward_mode') or cfg.get('forward_mode'),
+        'sparsity': cfg.get('sparsity'),
+        'victim_seed': cfg.get('victim_seed'),
+        'victim_test_acc': data.get('victim_test_acc'),
+        'use_temperature': data.get('use_temperature', None),
+        'alpha': cfg.get('alpha'),
+        'beta': cfg.get('beta'),
+    }
+
+    # Shadow count for convenience
+    sc_map = (exp or {}).get('shadow_configs') or {}
+    if isinstance(sc_map, dict) and sc_map:
+        row['shadow_count'] = len(sc_map)
+    else:
+        ss = cfg.get('shadow_seeds')
+        if isinstance(ss, list):
+            row['shadow_count'] = len(ss)
+
+    # Threshold scalars (if present at top-level results)
+    for k in ['confidence', 'entropy', 'modified_entropy', 'top1_conf']:
+        if isinstance(res, dict) and (k in res):
+            row[k] = res[k]
+
+    # Confidence-extended block
+    ext = res.get('confidence_extended') if isinstance(res, dict) else None
+    if isinstance(ext, dict):
+        row['confidence_extended_auroc'] = ext.get('auroc')
+        row['confidence_extended_balacc'] = ext.get('balanced_accuracy')
+        row['confidence_extended_adv'] = ext.get('advantage')
+        row['confidence_extended_thr'] = ext.get('threshold')
+        # PR metrics
+        if 'ap' in ext:
+            row['confidence_extended_ap'] = ext.get('ap')
+        if 'precision' in ext:
+            row['confidence_extended_precision'] = ext.get('precision')
+        if 'recall' in ext:
+            row['confidence_extended_recall'] = ext.get('recall')
+        if 'f1' in ext:
+            row['confidence_extended_f1'] = ext.get('f1')
+        # TPR@FPRs
+        tprs = ext.get('tpr_at_fprs') or {}
+        if isinstance(tprs, dict):
+            for fk, fv in tprs.items():
+                key = f"tpr_at_fpr_{str(fk).replace('.', '_')}"
+                row[key] = fv
+        if 'tpr_at_1fpr' in ext and 'tpr_at_fpr_1' not in row:
+            row['tpr_at_fpr_1'] = ext.get('tpr_at_1fpr')
+
+    # Helper to pull classifier blocks
+    def pull_attack_block(prefix: str, block: dict):
+        if not isinstance(block, dict):
+            return
+        # Try common keys with fallbacks
+        acc = block.get('acc', block.get('accuracy'))
+        auc = block.get('auc', block.get('auroc'))
+        bal = block.get('balanced_accuracy', block.get('balacc'))
+        adv = block.get('advantage')
+        ap  = block.get('ap', block.get('average_precision'))
+        prec = block.get('precision')
+        rec  = block.get('recall')
+        f1   = block.get('f1')
+        if acc is not None:
+            row[f'{prefix}_acc'] = acc
+        if auc is not None:
+            row[f'{prefix}_auc'] = auc
+        if bal is not None:
+            row[f'{prefix}_balacc'] = bal
+        if adv is not None:
+            row[f'{prefix}_adv'] = adv
+        if ap is not None:
+            row[f'{prefix}_ap'] = ap
+        if prec is not None:
+            row[f'{prefix}_precision'] = prec
+        if rec is not None:
+            row[f'{prefix}_recall'] = rec
+        if f1 is not None:
+            row[f'{prefix}_f1'] = f1
+
+    pull_attack_block('samia', res.get('samia'))
+    pull_attack_block('nn', res.get('nn'))
+    pull_attack_block('nn_top3', res.get('nn_top3'))
+    pull_attack_block('nn_cls', res.get('nn_cls'))
+    pull_attack_block('lira', res.get('lira'))
+
+    # Fallbacks from filename for key fields
+    try:
+        m = re.match(r'(?P<ds>[^_]+)_sparsity_(?P<s>[0-9.]+)_victim(?P<seed>\d+)\.json', fp.name)
+        if (not row.get('dataset')) and m:
+            row['dataset'] = m.group('ds')
+        if (row.get('sparsity') is None) and m:
+            row['sparsity'] = float(m.group('s'))
+        if (row.get('victim_seed') is None) and m:
+            row['victim_seed'] = int(m.group('seed'))
+    except Exception:
+        pass
+
+    # Method/mode fallbacks mirroring tidy parser
+    if not row.get('method'):
+        fm = (row.get('forward_mode') or '').lower()
+        if 'dpf' in fm:
+            row['method'] = 'dpf'
+        elif 'dwa' in fm:
+            row['method'] = 'dwa'
+        elif 'standard' in fm or 'static' in fm:
+            row['method'] = 'static'
+        else:
+            row['method'] = 'unknown'
+    if (not row.get('mode')) or row['mode'] in ('unknown:na', ''):
+        row['mode'] = row.get('forward_mode') or row.get('method')
+
+    return row
 
 
 def accuracy_matching(df: pd.DataFrame, band_pp: float) -> pd.DataFrame:
@@ -322,11 +472,16 @@ def main():
 
     # 1) load all JSONs
     all_rows = []
+    wide_rows = []
     files = list(src.rglob('*.json'))
     log(f"Scanning {src} -> found {len(files)} JSON files")
     for fp in files:
         rows = parse_one_json(fp)
         all_rows.extend(rows)
+        if args.write_wide:
+            wr = parse_one_json_wide(fp)
+            if wr is not None:
+                wide_rows.append(wr)
     df = pd.DataFrame(all_rows)
     if not df.empty:
         df = df.drop_duplicates(subset=['file', 'attack', 'metric'])
@@ -530,6 +685,23 @@ def main():
             log("Summary head:\n" + summary.head(12).to_string(index=False))
         except Exception:
             pass
+
+    # 3.5) Optional wide CSV per experiment
+    if args.write_wide:
+        wide_df = pd.DataFrame(wide_rows)
+        # Coerce sparsity to numeric
+        if 'sparsity' in wide_df.columns:
+            wide_df['sparsity'] = pd.to_numeric(wide_df['sparsity'], errors='coerce')
+        # Stable column ordering: metadata first, then metrics sorted
+        meta_cols = [
+            'file','dataset','arch','method','mode','forward_mode','sparsity','victim_seed','victim_test_acc','use_temperature','alpha','beta','shadow_count'
+        ]
+        metric_cols = sorted([c for c in wide_df.columns if c not in meta_cols])
+        cols = [c for c in meta_cols if c in wide_df.columns] + metric_cols
+        wide_df = wide_df[cols]
+        wide_path = out_dir / args.wide_filename
+        wide_df.to_csv(wide_path, index=False)
+        print(f"Wrote wide CSV: {wide_path} ({len(wide_df)} rows, {len(wide_df.columns)} columns)")
 
     # 4) Standard plots (optional)
     if args.make_plots and HAS_PLOT:

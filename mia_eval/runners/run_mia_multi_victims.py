@@ -87,6 +87,8 @@ def run_one(victim: int, shadows: list, args, sparsity: float, prune_type: str) 
     cmd.extend([str(s) for s in shadows])
     if args.debug:
         cmd.append('--debug')
+    if getattr(args, 'save_scores', False):
+        cmd.append('--save_scores')
 
     print(f"\n▶️ Victim {victim} | Shadows {shadows} | sparsity={sparsity} | mode={prune_type}")
     print('   $ ' + ' '.join(cmd))
@@ -116,6 +118,7 @@ def main():
     ap.add_argument('--batch_size', type=int, default=128)
     ap.add_argument('--freeze_tag', type=str, default=None, help='DPF only: freeze tag in runs path (e.g., freeze180 or nofreeze)')
     ap.add_argument('--split_seed', type=int, default=7, help='Seed for fixed MIA data splits')
+    ap.add_argument('--save_scores', action='store_true', help='Save per-sample labels/scores for each attack')
     ap.add_argument('--debug', action='store_true')
     args = ap.parse_args()
 

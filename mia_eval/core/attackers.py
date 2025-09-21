@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from base_model import BaseModel
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
 import numpy as np
 from utils.utils import seed_worker
 
@@ -28,7 +28,8 @@ class MiaAttack:
                  lr=0.001, optimizer="sgd", epochs=100, weight_decay=5e-4,
                  # lr=0.001, optimizer="adam", epochs=100, weight_decay=5e-4,
                  attack_original=False,
-                 tpr_fprs: str = '0.1,1,5'
+                 tpr_fprs: str = '0.1,1,5',
+                 save_scores_dir: str | None = None
                  ):
         self.victim_model = victim_model
         self.victim_pruned_model = victim_pruned_model
@@ -46,6 +47,7 @@ class MiaAttack:
         self.epochs = epochs
         self.batch_size = batch_size
         self.attack_original = attack_original
+        self.save_scores_dir = Path(save_scores_dir) if save_scores_dir else None
         # Parse TPR@FPR levels once
         try:
             self.tpr_fprs = [float(s.strip()) for s in (tpr_fprs or '').split(',') if s.strip()]
@@ -193,6 +195,12 @@ class MiaAttack:
         fp = np.sum((y_pred == 1) & (y_true == 0))
         tpr = tp / (tp + fn + 1e-8)
         fpr = fp / (fp + tn + 1e-8)
+        # Average Precision (PR-AUC)
+        try:
+            ap = float(average_precision_score(y_true, probs)) if len(np.unique(y_true)) > 1 else 0.0
+        except Exception:
+            ap = 0.0
+
         result = {
             'accuracy': float(accuracy_score(y_true, y_pred)),
             'balanced_accuracy': float(balanced_accuracy_score(y_true, y_pred)),
@@ -200,10 +208,20 @@ class MiaAttack:
             'recall': float(recall_score(y_true, y_pred, zero_division=0)),
             'f1': float(f1_score(y_true, y_pred, zero_division=0)),
             'auc': float(roc_auc_score(y_true, probs)) if len(np.unique(y_true)) > 1 else 0.0,
+            'ap': ap,
             'advantage': float(tpr - fpr),
             'tpr_at_1fpr': tpr_suite.get('1', None),
             'tpr_at_fprs': tpr_suite,
         }
+        # Optional: save per-sample arrays
+        if self.save_scores_dir is not None:
+            try:
+                self.save_scores_dir.mkdir(parents=True, exist_ok=True)
+                out = self.save_scores_dir / f"{mia_type}.npz"
+                np.savez(out, labels=y_true, scores=probs)
+                result['scores_file'] = str(out)
+            except Exception:
+                pass
         return result
 
     def lira_attack(self):
@@ -261,10 +279,17 @@ class MiaAttack:
         tpr = tp / (tp + fn + 1e-8)
         fpr = fp / (fp + tn + 1e-8)
 
-        return {
+        # Average Precision (PR-AUC)
+        try:
+            ap = float(average_precision_score(y_true, y_score)) if len(np.unique(y_true)) > 1 else 0.0
+        except Exception:
+            ap = 0.0
+
+        result = {
             'accuracy': float(accuracy_score(y_true, y_pred)),
             'balanced_accuracy': float(balanced_accuracy_score(y_true, y_pred)),
             'auc': float(roc_auc_score(y_true, y_score)) if len(np.unique(y_true)) > 1 else 0.0,
+            'ap': ap,
             'advantage': float(tpr - fpr),
             'member_mean': mu_in,
             'member_std': std_in,
@@ -273,6 +298,16 @@ class MiaAttack:
             'tpr_at_1fpr': tpr_suite.get('1', None),
             'tpr_at_fprs': tpr_suite,
         }
+        # Optional: save per-sample arrays
+        if self.save_scores_dir is not None:
+            try:
+                self.save_scores_dir.mkdir(parents=True, exist_ok=True)
+                out = self.save_scores_dir / "lira.npz"
+                np.savez(out, labels=y_true, scores=y_score)
+                result['scores_file'] = str(out)
+            except Exception:
+                pass
+        return result
 
     def threshold_attack(self):
         victim_in_predicts = self.victim_in_predicts.detach().cpu().numpy()

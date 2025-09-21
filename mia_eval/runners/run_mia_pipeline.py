@@ -169,6 +169,7 @@ def main():
                        help='Override victim seed per group (must exist in group)')
     parser.add_argument('--max_shadows', type=int, default=0,
                        help='Limit number of shadow seeds used (>0 to cap, 0=use all)')
+    parser.add_argument('--save_scores', action='store_true', help='Save per-sample labels/scores for each attack')
     
     args = parser.parse_args()
     
@@ -293,12 +294,14 @@ def main():
             '--attacks', args.attacks,
             '--tpr_fprs', args.tpr_fprs
         ]
+        if args.debug:
+            eval_cmd.append('--debug')
+        if args.save_scores:
+            eval_cmd.append('--save_scores')
         if exp['method'] == 'dwa':
             eval_cmd += ['--alpha', str(exp.get('alpha')), '--beta', str(exp.get('beta'))]
         if exp['method'] == 'dpf' and exp.get('freeze_tag'):
             eval_cmd += ['--freeze_tag', str(exp['freeze_tag'])]
-        if args.debug:
-            eval_cmd.append('--debug')
         
         if run_command(eval_cmd, cwd=str(REPO_ROOT)):
             success_count += 1

@@ -74,6 +74,8 @@ parser.add_argument('--forward_mode', default='standard', choices=['standard', '
 parser.add_argument('--debug', action='store_true', help='Print detailed MIA debug info (splits and basic stats)')
 parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5',
                     help='Comma-separated FPR percentages to report TPR@FPR (e.g., "0.1,1,5")')
+parser.add_argument('--save_scores', action='store_true',
+                    help='Save per-sample labels/scores for each attack alongside JSON')
 
 
 def main(args):
@@ -503,12 +505,20 @@ def main(args):
     
     print(f"Attack mode: {'Original models' if attack_original else 'Pruned models'}")
     
+    # Prepare optional scores directory
+    scores_dir = None
+    if args.save_scores:
+        base = Path(result_dir) / (Path(result_file).stem + "_scores")
+        base.mkdir(parents=True, exist_ok=True)
+        scores_dir = str(base)
+
     attacker = MiaAttack(
         victim_dense_model, victim_model, victim_train_loader, victim_test_loader,
         shadow_dense_model_list, shadow_model_list, shadow_train_loader_list, shadow_test_loader_list,
         num_cls=args.num_cls, device=device, batch_size=args.batch_size,
         attack_original=attack_original,
-        tpr_fprs=args.tpr_fprs  # propagate desired FPR levels
+        tpr_fprs=args.tpr_fprs,  # propagate desired FPR levels
+        save_scores_dir=scores_dir
     )
 
     attacks = args.attacks.split(',')
@@ -534,7 +544,7 @@ def main(args):
         # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold,
         # and TPR@X%FPR for requested X values
         try:
-            from sklearn.metrics import roc_auc_score, balanced_accuracy_score
+            from sklearn.metrics import roc_auc_score, balanced_accuracy_score, precision_recall_fscore_support, average_precision_score
             import numpy as _np
             vin = attacker.victim_in_predicts.max(dim=1)[0].detach().cpu().numpy()
             vout = attacker.victim_out_predicts.max(dim=1)[0].detach().cpu().numpy()
@@ -553,6 +563,16 @@ def main(args):
                     best_adv, best_thr = adv, thr
             y_pred = (y_score >= best_thr).astype(int)
             bal_acc = float(balanced_accuracy_score(y_true, y_pred))
+            # PR/F1 at chosen threshold
+            try:
+                prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='binary', zero_division=0)
+            except Exception:
+                prec = rec = f1 = 0.0
+            # AP (area under PR curve)
+            try:
+                ap = float(average_precision_score(y_true, y_score)) if len(_np.unique(y_true)) > 1 else 0.0
+            except Exception:
+                ap = 0.0
             # TPR@X%FPR via quantiles of non-member scores
             non_member = y_score[y_true == 0]
             member = y_score[y_true == 1]
@@ -570,17 +590,32 @@ def main(args):
                     tpr_levels[key] = tpr_val
             # Back-compat single 1%% metric if requested
             tpr_at_1fpr = tpr_levels.get('1', None)
-            results['confidence_extended'] = {
+            ce = {
                 'auroc': auroc,
                 'balanced_accuracy': bal_acc,
                 'advantage': float(best_adv),
                 'threshold': float(best_thr),
+                'precision': float(prec),
+                'recall': float(rec),
+                'f1': float(f1),
+                'ap': ap,
                 'tpr_at_fprs': tpr_levels,
                 **({'tpr_at_1fpr': tpr_at_1fpr} if tpr_at_1fpr is not None else {})
             }
+            results['confidence_extended'] = ce
             results['threshold_strategy'] = 'youden'
             tprs_msg = ", ".join([f"TPR@{k}%FPR={v:.4f}" for k, v in sorted(tpr_levels.items(), key=lambda x: float(x[0]))]) if tpr_levels else ""
             print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}{(' | ' + tprs_msg) if tprs_msg else ''}")
+            # Optional: save per-sample arrays for threshold confidence
+            if scores_dir:
+                try:
+                    import numpy as _np
+                    outp = Path(scores_dir) / "threshold_confidence.npz"
+                    _np.savez(outp, labels=y_true, scores=y_score)
+                    # Track path for convenience
+                    results.setdefault('raw_scores', {})['threshold_confidence'] = str(outp)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Could not compute extended metrics inline: {e}")
     
