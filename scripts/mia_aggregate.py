@@ -43,6 +43,7 @@ def parse_args():
     ap.add_argument('--plots_dir', default='results/plots', help='Output directory for plots')
     ap.add_argument('--dataset', default=None, help='Filter dataset (e.g., cifar10)')
     ap.add_argument('--methods', nargs='*', default=None, help='Filter methods (e.g., dwa dpf static dense)')
+    ap.add_argument('--modes', nargs='*', default=None, help='Filter modes (e.g., static dpf:nofreeze kill_and_reactivate)')
     ap.add_argument('--victims', type=int, nargs='*', default=None, help='Restrict to specific victim seeds')
     ap.add_argument('--acc_match_pp', type=float, default=0.5, help='Accuracy-matching ±pp band around per-(method,sparsity) median')
     ap.add_argument('--make_plots', action='store_true', help='Generate standard figures (requires matplotlib)')
@@ -52,6 +53,10 @@ def parse_args():
                     help='Split summaries by use_temperature (default: off)')
     ap.add_argument('--strict_paired', action='store_true',
                     help='Keep only victim seeds that exist for ALL (method,mode) within each (dataset,sparsity,attack,metric) block')
+    ap.add_argument('--assert_equal_n', action='store_true',
+                    help='Assert equal n across methods within each (dataset,sparsity,attack,metric) block after filtering')
+    ap.add_argument('--pair_then_match', action='store_true',
+                    help='First fix common seeds within each block, then apply joint accuracy matching across methods')
     return ap.parse_args()
 
 
@@ -195,6 +200,49 @@ def accuracy_matching(df: pd.DataFrame, band_pp: float) -> pd.DataFrame:
     return pd.concat(keep, ignore_index=True) if keep else df
 
 
+def strict_pair_first(df: pd.DataFrame) -> pd.DataFrame:
+    """Within each (dataset,sparsity,attack,metric) block, keep only the
+    victim seeds that are present for all (method,mode) combos in that block.
+    Drops blocks whose common seed intersection is empty.
+    """
+    if df.empty or 'victim_seed' not in df.columns:
+        return df
+    kept = []
+    for keys, sub in df.groupby(['dataset', 'sparsity', 'attack', 'metric'], dropna=False):
+        combos = sub[['method', 'mode']].drop_duplicates()
+        if len(combos) <= 1:
+            kept.append(sub); continue
+        seeds_by_combo = {}
+        for r in combos.itertuples(index=False):
+            mask = (sub['method'] == r.method) & (sub['mode'] == r.mode)
+            S = set(sub.loc[mask, 'victim_seed'].dropna().astype(int).tolist())
+            seeds_by_combo[(r.method, r.mode)] = S
+        if not seeds_by_combo:
+            continue
+        common = set.intersection(*seeds_by_combo.values())
+        if not common:
+            # No common seeds; skip this block
+            continue
+        kept.append(sub[sub['victim_seed'].isin(common)])
+    return pd.concat(kept, ignore_index=True) if kept else df
+
+
+def joint_accuracy_match(df: pd.DataFrame, band_pp: float) -> pd.DataFrame:
+    """After fixing common seeds, require each seed to pass accuracy matching
+    simultaneously for all (method,mode) within a block.
+    """
+    if df.empty or 'victim_test_acc' not in df.columns:
+        return df
+    df2 = df.copy()
+    med = df2.groupby(['dataset','method','mode','sparsity'], dropna=False)['victim_test_acc'].transform('median')
+    df2['acc_pass'] = (df2['victim_test_acc'] >= (med - band_pp)) & (df2['victim_test_acc'] <= (med + band_pp))
+    pass_seeds = (df2.groupby(['dataset','sparsity','attack','metric','victim_seed'], dropna=False)['acc_pass']
+                     .all().reset_index())
+    pass_seeds = pass_seeds[pass_seeds['acc_pass']][['dataset','sparsity','attack','metric','victim_seed']]
+    out = df2.merge(pass_seeds, on=['dataset','sparsity','attack','metric','victim_seed'], how='inner')
+    return out.drop(columns=['acc_pass'])
+
+
 def ci95(values: np.ndarray):
     vals = np.asarray([v for v in values if pd.notnull(v)], dtype=float)
     n = len(vals)
@@ -299,6 +347,9 @@ def main():
     if args.methods:
         df = df[df['method'].isin(args.methods)]
         log(f"Filter methods={args.methods} -> {len(df)} rows")
+    if args.modes:
+        df = df[df['mode'].isin(args.modes)]
+        log(f"Filter modes={args.modes} -> {len(df)} rows")
     if args.victims:
         df = df[df['victim_seed'].isin(args.victims)]
         log(f"Filter victims={args.victims} -> {len(df)} rows")
@@ -308,10 +359,18 @@ def main():
         df['sparsity'] = pd.to_numeric(df['sparsity'], errors='coerce')
     log(f"After filters: rows={len(df)}, unique victims={df['victim_seed'].nunique() if 'victim_seed' in df.columns else 'NA'}, unique methods={df['method'].nunique() if 'method' in df.columns else 'NA'}, unique sparsities={df['sparsity'].nunique() if 'sparsity' in df.columns else 'NA'}")
 
-    # 2) accuracy matching band per (dataset, method, mode, sparsity)
-    before_rows = len(df)
-    dfm = accuracy_matching(df, args.acc_match_pp)
-    log(f"Accuracy matching ±{args.acc_match_pp}pp: kept {len(dfm)}/{before_rows} rows")
+    # 2) Pair-then-match flow (optional) or legacy flow
+    if args.pair_then_match:
+        before_rows = len(df)
+        dfm = strict_pair_first(df)
+        log(f"strict_pair_first: {before_rows} -> {len(dfm)} rows")
+        before_rows2 = len(dfm)
+        dfm = joint_accuracy_match(dfm, args.acc_match_pp)
+        log(f"joint_accuracy_match ±{args.acc_match_pp}pp: {before_rows2} -> {len(dfm)} rows")
+    else:
+        before_rows = len(df)
+        dfm = accuracy_matching(df, args.acc_match_pp)
+        log(f"Accuracy matching ±{args.acc_match_pp}pp: kept {len(dfm)}/{before_rows} rows")
     if args.verbose and not dfm.empty:
         try:
             grp = dfm.groupby(['method','sparsity'], dropna=False)['victim_test_acc'].agg(['count','min','median','max']).reset_index()
@@ -320,9 +379,10 @@ def main():
             pass
 
     # 2.5) strict paired filter: keep only seeds present for all (method,mode) combos per block
-    if args.strict_paired and not dfm.empty and 'victim_seed' in dfm.columns:
+    if (not args.pair_then_match) and args.strict_paired and not dfm.empty and 'victim_seed' in dfm.columns:
         kept_blocks = []
         total_blocks = 0
+        changed_blocks = 0
         for keys, sub in dfm.groupby(['dataset', 'sparsity', 'attack', 'metric'], dropna=False):
             total_blocks += 1
             mm = sub[['method', 'mode']].drop_duplicates()
@@ -335,10 +395,89 @@ def main():
                         .groupby('victim_seed').size())
             ok_seeds = counts[counts == need].index
             kept = sub[sub['victim_seed'].isin(ok_seeds)]
+            if kept['victim_seed'].nunique() != sub['victim_seed'].nunique():
+                changed_blocks += 1
             kept_blocks.append(kept)
         new_dfm = pd.concat(kept_blocks, ignore_index=True) if kept_blocks else dfm
-        log(f"Strict paired filter applied: {len(dfm)} -> {len(new_dfm)} rows across {total_blocks} blocks")
+        log(f"[strict_paired] methods per block matched; blocks={total_blocks}, reduced={changed_blocks}, rows {len(dfm)} -> {len(new_dfm)}")
         dfm = new_dfm
+    else:
+        log("[strict_paired] OFF or no victim_seed column")
+
+    # === Debug: detect blocks with unequal n across methods and save diagnostics ===
+    debug_dir = out_dir / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-scan common seeds per block (before making summary) for quick visibility
+    if not df.empty and 'victim_seed' in df.columns:
+        dbg_rows = []
+        for keys, sub0 in df.groupby(['dataset','sparsity','attack','metric'], dropna=False):
+            combos0 = sub0[['method','mode']].drop_duplicates().sort_values(['method','mode'])
+            seeds_by_combo0 = {}
+            for r in combos0.itertuples(index=False):
+                mask0 = (sub0['method']==r.method) & (sub0['mode']==r.mode)
+                S0 = set(sub0.loc[mask0, 'victim_seed'].dropna().astype(int).tolist())
+                seeds_by_combo0[(r.method, r.mode)] = S0
+            if not seeds_by_combo0:
+                continue
+            inter0 = set.intersection(*seeds_by_combo0.values()) if len(seeds_by_combo0)>1 else next(iter(seeds_by_combo0.values()))
+            row = dict(dataset=keys[0], sparsity=keys[1], attack=keys[2], metric=keys[3],
+                       n_combos=len(seeds_by_combo0), n_inter=len(inter0))
+            for (m0, mo0), S0 in seeds_by_combo0.items():
+                row[f"{m0}|{mo0}#seeds"] = len(S0)
+            dbg_rows.append(row)
+        import pandas as _pd
+        _pd.DataFrame(dbg_rows).to_csv(debug_dir/"common_seed_scan.csv", index=False)
+        log(f"[debug] common seed scan -> {debug_dir/'common_seed_scan.csv'}")
+
+    if not dfm.empty and 'victim_seed' in dfm.columns:
+        gseed = (dfm.groupby(['dataset','sparsity','attack','metric','method','mode'], dropna=False)
+                    ['victim_seed'].nunique().reset_index(name='n_seeds'))
+        span = (gseed.groupby(['dataset','sparsity','attack','metric'], dropna=False)
+                    .agg(n_min=('n_seeds','min'), n_max=('n_seeds','max'), n_methods=('method','nunique'))
+                    .reset_index())
+        bad = span[span['n_min'] != span['n_max']].copy()
+        bad_path = debug_dir / 'mismatch_blocks.csv'
+        bad.to_csv(bad_path, index=False)
+        log(f"[debug] mismatch blocks saved to {bad_path} (rows={len(bad)})")
+
+        if not bad.empty:
+            b = bad.iloc[0]
+            mask = (
+                (dfm['dataset'] == b['dataset']) &
+                (dfm['sparsity'] == b['sparsity']) &
+                (dfm['attack']   == b['attack']) &
+                (dfm['metric']   == b['metric'])
+            )
+            sub = dfm[mask].copy()
+            pres = (sub[['victim_seed','method','mode']]
+                        .drop_duplicates()
+                        .assign(present=1)
+                        .pivot_table(index='victim_seed', columns=['method','mode'], values='present', fill_value=0)
+                        .sort_index())
+            pres_path = debug_dir / f"presence_{b['dataset']}_s{b['sparsity']}_{b['attack']}_{b['metric']}.csv"
+            pres.to_csv(pres_path)
+            log(f"[debug] presence matrix saved to {pres_path}")
+
+            miss_rows = []
+            for col in pres.columns:
+                miss = pres.index[pres[col] == 0].tolist()
+                miss_rows.append({
+                    'dataset': b['dataset'],
+                    'sparsity': b['sparsity'],
+                    'attack': b['attack'],
+                    'metric': b['metric'],
+                    'method': col[0],
+                    'mode': col[1],
+                    'missing_seeds': ' '.join(map(str, miss)),
+                    'n_missing': len(miss)
+                })
+            import pandas as _pd
+            _pd.DataFrame(miss_rows).to_csv(debug_dir / f"missing_seeds_{b['dataset']}_s{b['sparsity']}_{b['attack']}_{b['metric']}.csv", index=False)
+            log("[debug] missing seeds per method saved")
+
+        if args.assert_equal_n and not bad.empty:
+            raise RuntimeError(f"Equal-n assertion failed for {len(bad)} blocks. See {bad_path}")
 
     # 3) grouped summary (by dataset, method, mode, sparsity, attack, metric[, use_temperature])
     agg_rows = []
