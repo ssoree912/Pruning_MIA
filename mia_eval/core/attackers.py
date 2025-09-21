@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
 from base_model import BaseModel
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
+from typing import Optional
 import numpy as np
 from utils.utils import seed_worker
 
@@ -29,7 +30,7 @@ class MiaAttack:
                  # lr=0.001, optimizer="adam", epochs=100, weight_decay=5e-4,
                  attack_original=False,
                  tpr_fprs: str = '0.1,1,5',
-                 save_scores_dir: str | None = None
+                 save_scores_dir: Optional[str] = None
                  ):
         self.victim_model = victim_model
         self.victim_pruned_model = victim_pruned_model
