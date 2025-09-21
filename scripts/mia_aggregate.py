@@ -25,6 +25,7 @@ import math
 import os
 from pathlib import Path
 import glob
+import re
 import numpy as np
 import pandas as pd
 
@@ -47,6 +48,10 @@ def parse_args():
     ap.add_argument('--make_plots', action='store_true', help='Generate standard figures (requires matplotlib)')
     ap.add_argument('--metrics', default='confidence_extended_auroc,lira_auc,nn_auc,samia_auc', help='Comma-separated metrics to consider for plots (CSV always has all)')
     ap.add_argument('--verbose', action='store_true', help='Print debug logs and sample rows')
+    ap.add_argument('--split_by_temperature', action='store_true',
+                    help='Split summaries by use_temperature (default: off)')
+    ap.add_argument('--strict_paired', action='store_true',
+                    help='Keep only victim seeds that exist for ALL (method,mode) within each (dataset,sparsity,attack,metric) block')
     return ap.parse_args()
 
 
@@ -93,27 +98,70 @@ def parse_one_json(fp: Path):
         'beta': cfg.get('beta'),
     }
 
+    # Fallbacks from filename when metadata missing
+    try:
+        m = re.match(r'(?P<ds>[^_]+)_sparsity_(?P<s>[0-9.]+)_victim(?P<seed>\d+)\.json', fp.name)
+        if (not meta['dataset']) and m:
+            meta['dataset'] = m.group('ds')
+        if (meta['sparsity'] is None) and m:
+            meta['sparsity'] = float(m.group('s'))
+        if (meta['victim_seed'] is None) and m:
+            meta['victim_seed'] = int(m.group('seed'))
+    except Exception:
+        pass
+    # Method fallback from forward_mode
+    if not meta.get('method'):
+        fm = (meta.get('forward_mode') or '').lower()
+        if 'dpf' in fm:
+            meta['method'] = 'dpf'
+        elif 'dwa' in fm:
+            meta['method'] = 'dwa'
+        elif 'standard' in fm or 'static' in fm:
+            meta['method'] = 'static'
+        else:
+            meta['method'] = 'unknown'
+    # Mode fallback if unclear
+    if (not meta.get('mode')) or meta['mode'] in ('unknown:na', ''):
+        meta['mode'] = meta.get('forward_mode') or meta.get('method')
+    # Normalize use_temperature to {0,1}
+    ut = meta.get('use_temperature')
+    if ut is None or (isinstance(ut, float) and math.isnan(ut)):
+        meta['use_temperature'] = 0
+    elif isinstance(ut, bool):
+        meta['use_temperature'] = int(ut)
+    else:
+        try:
+            meta['use_temperature'] = int(ut)
+        except Exception:
+            meta['use_temperature'] = 0
+
     rows = []
 
     def add_attack(name: str, block: dict):
         if not isinstance(block, dict):
             return
-        # AUROC
-        if 'auc' in block:
-            rows.append({'attack': name, 'metric': 'auroc', 'value': block['auc']})
-        if 'auroc' in block:
-            rows.append({'attack': name, 'metric': 'auroc', 'value': block['auroc']})
+        # AUROC (single)
+        auroc = block.get('auc', block.get('auroc', None))
+        if auroc is not None:
+            rows.append({'attack': name, 'metric': 'auroc', 'value': auroc})
         # Advantage
         if 'advantage' in block:
             rows.append({'attack': name, 'metric': 'advantage', 'value': block['advantage']})
-        # TPR suite
+        # TPR suite normalization
         tprs = block.get('tpr_at_fprs') or {}
+        if not tprs and ('tpr_at_1fpr' in block):
+            tprs = {'1': block['tpr_at_1fpr']}
+        def _norm_fpr_key(k):
+            try:
+                x = float(k)
+                if abs(x - round(x)) < 1e-9:
+                    return str(int(round(x)))
+                return str(x).rstrip('0').rstrip('.')
+            except Exception:
+                return str(k)
         if isinstance(tprs, dict):
             for k, v in tprs.items():
-                rows.append({'attack': name, 'metric': f'tpr@{k}', 'value': v})
-        # Back-compat 1% only
-        if 'tpr_at_1fpr' in block and not any(r['metric'].startswith('tpr@') for r in rows if r['attack'] == name):
-            rows.append({'attack': name, 'metric': 'tpr@1', 'value': block['tpr_at_1fpr']})
+                rows.append({'attack': name, 'metric': f'tpr@{_norm_fpr_key(k)}', 'value': v})
 
     # Pull from typical blocks
     add_attack('lira', res.get('lira'))
@@ -129,13 +177,13 @@ def parse_one_json(fp: Path):
 
 
 def accuracy_matching(df: pd.DataFrame, band_pp: float) -> pd.DataFrame:
-    """Filter within ±band_pp around median accuracy per (method, sparsity).
+    """Filter within ±band_pp around median accuracy per (dataset, method, mode, sparsity).
     If a group's accuracy is missing/NaN, skip filtering for that group.
     """
     if df.empty or 'victim_test_acc' not in df.columns:
         return df
     keep = []
-    for (method, sparsity), g in df.groupby(['method', 'sparsity'], dropna=False):
+    for keys, g in df.groupby(['dataset', 'method', 'mode', 'sparsity'], dropna=False):
         acc = pd.to_numeric(g['victim_test_acc'], errors='coerce')
         med = float(acc.median()) if acc.notna().any() else float('nan')
         if math.isnan(med):
@@ -163,30 +211,49 @@ def ci95(values: np.ndarray):
     return m, sd, float(lo), float(hi), n
 
 
-def plot_bar_ci(summary: pd.DataFrame, title: str, ylab: str, out_png: Path):
+def plot_bar_ci(summary: pd.DataFrame, title: str, ylab: str, out_png: Path, group_key: str = 'mode'):
     if not HAS_PLOT or summary.empty:
         return
-    methods = sorted(summary['method'].dropna().unique())
+    label_key = group_key if group_key in summary.columns else 'method'
+    labels = sorted(summary[label_key].dropna().unique())
     sparsities = sorted(summary['sparsity'].dropna().unique())
-    w = 0.8 / max(1, len(methods))
+    w = 0.8 / max(1, len(labels))
     import matplotlib.pyplot as plt  # lazy import for headless envs
+    # Matplotlib 3.7+ deprecates cm.get_cmap; use colormaps API when available
+    try:
+        import matplotlib as mpl
+        palette = [mpl.colormaps.get_cmap('tab10')(i % mpl.colormaps.get_cmap('tab10').N)
+                   for i in range(max(1, len(labels)))]
+    except Exception:
+        import matplotlib.cm as cm
+        cmap_fallback = cm.get_cmap('tab10', max(3, len(labels)))
+        palette = [cmap_fallback(i) for i in range(max(1, len(labels)))]
+    # stable colors per label across sparsities
+    colors = {lab: palette[i] for i, lab in enumerate(labels)}
+    legend_handles = {}
     plt.figure(figsize=(10, 4 + 0.2 * len(sparsities)))
     for i, s in enumerate(sparsities):
         g = summary[summary['sparsity'] == s]
-        for j, m in enumerate(methods):
-            row = g[g['method'] == m]
+        for j, lab in enumerate(labels):
+            row = g[g[label_key] == lab]
             if row.empty:
                 continue
             mu = float(row['mean'].iloc[0])
             lo = float(row['ci95_lo'].iloc[0])
             hi = float(row['ci95_hi'].iloc[0])
-            x = i + (j - (len(methods) - 1) / 2) * w
-            plt.bar(x, mu, width=w)
+            x = i + (j - (len(labels) - 1) / 2) * w
+            bar = plt.bar(x, mu, width=w, color=colors[lab])
+            # remember a single handle per label for legend
+            if lab not in legend_handles and len(bar) > 0:
+                legend_handles[lab] = bar[0]
             if not math.isnan(lo) and not math.isnan(hi):
                 plt.plot([x, x], [lo, hi], color='black')
     plt.xticks(range(len(sparsities)), [f's={s}' for s in sparsities])
     plt.ylabel(ylab)
     plt.title(title)
+    # legend: map color → label (mode/method)
+    if legend_handles:
+        plt.legend(legend_handles.values(), legend_handles.keys(), title=label_key, fontsize=8)
     plt.tight_layout()
     out_png.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_png, dpi=200)
@@ -213,6 +280,8 @@ def main():
         rows = parse_one_json(fp)
         all_rows.extend(rows)
     df = pd.DataFrame(all_rows)
+    if not df.empty:
+        df = df.drop_duplicates(subset=['file', 'attack', 'metric'])
     raw_path = out_dir / 'results_raw_tidy.csv'
     df.to_csv(raw_path, index=False)
     print(f'Wrote raw tidy CSV: {raw_path} ({len(df)} rows from {len(files)} files)')
@@ -239,7 +308,7 @@ def main():
         df['sparsity'] = pd.to_numeric(df['sparsity'], errors='coerce')
     log(f"After filters: rows={len(df)}, unique victims={df['victim_seed'].nunique() if 'victim_seed' in df.columns else 'NA'}, unique methods={df['method'].nunique() if 'method' in df.columns else 'NA'}, unique sparsities={df['sparsity'].nunique() if 'sparsity' in df.columns else 'NA'}")
 
-    # 2) accuracy matching band per (method, sparsity)
+    # 2) accuracy matching band per (dataset, method, mode, sparsity)
     before_rows = len(df)
     dfm = accuracy_matching(df, args.acc_match_pp)
     log(f"Accuracy matching ±{args.acc_match_pp}pp: kept {len(dfm)}/{before_rows} rows")
@@ -250,26 +319,68 @@ def main():
         except Exception:
             pass
 
-    # 3) grouped summary
+    # 2.5) strict paired filter: keep only seeds present for all (method,mode) combos per block
+    if args.strict_paired and not dfm.empty and 'victim_seed' in dfm.columns:
+        kept_blocks = []
+        total_blocks = 0
+        for keys, sub in dfm.groupby(['dataset', 'sparsity', 'attack', 'metric'], dropna=False):
+            total_blocks += 1
+            mm = sub[['method', 'mode']].drop_duplicates()
+            need = len(mm)
+            if need <= 1:
+                kept_blocks.append(sub)
+                continue
+            counts = (sub[['victim_seed', 'method', 'mode']]
+                        .drop_duplicates()
+                        .groupby('victim_seed').size())
+            ok_seeds = counts[counts == need].index
+            kept = sub[sub['victim_seed'].isin(ok_seeds)]
+            kept_blocks.append(kept)
+        new_dfm = pd.concat(kept_blocks, ignore_index=True) if kept_blocks else dfm
+        log(f"Strict paired filter applied: {len(dfm)} -> {len(new_dfm)} rows across {total_blocks} blocks")
+        dfm = new_dfm
+
+    # 3) grouped summary (by dataset, method, mode, sparsity, attack, metric[, use_temperature])
     agg_rows = []
-    group_keys = ['dataset', 'method', 'sparsity', 'attack', 'metric', 'use_temperature']
-    for keys, g in dfm.groupby(group_keys):
-        m, sd, lo, hi, n = ci95(g['value'].values)
-        med = float(np.nanmedian(g['value'].values)) if len(g) else np.nan
-        q75 = float(np.nanpercentile(g['value'].values, 75)) if len(g) else np.nan
-        q25 = float(np.nanpercentile(g['value'].values, 25)) if len(g) else np.nan
+    base_keys = ['dataset', 'method', 'mode', 'sparsity', 'attack', 'metric']
+    include_temp = (args.split_by_temperature and ('use_temperature' in dfm.columns) and dfm['use_temperature'].notna().any())
+    group_keys = base_keys + (['use_temperature'] if include_temp else [])
+    # Group with dropna=False so NaN keys don't drop all rows
+    for keys, g in dfm.groupby(group_keys, dropna=False):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        keymap = {k: v for k, v in zip(group_keys, keys)}
+        # Aggregate per victim to ensure one sample per victim
+        if 'victim_seed' in g.columns:
+            vals = g.groupby('victim_seed')['value'].mean().values
+            n_victims = g['victim_seed'].nunique()
+        else:
+            vals = g['value'].values
+            n_victims = len(vals)
+        m, sd, lo, hi, _ = ci95(vals)
+        med = float(np.nanmedian(vals)) if len(vals) else np.nan
+        q75 = float(np.nanpercentile(vals, 75)) if len(vals) else np.nan
+        q25 = float(np.nanpercentile(vals, 25)) if len(vals) else np.nan
         agg_rows.append({
-            'dataset': keys[0], 'method': keys[1], 'sparsity': keys[2],
-            'attack': keys[3], 'metric': keys[4], 'use_temperature': keys[5],
-            'mean': m, 'std': sd, 'ci95_lo': lo, 'ci95_hi': hi, 'n': n,
-            'median': med, 'iqr': (q75 - q25) if (not math.isnan(q75) and not math.isnan(q25)) else np.nan
+            'dataset': keymap.get('dataset'),
+            'method': keymap.get('method'),
+            'mode': keymap.get('mode'),
+            'sparsity': keymap.get('sparsity'),
+            'attack': keymap.get('attack'),
+            'metric': keymap.get('metric'),
+            'use_temperature': keymap.get('use_temperature', None),
+            'mean': m, 'std': sd, 'ci95_lo': lo, 'ci95_hi': hi, 'n': int(n_victims),
+            'median': med,
+            'iqr': (q75 - q25) if (not math.isnan(q75) and not math.isnan(q25)) else np.nan
         })
     summary = pd.DataFrame(agg_rows)
     if not summary.empty:
-        summary = summary.sort_values(['dataset', 'attack', 'metric', 'sparsity', 'method'])
+        if 'mode' not in summary.columns:
+            summary['mode'] = None
+        summary = summary.sort_values(['dataset', 'attack', 'metric', 'sparsity', 'method', 'mode'])
     else:
         # Ensure expected columns exist for downstream consumers
-        for col in ['dataset','method','sparsity','attack','metric','use_temperature','mean','std','ci95_lo','ci95_hi','n','median','iqr']:
+        for col in ['dataset','method','mode','sparsity','attack','metric','use_temperature','mean','std','ci95_lo','ci95_hi','n','median','iqr']:
             if col not in summary.columns:
                 summary[col] = []
     summ_path = out_dir / 'summary_by_group.csv'
@@ -285,10 +396,10 @@ def main():
     if args.make_plots and HAS_PLOT:
         # LiRA TPR@1 (bar+CI)
         sub = summary[(summary.attack == 'lira') & (summary.metric == 'tpr@1')]
-        plot_bar_ci(sub, 'LiRA TPR@1%FPR (↓ lower is better)', 'TPR@1%FPR', plots_dir / 'lira_tpr1_bar.png')
+        plot_bar_ci(sub, 'LiRA TPR@1%FPR (↓ lower is better)', 'TPR@1%FPR', plots_dir / 'lira_tpr1_bar.png', group_key='mode')
         # LiRA AUROC (bar+CI)
         sub = summary[(summary.attack == 'lira') & (summary.metric == 'auroc')]
-        plot_bar_ci(sub, 'LiRA AUROC (↓ closer to 0.5 is better)', 'AUROC', plots_dir / 'lira_auroc_bar.png')
+        plot_bar_ci(sub, 'LiRA AUROC (↓ closer to 0.5 is better)', 'AUROC', plots_dir / 'lira_auroc_bar.png', group_key='mode')
 
     if args.make_plots and not HAS_PLOT:
         print('matplotlib not available; skipped plot generation')
