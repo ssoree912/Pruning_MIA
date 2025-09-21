@@ -46,6 +46,7 @@ def parse_args():
     ap.add_argument('--acc_match_pp', type=float, default=0.5, help='Accuracy-matching ±pp band around per-(method,sparsity) median')
     ap.add_argument('--make_plots', action='store_true', help='Generate standard figures (requires matplotlib)')
     ap.add_argument('--metrics', default='confidence_extended_auroc,lira_auc,nn_auc,samia_auc', help='Comma-separated metrics to consider for plots (CSV always has all)')
+    ap.add_argument('--verbose', action='store_true', help='Print debug logs and sample rows')
     return ap.parse_args()
 
 
@@ -128,13 +129,21 @@ def parse_one_json(fp: Path):
 
 
 def accuracy_matching(df: pd.DataFrame, band_pp: float) -> pd.DataFrame:
-    if df.empty:
+    """Filter within ±band_pp around median accuracy per (method, sparsity).
+    If a group's accuracy is missing/NaN, skip filtering for that group.
+    """
+    if df.empty or 'victim_test_acc' not in df.columns:
         return df
     keep = []
-    for (method, sparsity), g in df.groupby(['method', 'sparsity']):
-        med = g['victim_test_acc'].median()
+    for (method, sparsity), g in df.groupby(['method', 'sparsity'], dropna=False):
+        acc = pd.to_numeric(g['victim_test_acc'], errors='coerce')
+        med = float(acc.median()) if acc.notna().any() else float('nan')
+        if math.isnan(med):
+            keep.append(g)
+            continue
         lo, hi = med - band_pp, med + band_pp
-        keep.append(g[(g['victim_test_acc'] >= lo) & (g['victim_test_acc'] <= hi)])
+        mask = (acc >= lo) & (acc <= hi)
+        keep.append(g[mask])
     return pd.concat(keep, ignore_index=True) if keep else df
 
 
@@ -192,9 +201,14 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     plots_dir.mkdir(parents=True, exist_ok=True)
 
+    def log(msg: str):
+        if args.verbose:
+            print(f"[mia_aggregate] {msg}")
+
     # 1) load all JSONs
     all_rows = []
     files = list(src.rglob('*.json'))
+    log(f"Scanning {src} -> found {len(files)} JSON files")
     for fp in files:
         rows = parse_one_json(fp)
         all_rows.extend(rows)
@@ -202,21 +216,39 @@ def main():
     raw_path = out_dir / 'results_raw_tidy.csv'
     df.to_csv(raw_path, index=False)
     print(f'Wrote raw tidy CSV: {raw_path} ({len(df)} rows from {len(files)} files)')
+    if args.verbose:
+        log(f"Raw tidy columns: {list(df.columns)}")
+        try:
+            log("Raw tidy head:\n" + df.head(8).to_string(index=False))
+        except Exception:
+            pass
 
     # basic filtering
     if args.dataset:
         df = df[df['dataset'] == args.dataset]
+        log(f"Filter dataset={args.dataset} -> {len(df)} rows")
     if args.methods:
         df = df[df['method'].isin(args.methods)]
+        log(f"Filter methods={args.methods} -> {len(df)} rows")
     if args.victims:
         df = df[df['victim_seed'].isin(args.victims)]
+        log(f"Filter victims={args.victims} -> {len(df)} rows")
 
     # coerce numeric sparsity
     if 'sparsity' in df.columns:
         df['sparsity'] = pd.to_numeric(df['sparsity'], errors='coerce')
+    log(f"After filters: rows={len(df)}, unique victims={df['victim_seed'].nunique() if 'victim_seed' in df.columns else 'NA'}, unique methods={df['method'].nunique() if 'method' in df.columns else 'NA'}, unique sparsities={df['sparsity'].nunique() if 'sparsity' in df.columns else 'NA'}")
 
     # 2) accuracy matching band per (method, sparsity)
+    before_rows = len(df)
     dfm = accuracy_matching(df, args.acc_match_pp)
+    log(f"Accuracy matching ±{args.acc_match_pp}pp: kept {len(dfm)}/{before_rows} rows")
+    if args.verbose and not dfm.empty:
+        try:
+            grp = dfm.groupby(['method','sparsity'], dropna=False)['victim_test_acc'].agg(['count','min','median','max']).reset_index()
+            log("Post-match group stats (method,sparsity):\n" + grp.head(20).to_string(index=False))
+        except Exception:
+            pass
 
     # 3) grouped summary
     agg_rows = []
@@ -232,10 +264,22 @@ def main():
             'mean': m, 'std': sd, 'ci95_lo': lo, 'ci95_hi': hi, 'n': n,
             'median': med, 'iqr': (q75 - q25) if (not math.isnan(q75) and not math.isnan(q25)) else np.nan
         })
-    summary = pd.DataFrame(agg_rows).sort_values(['dataset', 'attack', 'metric', 'sparsity', 'method'])
+    summary = pd.DataFrame(agg_rows)
+    if not summary.empty:
+        summary = summary.sort_values(['dataset', 'attack', 'metric', 'sparsity', 'method'])
+    else:
+        # Ensure expected columns exist for downstream consumers
+        for col in ['dataset','method','sparsity','attack','metric','use_temperature','mean','std','ci95_lo','ci95_hi','n','median','iqr']:
+            if col not in summary.columns:
+                summary[col] = []
     summ_path = out_dir / 'summary_by_group.csv'
     summary.to_csv(summ_path, index=False)
     print(f'Wrote grouped summary CSV: {summ_path} ({len(summary)} rows)')
+    if args.verbose:
+        try:
+            log("Summary head:\n" + summary.head(12).to_string(index=False))
+        except Exception:
+            pass
 
     # 4) Standard plots (optional)
     if args.make_plots and HAS_PLOT:
@@ -252,4 +296,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
