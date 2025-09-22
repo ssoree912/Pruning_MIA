@@ -60,6 +60,28 @@ def _ensure_split_pkl(victim: int, shadows: list, args) -> bool:
 
 
 def run_one(victim: int, shadows: list, args, sparsity: float, prune_type: str) -> bool:
+    # Compute expected result JSON path and skip if it already exists (unless forced)
+    def _expected_json_path() -> Path:
+        if args.prune_method == 'dwa':
+            subdir = f"dwa_{prune_type}"
+            fname = f"sparsity_{str(sparsity)}_alpha{args.alpha}_beta{args.beta}_victim{victim}.json"
+        elif args.prune_method == 'static':
+            subdir = 'static'
+            fname = f"{args.dataset}_sparsity_{str(sparsity)}_victim{victim}.json"
+        elif args.prune_method == 'dpf':
+            tag = f"_{args.freeze_tag}" if getattr(args, 'freeze_tag', None) else ''
+            subdir = f"dpf{tag}"
+            fname = f"{args.dataset}_sparsity_{str(sparsity)}_victim{victim}.json"
+        else:  # dense
+            subdir = 'dense'
+            fname = f"{args.dataset}_victim{victim}.json"
+        return REPO_ROOT / 'mia_results' / subdir / fname
+
+    out_json = _expected_json_path()
+    if out_json.exists() and not getattr(args, 'force', False):
+        print(f"⏭️  Skip victim {victim}: result exists -> {out_json}")
+        return True
+
     # Ensure fixed split exists for this victim
     if not _ensure_split_pkl(victim, shadows, args):
         return False
@@ -118,6 +140,7 @@ def main():
     ap.add_argument('--batch_size', type=int, default=128)
     ap.add_argument('--freeze_tag', type=str, default=None, help='DPF only: freeze tag in runs path (e.g., freeze180 or nofreeze)')
     ap.add_argument('--split_seed', type=int, default=7, help='Seed for fixed MIA data splits')
+    ap.add_argument('--force', action='store_true', help='Re-run even if result JSON already exists')
     ap.add_argument('--save_scores', action='store_true', help='Save per-sample labels/scores for each attack')
     ap.add_argument('--debug', action='store_true')
     args = ap.parse_args()
