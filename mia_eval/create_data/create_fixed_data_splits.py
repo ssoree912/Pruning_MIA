@@ -15,12 +15,26 @@ import numpy as np
 
 # datasets.py import
 import sys
-sys.path.append('WeMeM-main')
+from pathlib import Path as _Path
+
+# Robustly add repo root (where datasets.py lives) to sys.path
+def _find_repo_root(start: _Path) -> _Path:
+    for cand in [start] + list(start.parents):
+        if (cand / '.git').exists():
+            return cand
+        if (cand / 'base_model.py').exists() and (cand / 'mia_eval').exists():
+            return cand
+    return start
+
+_THIS = _Path(__file__).resolve()
+_ROOT = _find_repo_root(_THIS)
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 try:
     from datasets import get_dataset
-except:
-    print("Warning: Could not import get_dataset, using dummy implementation")
+except Exception:
+    print("Warning: Could not import project datasets.get_dataset; falling back to torchvision with default roots under ./data/datasets/*-data")
     def get_dataset(name, train=True):
         import torchvision
         import torchvision.transforms as transforms
@@ -30,13 +44,13 @@ except:
                 transforms.ToTensor(),
                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
             ])
-            return torchvision.datasets.CIFAR10(root='./data', train=train, download=True, transform=transform)
+            return torchvision.datasets.CIFAR10(root='./data/datasets/cifar10-data', train=train, download=True, transform=transform)
         elif name == 'cifar100':
             transform = transforms.Compose([
                 transforms.ToTensor(), 
                 transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
             ])
-            return torchvision.datasets.CIFAR100(root='./data', train=train, download=True, transform=transform)
+            return torchvision.datasets.CIFAR100(root='./data/datasets/cifar100-data', train=train, download=True, transform=transform)
         else:
             raise ValueError(f"Unsupported dataset: {name}")
 
