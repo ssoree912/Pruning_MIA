@@ -59,20 +59,11 @@ class PruningConfig:
     freeze_epoch: int = 180
     prune_type: str = 'unstructured'
     importance_method: str = 'L1'
-    # ---- DWA fields (추가) ----
-    dwa_mode: str = 'reactivate_only'   # 'reactivate_only' | 'kill_active_plain_dead' | 'kill_and_reactivate'
-    dwa_alpha: float = 1.0
-    dwa_beta: float = 1.0
-    dwa_threshold_percentile: int = 50  # [0,100]
     def __post_init__(self):
         if self.method not in ['static', 'dpf', 'dcil']:
             raise ValueError(f"Unsupported pruning method: {self.method}")
         if not 0 <= self.sparsity <= 1:
             raise ValueError(f"Sparsity must be between 0 and 1: {self.sparsity}")
-        if self.dwa_mode not in ['reactivate_only','kill_active_plain_dead','kill_and_reactivate']:
-            raise ValueError(f"Unsupported DWA mode: {self.dwa_mode}")
-        if not (0 <= self.dwa_threshold_percentile <= 100):
-            raise ValueError(f"dwa_threshold_percentile must be in [0,100]: {self.dwa_threshold_percentile}")
 
 @dataclass
 class MIAConfig:
@@ -98,6 +89,10 @@ class WandbConfig:
 class SystemConfig:
     gpu: int = 0
     seed: int = 42
+    # Optional: fix initialization seed across particles while varying data/SGD seed
+    init_seed: int = None
+    # Optional: data/SGD seed (if None, falls back to seed)
+    data_seed: int = None
     deterministic: bool = True
     benchmark: bool = True
     print_freq: int = 100
@@ -223,12 +218,6 @@ def parse_config_args() -> ExperimentConfig:
     parser.add_argument('--target-epoch', type=int, default=75)
     parser.add_argument('--freeze-epoch', type=int, default=180)
     parser.add_argument('--prune-type', type=str, default='unstructured')
-    # ---- DWA CLI (추가) ----
-    parser.add_argument('--dwa-mode', type=str, default='reactivate_only',
-                        choices=['reactivate_only','kill_active_plain_dead','kill_and_reactivate'])
-    parser.add_argument('--dwa-alpha', type=float, default=1.0)
-    parser.add_argument('--dwa-beta', type=float, default=1.0)
-    parser.add_argument('--dwa-threshold-percentile', type=int, default=50)
     # MIA
     parser.add_argument('--mia', action='store_true')
     parser.add_argument('--num-shadows', type=int, default=64)
@@ -242,6 +231,8 @@ def parse_config_args() -> ExperimentConfig:
     # System
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--init-seed', type=int, default=None)
+    parser.add_argument('--data-seed', type=int, default=None)
     parser.add_argument('--print-freq', type=int, default=100)
 
     args = parser.parse_args()
@@ -273,14 +264,15 @@ def parse_config_args() -> ExperimentConfig:
             target_epoch=args.target_epoch,
             freeze_epoch=args.freeze_epoch,
             prune_type=getattr(args, 'prune_type', 'unstructured'),
-            # ---- DWA 필드 매핑 ----
-            dwa_mode=args.dwa_mode,
-            dwa_alpha=args.dwa_alpha,
-            dwa_beta=args.dwa_beta,
-            dwa_threshold_percentile=args.dwa_threshold_percentile,
         ),
         mia=MIAConfig(enabled=args.mia, num_shadow_models=args.num_shadows),
-        system=SystemConfig(gpu=args.gpu, seed=args.seed, print_freq=args.print_freq),
+        system=SystemConfig(
+            gpu=args.gpu,
+            seed=args.seed,
+            init_seed=args.init_seed,
+            data_seed=args.data_seed,
+            print_freq=args.print_freq,
+        ),
         wandb=WandbConfig(
             enabled=args.wandb,
             project=args.wandb_project,
@@ -292,19 +284,20 @@ def parse_config_args() -> ExperimentConfig:
     )
     return cfg
 
-def setup_reproducibility(system: SystemConfig):
+def setup_reproducibility(system: SystemConfig, seed_override: int = None):
     import torch, numpy as np, random
-    torch.manual_seed(system.seed)
-    torch.cuda.manual_seed_all(system.seed)
-    np.random.seed(system.seed)
-    random.seed(system.seed)
+    seed = system.seed if seed_override is None else seed_override
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
     if system.deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     else:
         torch.backends.cudnn.benchmark = system.benchmark
-    os.environ['PYTHONHASHSEED'] = str(system.seed)
-    print(f"Reproducibility setup complete (seed={system.seed})")
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    print(f"Reproducibility setup complete (seed={seed})")
 
 if __name__ == '__main__':
     cm = ConfigManager(); cm.create_preset_configs()

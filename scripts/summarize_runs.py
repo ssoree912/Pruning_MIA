@@ -3,7 +3,7 @@
 Summarize models under runs/ into a flat CSV.
 
 Extracts best-effort metadata from path patterns like:
-  runs/dwa/<mode>/sparsity_<s>/<dataset>/alpha<a>_beta<b>/seed<seed>/best_model.pth
+  runs/static/sparsity_<s>/<dataset>/seed<seed>/best_model.pth
 and optional files if present (config.json, experiment_summary.json).
 
 Usage:
@@ -18,16 +18,14 @@ import re
 
 
 def parse_path(p: Path):
-    """Parse metadata from runs/ path. Handles dense/static/dpf/dwa layouts."""
+    """Parse metadata from runs/ path. Handles dense/static/dpf layouts."""
     parts = p.parts
     meta = {
         'path': str(p.parent),
         'method': '',
-        'mode': '',           # DWA only
-        'sparsity': None,     # static/dpf/dwa
+        'mode': '',
+        'sparsity': None,     # static/dpf
         'dataset': '',
-        'alpha': None,        # DWA only
-        'beta': None,         # DWA only
         'seed': None,
         'freeze_tag': '',     # DPF only (e.g., freeze180 / nofreeze)
     }
@@ -40,31 +38,7 @@ def parse_path(p: Path):
     meta['method'] = method
 
     try:
-        if method == 'dwa':
-            # runs/dwa/<mode>/sparsity_<s>/<dataset>/alpha<a>_beta<b>/seed<seed>/best_model.pth
-            mode = parts[i+2] if i+2 < len(parts) else ''
-            meta['mode'] = mode
-            sp_token = parts[i+3] if i+3 < len(parts) else ''
-            if sp_token.startswith('sparsity_'):
-                s_str = sp_token.split('sparsity_', 1)[1]
-                try:
-                    meta['sparsity'] = float(s_str)
-                except Exception:
-                    pass
-            meta['dataset'] = parts[i+4] if i+4 < len(parts) else ''
-            ab_token = parts[i+5] if i+5 < len(parts) else ''
-            m = re.match(r'alpha([0-9.]+)_beta([0-9.]+)', ab_token)
-            if m:
-                meta['alpha'] = float(m.group(1))
-                meta['beta'] = float(m.group(2))
-            seed_token = parts[i+6] if i+6 < len(parts) else ''
-            if seed_token.startswith('seed'):
-                try:
-                    meta['seed'] = int(seed_token.replace('seed', ''))
-                except Exception:
-                    pass
-
-        elif method in ('static', 'dpf'):
+        if method in ('static', 'dpf'):
             # static: runs/static/sparsity_<s>/<dataset>/seed<seed>/best_model.pth
             # dpf   : runs/dpf/sparsity_<s>_<tag>/<dataset>/seed<seed>/best_model.pth
             sp_token = parts[i+2] if i+2 < len(parts) else ''
@@ -191,8 +165,6 @@ def main():
             'mode': meta['mode'],
             'sparsity': meta['sparsity'],
             'dataset': meta['dataset'],
-            'alpha': meta['alpha'],
-            'beta': meta['beta'],
             'seed': meta['seed'],
             'freeze_tag': meta['freeze_tag'],
             'best_acc1': extra.get('best_acc1'),
@@ -202,7 +174,7 @@ def main():
         rows.append(row)
 
     # Write CSV
-    cols = ['path','method','mode','sparsity','dataset','alpha','beta','seed','freeze_tag','best_acc1','final_acc1','final_loss']
+    cols = ['path','method','mode','sparsity','dataset','seed','freeze_tag','best_acc1','final_acc1','final_loss']
     with open(out_path, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()

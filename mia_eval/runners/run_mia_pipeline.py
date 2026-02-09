@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MIA pipeline over trained models under runs/ (DWA / Static / DPF / Dense).
+MIA pipeline over trained models under runs/ (Static / DPF / Dense).
 
 1) Scan runs/ and group seeds per experiment
 2) Ensure fixed MIA splits (pkl)
@@ -52,36 +52,6 @@ def _scan_runs(runs_dir: str, dataset: str):
     groups = []
     total = 0
 
-    # DWA
-    dwa = runs / 'dwa'
-    if dwa.exists():
-        for mode in dwa.iterdir():
-            if not mode.is_dir():
-                continue
-            for sp in mode.glob('sparsity_*'):
-                try:
-                    spv = float(sp.name.split('_',1)[1])
-                except Exception:
-                    continue
-                for ds in sp.iterdir():
-                    if not ds.is_dir() or ds.name != dataset:
-                        continue
-                    for ab in ds.glob('alpha*_beta*'):
-                        if not ab.is_dir():
-                            continue
-                        parts = ab.name.split('_')
-                        alpha = parts[0].replace('alpha','')
-                        beta  = parts[1].replace('beta','')
-                        seeds = []
-                        for sdir in ab.glob('seed*'):
-                            if (sdir / 'best_model.pth').exists():
-                                with suppress(Exception):
-                                    seeds.append(int(sdir.name.replace('seed','')))
-                                    total += 1
-                        if len(seeds) >= 2:
-                            groups.append({'method':'dwa','mode':mode.name,'sparsity':spv,'dataset':ds.name,
-                                           'alpha':alpha,'beta':beta,'seeds':sorted(seeds)})
-
     # Static
     st = runs / 'static'
     if st.exists():
@@ -100,8 +70,7 @@ def _scan_runs(runs_dir: str, dataset: str):
                             seeds.append(int(sdir.name.replace('seed','')))
                             total += 1
                 if len(seeds) >= 2:
-                    groups.append({'method':'static','mode':'na','sparsity':spv,'dataset':ds.name,
-                                   'alpha':None,'beta':None,'seeds':sorted(seeds)})
+                    groups.append({'method':'static','sparsity':spv,'dataset':ds.name,'seeds':sorted(seeds)})
 
     # DPF
     dpf = runs / 'dpf'
@@ -124,8 +93,8 @@ def _scan_runs(runs_dir: str, dataset: str):
                             seeds.append(int(sdir.name.replace('seed','')))
                             total += 1
                 if len(seeds) >= 2:
-                    groups.append({'method':'dpf','mode':'na','sparsity':spv,'dataset':ds.name,
-                                   'alpha':None,'beta':None,'seeds':sorted(seeds),'freeze_tag':tag})
+                    groups.append({'method':'dpf','sparsity':spv,'dataset':ds.name,
+                                   'seeds':sorted(seeds),'freeze_tag':tag})
 
     # Dense
     de = runs / 'dense'
@@ -139,24 +108,23 @@ def _scan_runs(runs_dir: str, dataset: str):
                         seeds.append(int(sdir.name.replace('seed','')))
                         total += 1
             if len(seeds) >= 2:
-                groups.append({'method':'dense','mode':'na','sparsity':None,'dataset':dataset,
-                               'alpha':None,'beta':None,'seeds':sorted(seeds)})
+                groups.append({'method':'dense','sparsity':None,'dataset':dataset,'seeds':sorted(seeds)})
 
     print(f"✅ Found {total} checkpoints across {len(groups)} experiment groups")
     return groups
 
 def main():
-    parser = argparse.ArgumentParser(description='MIA Evaluation Pipeline (DWA / Static / DPF / Dense)')
+    parser = argparse.ArgumentParser(description='MIA Evaluation Pipeline (Static / DPF / Dense)')
     parser.add_argument('--dataset', type=str, default='cifar10', 
                        choices=['cifar10', 'cifar100'], help='Dataset name')
     parser.add_argument('--runs_dir', type=str, default='./runs', 
-                       help='DWA training results directory')
+                       help='Training results directory')
     parser.add_argument('--output_dir', type=str, default='./mia_results',
                        help='MIA results output directory')
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use')
     parser.add_argument('--split_seed', type=int, default=7, help='Seed used for fixed MIA data splits')
     parser.add_argument('--debug', action='store_true', help='Enable debug prints inside per-run MIA evaluation')
-    parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','dwa_adaptive','scaling','dpf'], help='Model forward mode to pass through')
+    parser.add_argument('--forward_mode', type=str, default='standard', choices=['standard','scaling','dpf'], help='Model forward mode to pass through')
     parser.add_argument('--attacks', default='samia,threshold,nn,nn_top3,nn_cls,lira', help='Comma-separated attacks to run')
     parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5', help='Comma-separated FPR percentages for TPR@FPR (e.g., 0.1,1,5)')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
@@ -191,9 +159,7 @@ def main():
     print(f"Found {len(experiments)} experiment groups:")
     for exp in experiments:
         label = exp['method']
-        if exp['method'] == 'dwa':
-            desc = f"{exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']}"
-        elif exp['method'] == 'static':
+        if exp['method'] == 'static':
             desc = f"static/sparsity_{exp['sparsity']}/{exp['dataset']}"
         elif exp['method'] == 'dpf':
             tag = exp.get('freeze_tag')
@@ -212,9 +178,7 @@ def main():
         missing = 0
         for exp in experiments:
             if target not in exp['seeds']:
-                if exp['method'] == 'dwa':
-                    desc = f"{exp['method']}:{exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']}"
-                elif exp['method'] == 'static':
+                if exp['method'] == 'static':
                     desc = f"static/sparsity_{exp['sparsity']}/{exp['dataset']}"
                 elif exp['method'] == 'dpf':
                     tag = exp.get('freeze_tag')
@@ -237,9 +201,7 @@ def main():
     
     success_count = 0
     for i, exp in enumerate(experiments, 1):
-        if exp['method'] == 'dwa':
-            cur_desc = f"{exp['mode']}/sparsity_{exp['sparsity']}/{exp['dataset']}/alpha{exp['alpha']}_beta{exp['beta']}"
-        elif exp['method'] == 'static':
+        if exp['method'] == 'static':
             cur_desc = f"static/sparsity_{exp['sparsity']}/{exp['dataset']}"
         elif exp['method'] == 'dpf':
             tag = exp.get('freeze_tag')
@@ -285,7 +247,6 @@ def main():
             '--dataset', exp['dataset'],
             '--sparsity', sparsity_str,
             '--prune_method', exp['method'],
-            '--prune_type', exp.get('mode','na'),
             '--victim_seed', str(victim_seed),
             '--shadow_seeds'] + [str(s) for s in shadow_seeds] + [
             '--device', args.device.replace('cuda:', ''),
@@ -298,8 +259,6 @@ def main():
             eval_cmd.append('--debug')
         if args.save_scores:
             eval_cmd.append('--save_scores')
-        if exp['method'] == 'dwa':
-            eval_cmd += ['--alpha', str(exp.get('alpha')), '--beta', str(exp.get('beta'))]
         if exp['method'] == 'dpf' and exp.get('freeze_tag'):
             eval_cmd += ['--freeze_tag', str(exp['freeze_tag'])]
         
@@ -330,13 +289,10 @@ def main():
                         config = data['config']
                         results = data['results']
                         
-                        # Build a readable mode label that encodes method for non-DWA
+                        # Build a readable mode label that encodes method
                         method = (config.get('prune_method') or 'unknown').lower()
-                        prune_type = config.get('prune_type', 'na')
                         freeze_tag = config.get('freeze_tag')
-                        if method == 'dwa':
-                            mode_label = prune_type
-                        elif method == 'dpf':
+                        if method == 'dpf':
                             tag = freeze_tag if freeze_tag else 'nofreeze'
                             mode_label = f'dpf:{tag}'
                         elif method == 'static':
@@ -344,7 +300,7 @@ def main():
                         elif method == 'dense':
                             mode_label = 'dense'
                         else:
-                            mode_label = f'{method}:{prune_type}'
+                            mode_label = method
 
                         summary = {
                             'mode': mode_label,

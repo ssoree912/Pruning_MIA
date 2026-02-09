@@ -41,7 +41,7 @@ class BaseModel:
 
     def _safe_forward(self, inputs):
         """Forward wrapper that adapts to models requiring additional args (e.g., type_value).
-        Tries a plain call first, then falls back to common DWA/MaskConv variants.
+        Tries a plain call first, then falls back to common MaskConv variants.
         """
         # If a preferred type_value is set, try it first
         tv_pref = getattr(self, 'preferred_type_value', None)

@@ -432,8 +432,9 @@ def main():
     # Parse configuration
     config = parse_config_args()
     
-    # Setup reproducibility
-    setup_reproducibility(config.system)
+    # Setup reproducibility (optionally decouple init/data seeds for model merging)
+    init_seed = config.system.init_seed if config.system.init_seed is not None else config.system.seed
+    setup_reproducibility(config.system, seed_override=init_seed)
     
     # Create save directory
     save_path = config.get_save_path()
@@ -495,6 +496,11 @@ def main():
         for name, module in model.named_modules():
             if isinstance(module, pruning.dcil.mnn.MaskConv2d):
                 module.mask.data.fill_(1.0)
+
+    # Reseed before data loader / training to allow shared init but different SGD noise
+    data_seed = config.system.data_seed if config.system.data_seed is not None else config.system.seed
+    if data_seed != init_seed:
+        setup_reproducibility(config.system, seed_override=data_seed)
     
     model = nn.DataParallel(model)
     cudnn.benchmark = config.system.benchmark

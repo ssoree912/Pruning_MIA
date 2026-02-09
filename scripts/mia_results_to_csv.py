@@ -12,10 +12,7 @@ from typing import Dict, Iterable, List
 
 def derive_mode_label(cfg: Dict[str, object]) -> str:
     method = (cfg.get('prune_method') or 'unknown').lower()
-    prune_type = cfg.get('prune_type', 'na')
     freeze_tag = cfg.get('freeze_tag')
-    if method == 'dwa':
-        return str(prune_type)
     if method == 'dpf':
         tag = freeze_tag if freeze_tag else 'nofreeze'
         return f'dpf:{tag}'
@@ -23,7 +20,7 @@ def derive_mode_label(cfg: Dict[str, object]) -> str:
         return 'static'
     if method == 'dense':
         return 'dense'
-    return f'{method}:{prune_type}'
+    return method
 
 
 def sanitize_key(value: object) -> str:
@@ -86,8 +83,6 @@ def parse_json_file(fp: Path) -> Dict[str, object]:
         'sparsity': cfg.get('sparsity'),
         'victim_seed': cfg.get('victim_seed'),
         'seed': cfg.get('seed'),
-        'alpha': cfg.get('alpha'),
-        'beta': cfg.get('beta'),
         'victim_test_acc': data.get('victim_test_acc'),
     }
 
@@ -95,8 +90,6 @@ def parse_json_file(fp: Path) -> Dict[str, object]:
         fm = (exp.get('forward_mode') or cfg.get('forward_mode') or '').lower()
         if 'dpf' in fm:
             row['method'] = 'dpf'
-        elif 'dwa' in fm:
-            row['method'] = 'dwa'
         elif 'static' in fm or 'standard' in fm:
             row['method'] = 'static'
         else:

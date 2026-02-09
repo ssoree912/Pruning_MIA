@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MIA Utils for DWA Training Results (relocated under mia_eval/core)
-Compatible with WeMeM-main codebase structure
+MIA utility helpers for loading trained models and datasets.
+Compatible with the current training codebase structure.
 """
 
 import os
@@ -120,8 +120,8 @@ def get_model(model_type, num_cls, input_dim):
     else:
         raise ValueError(f"Unknown model_type={model_type}")
 
-def load_dwa_model(model_path, config_path=None, device='cuda'):
-    """DWA 훈련된 모델 로드 (config.json 참조)"""
+def load_pruned_model(model_path, config_path=None, device='cuda'):
+    """훈련된 모델 로드 (config.json 참조)"""
     
     if config_path is None:
         config_path = Path(model_path).parent / 'config.json'
@@ -134,7 +134,7 @@ def load_dwa_model(model_path, config_path=None, device='cuda'):
     if config.get('pruning', {}).get('enabled', False):
         # Pruned 모델인 경우
         pruner_key = config['pruning']['method'].lower()
-        if pruner_key in ('dpf', 'dwa', 'static'):
+        if pruner_key in ('dpf', 'static'):
             pruner_key = 'dcil'  # 동일 백엔드 사용
         
         pruner = pruning.__dict__[pruner_key]

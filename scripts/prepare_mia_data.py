@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 MIA 실험용 데이터 분할 준비 스크립트
-train_dwa.py 실행 전에 MIA용 데이터를 미리 분할해두는 스크립트
+Static/DPF/Dense 실험 전에 MIA용 데이터를 미리 분할해두는 스크립트
 
 Usage:
 python scripts/prepare_mia_data.py --dataset cifar10 --output_dir ./mia_data

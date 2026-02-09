@@ -42,7 +42,7 @@ def parse_args():
     ap.add_argument('--out_dir', default='results', help='Base output directory for CSVs')
     ap.add_argument('--plots_dir', default='results/plots', help='Output directory for plots')
     ap.add_argument('--dataset', default=None, help='Filter dataset (e.g., cifar10)')
-    ap.add_argument('--methods', nargs='*', default=None, help='Filter methods (e.g., dwa dpf static dense)')
+    ap.add_argument('--methods', nargs='*', default=None, help='Filter methods (e.g., dpf static dense)')
     ap.add_argument('--modes', nargs='*', default=None, help='Filter modes (e.g., static dpf:nofreeze kill_and_reactivate)')
     ap.add_argument('--victims', type=int, nargs='*', default=None, help='Restrict to specific victim seeds')
     ap.add_argument('--acc_match_pp', type=float, default=0.5, help='Accuracy-matching ±pp band around per-(method,sparsity) median')
@@ -66,10 +66,7 @@ def parse_args():
 
 def derive_mode_label(cfg: dict) -> str:
     method = (cfg.get('prune_method') or 'unknown').lower()
-    prune_type = cfg.get('prune_type', 'na')
     freeze_tag = cfg.get('freeze_tag')
-    if method == 'dwa':
-        return prune_type
     if method == 'dpf':
         tag = freeze_tag if freeze_tag else 'nofreeze'
         return f'dpf:{tag}'
@@ -77,7 +74,7 @@ def derive_mode_label(cfg: dict) -> str:
         return 'static'
     if method == 'dense':
         return 'dense'
-    return f'{method}:{prune_type}'
+    return method
 
 
 def parse_one_json(fp: Path):
@@ -103,8 +100,6 @@ def parse_one_json(fp: Path):
         'victim_test_acc': data.get('victim_test_acc'),
         'use_temperature': data.get('use_temperature', None),
         'attack_mode': exp.get('attack_mode'),
-        'alpha': cfg.get('alpha'),
-        'beta': cfg.get('beta'),
     }
 
     # Fallbacks from filename when metadata missing
@@ -123,8 +118,6 @@ def parse_one_json(fp: Path):
         fm = (meta.get('forward_mode') or '').lower()
         if 'dpf' in fm:
             meta['method'] = 'dpf'
-        elif 'dwa' in fm:
-            meta['method'] = 'dwa'
         elif 'standard' in fm or 'static' in fm:
             meta['method'] = 'static'
         else:
@@ -223,8 +216,6 @@ def parse_one_json_wide(fp: Path):
         'victim_seed': cfg.get('victim_seed'),
         'victim_test_acc': data.get('victim_test_acc'),
         'use_temperature': data.get('use_temperature', None),
-        'alpha': cfg.get('alpha'),
-        'beta': cfg.get('beta'),
     }
 
     # Shadow count for convenience
@@ -319,8 +310,6 @@ def parse_one_json_wide(fp: Path):
         fm = (row.get('forward_mode') or '').lower()
         if 'dpf' in fm:
             row['method'] = 'dpf'
-        elif 'dwa' in fm:
-            row['method'] = 'dwa'
         elif 'standard' in fm or 'static' in fm:
             row['method'] = 'static'
         else:
@@ -694,7 +683,7 @@ def main():
             wide_df['sparsity'] = pd.to_numeric(wide_df['sparsity'], errors='coerce')
         # Stable column ordering: metadata first, then metrics sorted
         meta_cols = [
-            'file','dataset','arch','method','mode','forward_mode','sparsity','victim_seed','victim_test_acc','use_temperature','alpha','beta','shadow_count'
+            'file','dataset','arch','method','mode','forward_mode','sparsity','victim_seed','victim_test_acc','use_temperature','shadow_count'
         ]
         metric_cols = sorted([c for c in wide_df.columns if c not in meta_cols])
         cols = [c for c in meta_cols if c in wide_df.columns] + metric_cols

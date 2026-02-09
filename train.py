@@ -173,6 +173,10 @@ def main():
                        help='Wandb tags for experiment')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducibility')
+    parser.add_argument('--init-seed', type=int, default=None,
+                       help='Optional init seed (shared across particles for model merging)')
+    parser.add_argument('--data-seed', type=int, default=None,
+                       help='Optional data/SGD seed override (if None, uses per-run seed)')
     parser.add_argument('--gpu', type=int, default=0,
                        help='GPU device ID')
     # Multi-seed controls
@@ -247,6 +251,10 @@ def main():
                     'seed': cur_seed,
                     'gpu': args.gpu,
                 }
+                if args.init_seed is not None:
+                    config_params['init-seed'] = args.init_seed
+                if args.data_seed is not None:
+                    config_params['data-seed'] = args.data_seed
 
                 # Add wandb config if enabled
                 if args.wandb:

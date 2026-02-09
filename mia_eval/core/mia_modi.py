@@ -30,7 +30,7 @@ except ImportError:
     from attackers import MiaAttack
 
 from base_model import BaseModel
-from mia_eval.core.mia_utils import load_dwa_model
+from mia_eval.core.mia_utils import load_pruned_model
 from datasets import get_dataset
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 
@@ -58,10 +58,7 @@ parser.add_argument('--pruner_name', default='l1unstructure', type=str, help="pr
 parser.add_argument('--sparsity', default=0.9, type=float, help="sparsity level (same for all models)")
 parser.add_argument('--victim_seed', default=42, type=int, help="victim model seed")
 parser.add_argument('--shadow_seeds', default=[43,44,45,46,47,48,49,50], nargs='+', type=int, help="shadow model seeds")
-parser.add_argument('--alpha', default=5.0, type=float)
-parser.add_argument('--beta', default=5.0, type=float)
-parser.add_argument('--prune_method', default='dwa', type=str, choices=['dwa','static','dpf','dense'])
-parser.add_argument('--prune_type', default='reactivate_only', type=str, help='DWA mode (ignored for others)')
+parser.add_argument('--prune_method', default='static', type=str, choices=['static','dpf','dense'])
 parser.add_argument('--freeze_tag', default=None, type=str, help='DPF only: sparsity_<s>_<freeze_tag> selector (e.g., freeze180 or nofreeze)')
 parser.add_argument('--defend', default='', type=str)
 parser.add_argument('--defend_arg', default=4, type=float)
@@ -69,7 +66,7 @@ parser.add_argument('--attacks', default="samia,threshold,nn,nn_top3,nn_cls,lira
 parser.add_argument('--original', action='store_true', help="Attack original models instead of pruned models")
 parser.add_argument('--threshold_strategy', default='youden', choices=['youden', 'max_accuracy', 'fpr_1pct', 'equal_error_rate'], 
                    help="Threshold selection strategy for attacks")
-parser.add_argument('--forward_mode', default='standard', choices=['standard', 'dwa_adaptive', 'scaling', 'dpf'], 
+parser.add_argument('--forward_mode', default='standard', choices=['standard', 'scaling', 'dpf'], 
                    help="Forward pass mode for model inference")
 parser.add_argument('--debug', action='store_true', help='Print detailed MIA debug info (splits and basic stats)')
 parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5',
@@ -88,15 +85,10 @@ def main(args):
     print(f"Victim seed: {args.victim_seed}")
     print(f"Shadow seeds: {args.shadow_seeds}")
     print(f"Sparsity: {args.sparsity}")
-    print(f"Alpha: {args.alpha}, Beta: {args.beta}")
 
     base_path = str(REPO_ROOT / "runs")
-    # Result location: keep rich naming for DWA; simplify for others
-    if args.prune_method == 'dwa':
-        result_dir = str(REPO_ROOT / 'mia_results' / f"{args.prune_method}_{args.prune_type}")
-        os.makedirs(result_dir, exist_ok=True)
-        result_file = f"{result_dir}/sparsity_{args.sparsity}_alpha{args.alpha}_beta{args.beta}_victim{args.victim_seed}.json"
-    elif args.prune_method == 'dpf':
+    # Result location
+    if args.prune_method == 'dpf':
         tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
         result_dir = str(REPO_ROOT / 'mia_results' / f"dpf{tag}")
         os.makedirs(result_dir, exist_ok=True)
@@ -116,9 +108,7 @@ def main(args):
 
     # Try to locate experiment directory for this victim
     # Locate experiment directory depending on method
-    if args.prune_method == 'dwa':
-        exp_dir = Path(base_path) / args.prune_method / args.prune_type / f"sparsity_{args.sparsity}" / args.dataset_name / f"alpha{args.alpha}_beta{args.beta}"
-    elif args.prune_method == 'static':
+    if args.prune_method == 'static':
         exp_dir = Path(base_path) / 'static' / f"sparsity_{args.sparsity}" / args.dataset_name
     elif args.prune_method == 'dpf':
         tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
@@ -177,13 +167,11 @@ def main(args):
                                   shuffle=False, num_workers=4, pin_memory=False)
 
     # Load victim model
-    def load_model_from_seed_folder(base_path, seed, dataset_name, model_name, sparsity, alpha, beta, 
-                                   prune_method, prune_type, device, forward_mode='standard', num_cls=10, input_dim=3,
+    def load_model_from_seed_folder(base_path, seed, dataset_name, model_name, sparsity,
+                                   prune_method, device, forward_mode='standard', num_cls=10, input_dim=3,
                                    freeze_tag=None):
         # Build seed folder by method
-        if prune_method == 'dwa':
-            model_dir = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}"
-        elif prune_method == 'static':
+        if prune_method == 'static':
             model_dir = f"{base_path}/static/sparsity_{sparsity}/{dataset_name}/seed{seed}"
         elif prune_method == 'dpf':
             tag = f"_{freeze_tag}" if freeze_tag else ''
@@ -191,7 +179,7 @@ def main(args):
         elif prune_method == 'dense':
             model_dir = f"{base_path}/dense/{dataset_name}/seed{seed}"
         else:
-            model_dir = f"{base_path}/{prune_method}/{prune_type}/sparsity_{sparsity}/{dataset_name}/alpha{alpha}_beta{beta}/seed{seed}"
+            model_dir = f"{base_path}/{prune_method}/{dataset_name}/seed{seed}"
         model_path = f"{model_dir}/best_model.pth"
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found at {model_path}")
@@ -215,7 +203,7 @@ def main(args):
             print(f"[Loader] Using config: {config_path}")
         try:
             if config_path:
-                loaded_model, loaded_config = load_dwa_model(model_path, config_path=config_path, device=device)
+                loaded_model, loaded_config = load_pruned_model(model_path, config_path=config_path, device=device)
                 # Wrap into BaseModel interface for downstream predict_target_sensitivity
                 safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
                 wrapper = BaseModel(safe_name, num_cls=num_cls, input_dim=input_dim, device=device)
@@ -224,24 +212,13 @@ def main(args):
                 # Best-effort: set forward behavior from config when available
                 if loaded_config and loaded_config.get('pruning', {}).get('enabled', False):
                     method = loaded_config['pruning'].get('method', '').lower()
-                    if method == 'dwa' and hasattr(wrapper.model, 'set_dwa_params'):
-                        cfg_alpha = loaded_config['pruning'].get('dwa_alpha', alpha)
-                        cfg_beta  = loaded_config['pruning'].get('dwa_beta', beta)
-                        cfg_mode  = loaded_config['pruning'].get('dwa_mode', prune_type)
-                        wrapper.model.set_dwa_params(alpha=cfg_alpha, beta=cfg_beta, mode=cfg_mode)
-                        print(f"[Loader] Applied DWA forward: mode={cfg_mode}, alpha={cfg_alpha}, beta={cfg_beta}")
-                    elif method == 'dwa' and not hasattr(wrapper.model, 'set_dwa_params'):
-                        raise RuntimeError("Loaded model does not expose set_dwa_params for DWA mode")
-                    # Other methods could be added here if model exposes toggles
-                elif forward_mode == 'dwa_adaptive' and hasattr(wrapper.model, 'set_dwa_params'):
-                    wrapper.model.set_dwa_params(alpha=alpha, beta=beta, mode=prune_type)
-                    print(f"[Loader] Applied DWA forward (from args): mode={prune_type}, alpha={alpha}, beta={beta}")
+                    if method in ('static', 'dpf', 'dcil'):
+                        wrapper.preferred_type_value = 5 if method == 'static' else 6
                 elif forward_mode == 'scaling' and hasattr(wrapper.model, 'set_scaling_mode'):
                     wrapper.model.set_scaling_mode(True)
                     print("[Loader] Enabled confidence scaling mode (from args)")
-                elif forward_mode == 'dpf' and hasattr(wrapper.model, 'set_dp_mode'):
-                    wrapper.model.set_dp_mode(True)
-                    print("[Loader] Enabled DP forward mode (from args)")
+                elif forward_mode == 'dpf':
+                    wrapper.preferred_type_value = 6
 
                 return wrapper, loaded_config
         except Exception as e:
@@ -266,9 +243,6 @@ def main(args):
                     'enabled': prune_method.lower() != 'dense',
                     'method': prune_method,
                     'sparsity': sparsity,
-                    'dwa_alpha': alpha,
-                    'dwa_beta': beta,
-                    'dwa_mode': prune_type
                 },
                 'data': {'dataset': dataset_name},
                 'model': {'arch': safe_name, 'layers': 18},
@@ -277,15 +251,15 @@ def main(args):
     
     print(f"Loading victim model (seed {args.victim_seed}) with forward_mode={args.forward_mode}...")
     victim_model, victim_cfg = load_model_from_seed_folder(
-        base_path, args.victim_seed, args.dataset_name, args.model_name, 
-        args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
+        base_path, args.victim_seed, args.dataset_name, args.model_name,
+        args.sparsity, args.prune_method,
         device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
     )
     # Also prepare a dense (unpruned) victim model for original-mode comparison
     try:
         victim_dense_model, _ = load_model_from_seed_folder(
             base_path, args.victim_seed, args.dataset_name, args.model_name,
-            0.0, args.alpha, args.beta, 'dense', args.prune_type,
+            0.0, 'dense',
             device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
         )
     except Exception as e:
@@ -412,14 +386,14 @@ def main(args):
         print(f"[{i+1}/{total_shadows}] Loading shadow model (seed {shadow_seed}) with forward_mode={args.forward_mode}...")
         shadow_model, s_cfg = load_model_from_seed_folder(
             base_path, shadow_seed, args.dataset_name, args.model_name,
-            args.sparsity, args.alpha, args.beta, args.prune_method, args.prune_type,
+            args.sparsity, args.prune_method,
             device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
         )
         # dense counterpart for original-mode comparison
         try:
             shadow_dense_model, _ = load_model_from_seed_folder(
                 base_path, shadow_seed, args.dataset_name, args.model_name,
-                0.0, args.alpha, args.beta, 'dense', args.prune_type,
+                0.0, 'dense',
                 device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
             )
         except Exception as e:
@@ -453,7 +427,7 @@ def main(args):
                 vm = (victim_meta.get('method') or '').lower()
                 sm = (s_meta.get('method') or '').lower()
                 def _norm(m):
-                    return 'dense' if m in ('', None) else ('pruned' if m in ('dcil','dwa','static','dpf') else m)
+                    return 'dense' if m in ('', None) else ('pruned' if m in ('dcil','static','dpf') else m)
                 if _norm(vm) != _norm(sm):
                     problems.append(f"method_mismatch(shadow={sm} vs victim={vm})")
 
@@ -662,11 +636,10 @@ def main(args):
                 'forward_mode': args.forward_mode,
                 'threshold_strategy': args.threshold_strategy,
                 'attack_mode': 'original' if (hasattr(args, 'original') and args.original) else 'pruned',
-                'dwa_params': {
-                    'alpha': args.alpha,
-                    'beta': args.beta,
-                    'prune_type': args.prune_type,
-                    'sparsity': args.sparsity
+                'pruning_params': {
+                    'method': args.prune_method,
+                    'sparsity': args.sparsity,
+                    'freeze_tag': args.freeze_tag,
                 },
                 'victim_config': victim_cfg,
                 'shadow_configs': shadow_cfg_map
