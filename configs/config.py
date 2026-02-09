@@ -77,15 +77,6 @@ class MIAConfig:
             raise ValueError(f"Unsupported MIA type: {self.attack_type}")
 
 @dataclass
-class WandbConfig:
-    enabled: bool = False
-    project: str = 'dcil-pytorch'
-    entity: str = None
-    name: str = None
-    tags: List[str] = field(default_factory=list)
-    notes: str = ''
-
-@dataclass
 class SystemConfig:
     gpu: int = 0
     seed: int = 42
@@ -109,7 +100,6 @@ class ExperimentConfig:
     pruning: PruningConfig = field(default_factory=PruningConfig)
     mia: MIAConfig = field(default_factory=MIAConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
-    wandb: WandbConfig = field(default_factory=WandbConfig)
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
     def to_json(self, path: str):
@@ -126,13 +116,12 @@ class ExperimentConfig:
         pruning_config = PruningConfig(**config_dict.get('pruning', {}))
         mia_config = MIAConfig(**config_dict.get('mia', {}))
         system_config = SystemConfig(**config_dict.get('system', {}))
-        wandb_config = WandbConfig(**config_dict.get('wandb', {}))
         main_config = {k: v for k, v in config_dict.items()
-                       if k not in ['data','model','training','pruning','mia','system','wandb']}
+                       if k not in ['data','model','training','pruning','mia','system']}
         return cls(
             data=data_config, model=model_config, training=training_config,
             pruning=pruning_config, mia=mia_config, system=system_config,
-            wandb=wandb_config, **main_config
+            **main_config
         )
     @classmethod
     def from_json(cls, path: str) -> 'ExperimentConfig':
@@ -221,13 +210,6 @@ def parse_config_args() -> ExperimentConfig:
     # MIA
     parser.add_argument('--mia', action='store_true')
     parser.add_argument('--num-shadows', type=int, default=64)
-    # Wandb
-    parser.add_argument('--wandb', action='store_true')
-    parser.add_argument('--wandb_project', default='dcil-pytorch')
-    parser.add_argument('--wandb_entity')
-    parser.add_argument('--wandb_name')
-    parser.add_argument('--wandb_tags', help='Wandb tags (comma separated)')
-    parser.add_argument('--wandb_notes', default='')
     # System
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--seed', type=int, default=42)
@@ -272,14 +254,6 @@ def parse_config_args() -> ExperimentConfig:
             init_seed=args.init_seed,
             data_seed=args.data_seed,
             print_freq=args.print_freq,
-        ),
-        wandb=WandbConfig(
-            enabled=args.wandb,
-            project=args.wandb_project,
-            entity=args.wandb_entity,
-            name=args.wandb_name,
-            tags=[t.strip() for t in args.wandb_tags.split(',')] if args.wandb_tags else [],
-            notes=args.wandb_notes,
         ),
     )
     return cfg

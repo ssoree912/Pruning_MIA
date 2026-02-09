@@ -13,14 +13,6 @@ import torch.backends.cudnn as cudnn
 import numpy as np
 from pathlib import Path
 
-# Import wandb for logging
-try:
-    import wandb
-    WANDB_AVAILABLE = True
-except ImportError:
-    WANDB_AVAILABLE = False
-    print("Warning: wandb not available. Install with: pip install wandb")
-
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -40,46 +32,8 @@ from utils.utils import (
 )
 
 def monitor_masking_behavior(model, epoch, iteration, config):
-    """모델의 마스킹 동작 모니터링"""
-    if iteration % 100 == 0 and config.pruning.enabled:  # 100 iteration마다 체크
-        from pruning.dcil.mnn import MaskConv2d
-        
-        # 실제 모델 가져오기 (DataParallel 고려)
-        net = model.module if hasattr(model, 'module') else model
-        frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
-        
-        print(f"\n[Epoch {epoch:3d}, Iter {iteration:4d}] {config.pruning.method.upper()} Masking ({frozen_status}):")
-        
-        layer_count = 0
-        for name, module in net.named_modules():
-            if isinstance(module, MaskConv2d) and layer_count < 3:  # 처음 3개만
-                mask_sparsity = (module.mask == 0).float().mean().item()
-                
-                # 그라디언트 분석
-                if module.weight.grad is not None:
-                    masked_indices = (module.mask == 0)
-                    active_indices = (module.mask == 1)
-                    
-                    if masked_indices.any():
-                        masked_grad_nonzero_ratio = (module.weight.grad[masked_indices] != 0).float().mean().item()
-                        masked_grad_abs_mean = module.weight.grad[masked_indices].abs().mean().item()
-                    else:
-                        masked_grad_nonzero_ratio = 0
-                        masked_grad_abs_mean = 0
-                    
-                    if active_indices.any():
-                        active_grad_abs_mean = module.weight.grad[active_indices].abs().mean().item()
-                    else:
-                        active_grad_abs_mean = 0
-                    
-                    print(f"  {name[:20]:<20}: type={module.type_value}, sparsity={mask_sparsity:.3f}")
-                    print(f"    {'':20} masked_grad_nonzero={masked_grad_nonzero_ratio:.3f}, "
-                          f"masked_grad_abs={masked_grad_abs_mean:.6f}, active_grad_abs={active_grad_abs_mean:.6f}")
-                else:
-                    print(f"  {name[:20]:<20}: type={module.type_value}, sparsity={mask_sparsity:.3f}, grad=None")
-                
-                layer_count += 1
-        print()
+    """마스킹 디버그 출력 비활성화 (필요 시 다시 활성화)"""
+    return
 
 def check_dpf_gradient_flow(model, config):
     """DPF에서 마스크된 영역의 그라디언트 플로우 확인"""
@@ -444,24 +398,6 @@ def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = str(config.system.gpu)
     torch.cuda.set_device(0)
     
-    # Initialize wandb if enabled
-    if config.wandb.enabled and WANDB_AVAILABLE:
-        wandb_config = {
-            'project': config.wandb.project,
-            'name': config.wandb.name,
-            'tags': config.wandb.tags,
-            'notes': config.wandb.notes,
-            'config': config.to_dict()
-        }
-        # Only add entity if it's not the default placeholder
-        if config.wandb.entity and config.wandb.entity != 'your-username':
-            wandb_config['entity'] = config.wandb.entity
-        
-        wandb.init(**wandb_config)
-        print(f"Initialized wandb: {config.wandb.project}/{config.wandb.name}")
-    elif config.wandb.enabled and not WANDB_AVAILABLE:
-        print("Warning: wandb logging requested but wandb not available")
-    
     # Initialize logger
     logger = ExperimentLogger(config.name, save_path)
     
@@ -532,13 +468,6 @@ def main():
             print(f"[Mask Freeze] Freezing masks at epoch {epoch}")
             final_sparsity = freeze_masks(model, logger)
             
-            # Log freeze event to wandb
-            if config.wandb.enabled and WANDB_AVAILABLE:
-                wandb.log({
-                    'mask_freeze_epoch': epoch,
-                    'mask_freeze_sparsity': final_sparsity
-                })
-        
         # Train
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, epoch, 
@@ -555,15 +484,13 @@ def main():
         # Log epoch results
         logger.log_epoch(epoch, train_metrics, val_metrics, optimizer.param_groups[0]["lr"])
         
-        # Log to wandb if enabled
-        if config.wandb.enabled and WANDB_AVAILABLE:
-            wandb_log = {
-                'epoch': epoch,
-                'learning_rate': optimizer.param_groups[0]["lr"],
-                **{f'train_{k}': v for k, v in train_metrics.items()},
-                **{f'val_{k}': v for k, v in val_metrics.items()}
-            }
-            wandb.log(wandb_log)
+        # Remaining epochs summary
+        remaining = config.training.epochs - (epoch + 1)
+        logger.logger.info(
+            f"Remaining epochs: {remaining} | "
+            f"Train acc1: {train_metrics.get('acc1', 0):.3f}, loss: {train_metrics.get('loss', 0):.4f} | "
+            f"Val acc1: {val_metrics.get('acc1', 0):.3f}, loss: {val_metrics.get('loss', 0):.4f}"
+        )
         
         # Save best model
         is_best = val_metrics['acc1'] > best_acc1

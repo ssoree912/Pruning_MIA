@@ -40,7 +40,6 @@ networkx==3.2
 
 # Experiment tracking (optional)
 tensorboard>=2.14.0
-wandb>=0.15.12
 
 # Additional ML utilities
 torchsummary>=1.5.1

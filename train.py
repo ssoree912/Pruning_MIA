@@ -105,9 +105,6 @@ def create_training_summary_csv(all_results, experiment_prefix='experiments'):
     """Deprecated: 요약 CSV는 별도 스크립트에서 생성 (보존용 스텁)."""
     return None
 
-def log_mia_results_to_wandb(args):
-    """Deprecated: MIA 결과 로깅 제거됨 (보존용 스텁)."""
-    print("MIA results logging disabled")
 
 def reorganize_existing_models():
     """Reorganize existing model folders into new structure"""
@@ -162,15 +159,6 @@ def main():
     parser.add_argument('--skip-existing', action='store_true',
                        help='Skip experiments if results already exist')
     
-    # Wandb arguments
-    parser.add_argument('--wandb', action='store_true',
-                       help='Enable Weights & Biases logging')
-    parser.add_argument('--wandb-project', default='dcil-pytorch',
-                       help='Wandb project name')
-    parser.add_argument('--wandb-entity', default=None,
-                       help='Wandb entity (username or team)')
-    parser.add_argument('--wandb-tags', nargs='*', default=[],
-                       help='Wandb tags for experiment')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed for reproducibility')
     parser.add_argument('--init-seed', type=int, default=None,
@@ -256,16 +244,6 @@ def main():
                 if args.data_seed is not None:
                     config_params['data-seed'] = args.data_seed
 
-                # Add wandb config if enabled
-                if args.wandb:
-                    tags = args.wandb_tags + [method, args.dataset, args.arch, f'seed{cur_seed}'] if args.wandb_tags else [method, args.dataset, args.arch, f'seed{cur_seed}']
-                    config_params.update({
-                        'wandb': True,
-                        'wandb_project': args.wandb_project,
-                        'wandb_entity': args.wandb_entity,
-                        'wandb_name': f"{exp_name}_seed{cur_seed}",
-                        'wandb_tags': ','.join(tags),
-                    })
 
                 if method != 'dense':
                     config_params.update({
