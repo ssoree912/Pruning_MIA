@@ -51,7 +51,7 @@ def create_organized_save_path(method, sparsity=None, dataset='cifar10', freeze_
 
 def run_training(config_params, dry_run: bool = False):
     """Run training with specified parameters"""
-    cmd = ['python', 'run_experiment.py']
+    cmd = ['python', '-u', 'run_experiment.py']
     
     # Add all config parameters to command
     for key, value in config_params.items():
@@ -75,11 +75,11 @@ def run_training(config_params, dry_run: bool = False):
         #     print(f"Training failed with return code: {result.returncode}")
         #     return False, f"Return code: {result.returncode}"
         # return True, "Training completed"
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)  # 2 hour timeout
+        result = subprocess.run(cmd, text=True, timeout=7200)  # 2 hour timeout (stream output)
         if result.returncode != 0:
-            print(f"Training failed with error: {result.stderr}")
-            return False, result.stderr
-        return True, result.stdout
+            print(f"Training failed with return code: {result.returncode}")
+            return False, f"Return code: {result.returncode}"
+        return True, "Training completed"
 
 
     except subprocess.TimeoutExpired:
