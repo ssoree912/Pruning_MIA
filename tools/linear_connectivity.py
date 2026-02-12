@@ -17,9 +17,17 @@ from typing import Dict, List, Optional, Tuple, Any
 import torch
 import torch.nn as nn
 
-import models
-import pruning
-from data import DataLoader as CIFARLoader
+import os
+import sys
+
+THIS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = THIS_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+import models  # noqa: E402
+import pruning  # noqa: E402
+from data import DataLoader as CIFARLoader  # noqa: E402
 
 
 def _find_config_path(ckpt_path: Path) -> Optional[Path]:
@@ -267,7 +275,7 @@ def main():
     curve: List[Dict[str, float]] = []
     metric_name: str = "metric"
 
-    for lam in lambdas:
+    for idx, lam in enumerate(lambdas, 1):
         sd_lam = interpolate_state(sd0, sd1, lam)
         if common_mask is not None:
             sd_lam = apply_mask_to_state(sd_lam, common_mask)
@@ -278,6 +286,7 @@ def main():
 
         loss, metric, metric_name = eval_fn(model, val_loader, device, type_value)
         curve.append({"lambda": float(lam), "loss": float(loss), "metric": float(metric)})
+        print(f"[lambda {idx:3d}/{K}] lam={lam:.3f} loss={loss:.4f} {metric_name}={metric:.4f}")
 
     L0 = curve[0]["loss"]
     L1 = curve[-1]["loss"]
