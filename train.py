@@ -165,6 +165,8 @@ def main():
                        help='Optional init seed (shared across particles for model merging)')
     parser.add_argument('--data-seed', type=int, default=None,
                        help='Optional data/SGD seed override (if None, uses per-run seed)')
+    parser.add_argument('--data-seed-offset', type=int, default=0,
+                       help='Additive offset for per-seed data_seed (paper-style SGD noise split)')
     parser.add_argument('--gpu', type=int, default=0,
                        help='GPU device ID')
     # Multi-seed controls
@@ -241,8 +243,12 @@ def main():
                 }
                 if args.init_seed is not None:
                     config_params['init-seed'] = args.init_seed
+                # data-seed: ALWAYS set per run (paper-style SGD noise split)
                 if args.data_seed is not None:
-                    config_params['data-seed'] = args.data_seed
+                    base = args.data_seed
+                    config_params['data-seed'] = base + (cur_seed - seed_list[0]) + args.data_seed_offset
+                else:
+                    config_params['data-seed'] = cur_seed + args.data_seed_offset
 
 
                 if method != 'dense':

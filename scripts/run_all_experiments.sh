@@ -11,8 +11,9 @@ GPU="${GPU:-0}"
 START_SEED="${START_SEED:-42}"
 NUM_SEEDS="${NUM_SEEDS:-3}"
 
-# Same init across particles (helps merging)
+# Same init across particles (paper-style)
 INIT_SEED="${INIT_SEED:-1234}"
+DATA_SEED_OFFSET="${DATA_SEED_OFFSET:-10000}"
 
 # Sparsity list for pruning methods
 SPARSITIES="${SPARSITIES:-0.5 0.6 0.7 0.8 0.9 0.95}"
@@ -35,7 +36,7 @@ python train.py \
   --dataset "${DATASET}" --arch "${ARCH}" \
   --epochs "${EPOCHS}" --gpu "${GPU}" \
   --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}"
+  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
 
 # 2) Static (multi-seed, all sparsities)
 python train.py \
@@ -44,7 +45,7 @@ python train.py \
   --dataset "${DATASET}" --arch "${ARCH}" \
   --epochs "${EPOCHS}" --gpu "${GPU}" \
   --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}"
+  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
 
 # 3) DPF (dynamic, no-freeze)
 python train.py \
@@ -54,7 +55,7 @@ python train.py \
   --epochs "${EPOCHS}" --gpu "${GPU}" \
   --freeze-epoch -1 \
   --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}"
+  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
 
 # 4) DPF + freeze (freeze at epoch 180)
 python train.py \
@@ -64,7 +65,7 @@ python train.py \
   --epochs "${EPOCHS}" --gpu "${GPU}" \
   --freeze-epoch "${FREEZE_EPOCH}" \
   --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}"
+  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
 
 # 5) Summarize results to CSV
 python scripts/summarize_runs.py --runs ./runs --out "${OUT_CSV}"
