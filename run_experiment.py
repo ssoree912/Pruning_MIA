@@ -429,6 +429,8 @@ def main():
     # Apply static pruning if needed
     if config.pruning.enabled and config.pruning.method == 'static':
         apply_static_pruning(model, config, logger)
+        # Save pruned init snapshot (same mask + same init) for connectivity checks
+        torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_pruned_model.pth'))
     elif config.pruning.enabled and config.pruning.method == 'dpf':
         # Initialize all masks to 1 for DPF
         for name, module in model.named_modules():

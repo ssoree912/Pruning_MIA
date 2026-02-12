@@ -38,9 +38,10 @@ done
 if [[ -z "${METHOD}" ]]; then echo "--method is required"; exit 1; fi
 if [[ "${METHOD}" != "dense" && -z "${SPARSITY}" ]]; then echo "--sparsity is required"; exit 1; fi
 
-PAIR=$(python scripts/find_same_init_pair.py \
+PAIR=$(python scripts/find_particle_pair.py \
   --method "${METHOD}" --sparsity "${SPARSITY}" --dataset "${DATASET}" \
-  ${FREEZE_TAG:+--freeze-tag "${FREEZE_TAG}"} --runs "${RUNS_DIR}")
+  ${FREEZE_TAG:+--freeze-tag "${FREEZE_TAG}"} --runs "${RUNS_DIR}" \
+  --require-data-seed-diff)
 
 SEED0=$(echo "${PAIR}" | awk '{print $1}')
 SEED1=$(echo "${PAIR}" | awk '{print $2}')
