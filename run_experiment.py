@@ -423,6 +423,8 @@ def main():
     logger.log_model_info(model, 
                          "pruned" if config.pruning.enabled else "dense",
                          config.pruning.sparsity if config.pruning.enabled else None)
+    # Save initial weights for same-init verification
+    torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_model.pth'))
     
     # Apply static pruning if needed
     if config.pruning.enabled and config.pruning.method == 'static':
