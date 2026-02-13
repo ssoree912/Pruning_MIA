@@ -34,6 +34,7 @@ class ModelConfig:
 @dataclass
 class TrainingConfig:
     epochs: int = 200
+    start_epoch: int = 0
     lr: float = 0.1
     momentum: float = 0.9
     weight_decay: float = 5e-4
@@ -84,6 +85,10 @@ class SystemConfig:
     init_seed: int = None
     # Optional: data/SGD seed (if None, falls back to seed)
     data_seed: int = None
+    # Optional: resume checkpoint path
+    resume: str = None
+    # Optional: save split checkpoint at end of this epoch and exit
+    save_split_ckpt_epoch: int = None
     deterministic: bool = True
     benchmark: bool = True
     print_freq: int = 100
@@ -196,6 +201,7 @@ def parse_config_args() -> ExperimentConfig:
     parser.add_argument('--layers', type=int, default=20)
     # Training
     parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--start-epoch', type=int, default=0)
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight-decay', type=float, default=5e-4)
@@ -215,6 +221,8 @@ def parse_config_args() -> ExperimentConfig:
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--init-seed', type=int, default=None)
     parser.add_argument('--data-seed', type=int, default=None)
+    parser.add_argument('--resume', type=str, default=None)
+    parser.add_argument('--save-split-ckpt-epoch', type=int, default=None)
     parser.add_argument('--print-freq', type=int, default=100)
 
     args = parser.parse_args()
@@ -237,7 +245,8 @@ def parse_config_args() -> ExperimentConfig:
                         batch_size=args.batch_size, workers=args.workers),
         model=ModelConfig(arch=args.arch, layers=args.layers),
         training=TrainingConfig(epochs=args.epochs, lr=args.lr,
-                                momentum=args.momentum, weight_decay=args.weight_decay),
+                                momentum=args.momentum, weight_decay=args.weight_decay,
+                                start_epoch=args.start_epoch),
         pruning=PruningConfig(
             enabled=args.prune,
             method=args.prune_method,
@@ -253,6 +262,8 @@ def parse_config_args() -> ExperimentConfig:
             seed=args.seed,
             init_seed=args.init_seed,
             data_seed=args.data_seed,
+            resume=args.resume,
+            save_split_ckpt_epoch=args.save_split_ckpt_epoch,
             print_freq=args.print_freq,
         ),
     )

@@ -84,7 +84,7 @@ def create_model(config):
     
     return model, image_size
 
-def setup_training(model, config):
+def setup_training(model, config, start_epoch: int = 0):
     """Setup training components"""
     
     # Loss function
@@ -100,27 +100,32 @@ def setup_training(model, config):
     )
     
     # Learning rate scheduler
+    last_epoch = start_epoch - 1
     if config.training.scheduler == 'multistep':
         scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer,
             milestones=config.training.milestones,
-            gamma=config.training.gamma
+            gamma=config.training.gamma,
+            last_epoch=last_epoch
         )
     elif config.training.scheduler == 'step':
         scheduler = optim.lr_scheduler.StepLR(
             optimizer,
             step_size=config.training.step_size,
-            gamma=config.training.gamma
+            gamma=config.training.gamma,
+            last_epoch=last_epoch
         )
     elif config.training.scheduler == 'cosine':
         scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=config.training.epochs
+            T_max=config.training.epochs,
+            last_epoch=last_epoch
         )
     elif config.training.scheduler == 'exp':
         scheduler = optim.lr_scheduler.ExponentialLR(
             optimizer,
-            gamma=config.training.gamma
+            gamma=config.training.gamma,
+            last_epoch=last_epoch
         )
     else:
         scheduler = None
@@ -425,17 +430,22 @@ def main():
                          config.pruning.sparsity if config.pruning.enabled else None)
     # Save initial weights for same-init verification
     torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_model.pth'))
+
+    # Resume handling (skip pruning init if resuming)
+    is_resuming = getattr(config.system, "resume", None) is not None
+    resume_path = Path(config.system.resume) if is_resuming else None
     
-    # Apply static pruning if needed
-    if config.pruning.enabled and config.pruning.method == 'static':
-        apply_static_pruning(model, config, logger)
-        # Save pruned init snapshot (same mask + same init) for connectivity checks
-        torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_pruned_model.pth'))
-    elif config.pruning.enabled and config.pruning.method == 'dpf':
-        # Initialize all masks to 1 for DPF
-        for name, module in model.named_modules():
-            if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-                module.mask.data.fill_(1.0)
+    # Apply pruning init only for fresh runs
+    if not is_resuming:
+        if config.pruning.enabled and config.pruning.method == 'static':
+            apply_static_pruning(model, config, logger)
+            # Save pruned init snapshot (same mask + same init) for connectivity checks
+            torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_pruned_model.pth'))
+        elif config.pruning.enabled and config.pruning.method == 'dpf':
+            # Initialize all masks to 1 for DPF
+            for name, module in model.named_modules():
+                if isinstance(module, pruning.dcil.mnn.MaskConv2d):
+                    module.mask.data.fill_(1.0)
 
     # Reseed before data loader / training to allow shared init but different SGD noise
     data_seed = config.system.data_seed if config.system.data_seed is not None else config.system.seed
@@ -452,16 +462,33 @@ def main():
     )
     
     # Setup training
-    criterion, optimizer, scheduler = setup_training(model, config)
+    start_epoch = getattr(config.training, "start_epoch", 0)
+    criterion, optimizer, scheduler = setup_training(model, config, start_epoch=start_epoch)
     
     # Training loop
     best_acc1 = 0.0
     iteration_counter = [0]  # Use list for modification in nested function
+
+    # Resume AFTER DataParallel
+    if is_resuming:
+        assert resume_path is not None and resume_path.exists(), f"resume not found: {resume_path}"
+        ckpt = torch.load(str(resume_path), map_location="cpu")
+        model.load_state_dict(ckpt["state_dict"], strict=True)
+        if "optimizer" in ckpt and ckpt["optimizer"] is not None:
+            optimizer.load_state_dict(ckpt["optimizer"])
+        if start_epoch == 0 and "epoch" in ckpt:
+            start_epoch = int(ckpt["epoch"]) + 1
+        if "best_acc1" in ckpt:
+            best_acc1 = float(ckpt["best_acc1"])
+        if "iteration" in ckpt:
+            iteration_counter[0] = int(ckpt["iteration"])
+        logger.logger.info(f"[RESUME] loaded={resume_path} start_epoch={start_epoch} best_acc1={best_acc1:.4f} iter={iteration_counter[0]}")
     
     logger.logger.info("Starting training...")
     start_time = time.time()
     
-    for epoch in range(config.training.epochs):
+    save_split_epoch = getattr(config.system, "save_split_ckpt_epoch", None)
+    for epoch in range(start_epoch, config.training.epochs):
         logger.logger.info(f'\nEpoch: {epoch}, lr = {optimizer.param_groups[0]["lr"]}')
         
         # Check if masks should be frozen (freeze_epoch = -1 means no freezing)
@@ -515,6 +542,22 @@ def main():
                 logger.save_checkpoint_info(epoch, best_acc1, 'best_model.pth')
             
             torch.save(checkpoint, os.path.join(save_path, 'checkpoint.pth'))
+
+        # Optional: save split checkpoint and exit
+        if save_split_epoch is not None and epoch == int(save_split_epoch):
+            split_path = os.path.join(save_path, f"split_ckpt_epoch{epoch}.pth")
+            checkpoint = {
+                'epoch': epoch,
+                'config': config.to_dict(),
+                'state_dict': model.state_dict(),
+                'best_acc1': best_acc1,
+                'optimizer': optimizer.state_dict(),
+                'iteration': iteration_counter[0],
+            }
+            torch.save(checkpoint, split_path)
+            logger.logger.info(f"[SPLIT] saved split ckpt at {split_path} and exiting")
+            logger.finalize()
+            return best_acc1
     
     # Training completed
     training_time = time.time() - start_time
