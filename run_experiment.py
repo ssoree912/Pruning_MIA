@@ -98,6 +98,9 @@ def setup_training(model, config, start_epoch: int = 0):
         weight_decay=config.training.weight_decay,
         nesterov=config.training.nesterov
     )
+    # Ensure initial_lr is set for schedulers when resuming
+    for group in optimizer.param_groups:
+        group.setdefault('initial_lr', group['lr'])
     
     # Learning rate scheduler
     last_epoch = start_epoch - 1
