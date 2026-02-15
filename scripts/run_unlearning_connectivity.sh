@@ -31,6 +31,7 @@ MASK_TOPK="0.1"
 OUT_DIR="./runs/unlearning_connectivity"
 GPU="0"
 SKIP_EXISTING=0
+STEP1_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --out-dir) OUT_DIR="$2"; shift 2 ;;
     --gpu) GPU="$2"; shift 2 ;;
     --skip-existing) SKIP_EXISTING=1; shift 1 ;;
+    --step1-only) STEP1_ONLY=1; shift 1 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -103,6 +105,9 @@ for DF in df1 df2 df3; do
   fi
   if [[ "${SKIP_EXISTING}" -eq 1 ]]; then
     ARGS+=(--skip-existing)
+  fi
+  if [[ "${STEP1_ONLY}" -eq 1 ]]; then
+    ARGS+=(--step1-only)
   fi
   python train.py "${ARGS[@]}"
 done

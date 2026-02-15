@@ -402,6 +402,7 @@ def main() -> None:
     parser.add_argument("--dense-ckpt", type=str, required=True, help="Path to dense checkpoint")
     parser.add_argument("--out-dir", type=str, default="./runs/unlearning_connectivity")
     parser.add_argument("--skip-existing", action="store_true", help="Reuse existing endpoint ckpts if present")
+    parser.add_argument("--step1-only", action="store_true", help="Run only Step1(unlearning checkpoints), skip Step2/3 connectivity")
 
     parser.add_argument("--dataset", type=str, default=None, choices=["cifar10", "cifar100"])
     parser.add_argument("--arch", type=str, default=None, choices=["resnet", "wideresnet"])
@@ -640,6 +641,39 @@ def main() -> None:
         f"forget_acc={endpoint_metrics[f'seed{args.seed_b}']['forget_acc']:.4f}, "
         f"test_acc={endpoint_metrics[f'seed{args.seed_b}']['test_acc']:.4f}"
     )
+
+    if args.step1_only:
+        step1_summary = {
+            "dense_ckpt": str(dense_ckpt),
+            "run_dir": str(run_dir),
+            "device": str(device),
+            "model_spec": spec.__dict__,
+            "df_spec": df_spec,
+            "unlearning_objective": {
+                "type": "retain_descent_with_forget_ascent",
+                "retain_weight": args.retain_weight,
+                "forget_alpha": args.forget_alpha,
+                "grad_clip": args.grad_clip,
+            },
+            "endpoints": {
+                "seed_a": args.seed_a,
+                "seed_b": args.seed_b,
+                "ckpt_a": str(ckpt_a),
+                "ckpt_b": str(ckpt_b),
+                "metrics_file": str(run_dir / "endpoint_metrics.json"),
+                "metrics": endpoint_metrics,
+            },
+            "step1_only": True,
+        }
+        with open(run_dir / "summary.json", "w") as f:
+            json.dump(step1_summary, f, indent=2)
+        print("\n" + "=" * 80)
+        print("STEP1 DONE (checkpoint only)")
+        print("=" * 80)
+        print(f"summary: {run_dir / 'summary.json'}")
+        print(f"ckpt_a : {ckpt_a}")
+        print(f"ckpt_b : {ckpt_b}")
+        return
 
     lambdas = make_lambdas(args.lambdas)
 

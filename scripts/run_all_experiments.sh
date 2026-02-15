@@ -27,6 +27,7 @@ MASK_METHOD="${MASK_METHOD:-delta}"
 MASK_TOPK="${MASK_TOPK:-0.1}"
 OUT_DIR="${OUT_DIR:-./runs/unlearning_connectivity}"
 GPU="${GPU:-0}"
+STEP1_ONLY="${STEP1_ONLY:-0}"
 
 if [[ -z "${DENSE_CKPT}" ]]; then
   echo "DENSE_CKPT env is required"
@@ -35,27 +36,32 @@ if [[ -z "${DENSE_CKPT}" ]]; then
   exit 1
 fi
 
-scripts/run_unlearning_connectivity.sh \
-  --dense-ckpt "${DENSE_CKPT}" \
-  --dataset "${DATASET}" \
-  --arch "${ARCH}" \
-  --layers "${LAYERS}" \
-  --seed-a "${SEED_A}" \
-  --seed-b "${SEED_B}" \
-  --unlearn-epochs "${UNLEARN_EPOCHS}" \
-  --unlearn-lr "${UNLEARN_LR}" \
-  --forget-alpha "${FORGET_ALPHA}" \
-  --retain-weight "${RETAIN_WEIGHT}" \
-  --grad-clip "${GRAD_CLIP}" \
-  --batch-size "${BATCH_SIZE}" \
-  --workers "${WORKERS}" \
-  --datapath "${DATAPATH}" \
-  --lambdas "${LAMBDAS}" \
-  --bn-recalc \
-  --bn-batches "${BN_BATCHES}" \
-  --mask-method "${MASK_METHOD}" \
-  --mask-topk "${MASK_TOPK}" \
-  --out-dir "${OUT_DIR}" \
+ARGS=(
+  --dense-ckpt "${DENSE_CKPT}"
+  --dataset "${DATASET}"
+  --arch "${ARCH}"
+  --layers "${LAYERS}"
+  --seed-a "${SEED_A}"
+  --seed-b "${SEED_B}"
+  --unlearn-epochs "${UNLEARN_EPOCHS}"
+  --unlearn-lr "${UNLEARN_LR}"
+  --forget-alpha "${FORGET_ALPHA}"
+  --retain-weight "${RETAIN_WEIGHT}"
+  --grad-clip "${GRAD_CLIP}"
+  --batch-size "${BATCH_SIZE}"
+  --workers "${WORKERS}"
+  --datapath "${DATAPATH}"
+  --lambdas "${LAMBDAS}"
+  --bn-recalc
+  --bn-batches "${BN_BATCHES}"
+  --mask-method "${MASK_METHOD}"
+  --mask-topk "${MASK_TOPK}"
+  --out-dir "${OUT_DIR}"
   --gpu "${GPU}"
+)
+if [[ "${STEP1_ONLY}" == "1" ]]; then
+  ARGS+=(--step1-only)
+fi
+scripts/run_unlearning_connectivity.sh "${ARGS[@]}"
 
 echo "=== Done. Output dir: ${OUT_DIR} ==="
