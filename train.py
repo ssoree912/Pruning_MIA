@@ -28,6 +28,7 @@ from unlearning.utils import (
     build_forget_retain_indices,
     make_subset_loader,
     resolve_df_spec,
+    set_seed,
     train_unlearning_endpoint_ascent,
 )
 
@@ -153,6 +154,129 @@ def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> Dict
     return {
         "loss": total_loss / max(total, 1),
         "acc": correct / max(total, 1),
+    }
+
+
+def _get_dataset_targets(dataset: Any) -> List[int]:
+    if hasattr(dataset, "targets"):
+        return [int(v) for v in dataset.targets]
+    if hasattr(dataset, "labels"):
+        return [int(v) for v in dataset.labels]
+    raise ValueError("Dataset does not expose targets/labels")
+
+
+def train_scratch_retrain_baseline(
+    spec: ModelSpec,
+    retain_train_loader: DataLoader,
+    retain_eval_loader: DataLoader,
+    forget_eval_loader: DataLoader,
+    test_loader: DataLoader,
+    device: torch.device,
+    epochs: int,
+    lr: float,
+    momentum: float,
+    weight_decay: float,
+    nesterov: bool,
+    seed: int,
+) -> Dict[str, Any]:
+    if epochs <= 0:
+        raise ValueError("baseline epochs must be > 0")
+
+    set_seed(seed)
+    model, _ = build_dense_model(spec)
+    model = model.to(device)
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(
+        model.parameters(),
+        lr=lr,
+        momentum=momentum,
+        weight_decay=weight_decay,
+        nesterov=nesterov,
+    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
+
+    best_test_acc = float("-inf")
+    best_epoch = -1
+    best_state: Optional[Dict[str, torch.Tensor]] = None
+    best_metrics: Dict[str, float] = {}
+    history: List[Dict[str, Any]] = []
+
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        seen = 0
+        for x, y in retain_train_loader:
+            x = x.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(x)
+            loss = loss_fn(logits, y)
+            loss.backward()
+            optimizer.step()
+            bsz = x.size(0)
+            seen += bsz
+            running_loss += float(loss.item()) * bsz
+        scheduler.step()
+
+        retain_stats = evaluate(model, retain_eval_loader, device)
+        forget_stats = evaluate(model, forget_eval_loader, device)
+        test_stats = evaluate(model, test_loader, device)
+        row = {
+            "epoch": int(epoch),
+            "train_retain_loss": running_loss / max(seen, 1),
+            "retain_loss": float(retain_stats["loss"]),
+            "retain_acc": float(retain_stats["acc"]),
+            "forget_loss": float(forget_stats["loss"]),
+            "forget_acc": float(forget_stats["acc"]),
+            "test_loss": float(test_stats["loss"]),
+            "test_acc": float(test_stats["acc"]),
+            "lr": optimizer.param_groups[0]["lr"],
+        }
+        history.append(row)
+        print(
+            f"[scratch-retrain] epoch {epoch + 1:03d}/{epochs:03d} "
+            f"retain_acc={row['retain_acc']:.4f} forget_acc={row['forget_acc']:.4f} test_acc={row['test_acc']:.4f}"
+        )
+        if row["test_acc"] > best_test_acc:
+            best_test_acc = row["test_acc"]
+            best_epoch = epoch
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            best_metrics = {
+                "retain_loss": row["retain_loss"],
+                "retain_acc": row["retain_acc"],
+                "forget_loss": row["forget_loss"],
+                "forget_acc": row["forget_acc"],
+                "test_loss": row["test_loss"],
+                "test_acc": row["test_acc"],
+            }
+
+    if best_state is None:
+        best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        retain_stats = evaluate(model, retain_eval_loader, device)
+        forget_stats = evaluate(model, forget_eval_loader, device)
+        test_stats = evaluate(model, test_loader, device)
+        best_metrics = {
+            "retain_loss": float(retain_stats["loss"]),
+            "retain_acc": float(retain_stats["acc"]),
+            "forget_loss": float(forget_stats["loss"]),
+            "forget_acc": float(forget_stats["acc"]),
+            "test_loss": float(test_stats["loss"]),
+            "test_acc": float(test_stats["acc"]),
+        }
+
+    return {
+        "state_dict": best_state,
+        "best_epoch": int(best_epoch),
+        "best_metrics": best_metrics,
+        "history": history,
+        "training_schedule": {
+            "epochs": int(epochs),
+            "lr": float(lr),
+            "momentum": float(momentum),
+            "weight_decay": float(weight_decay),
+            "nesterov": bool(nesterov),
+            "seed": int(seed),
+        },
     }
 
 
@@ -371,6 +495,8 @@ def evaluate_endpoint_state(
     forget_eval_loader: DataLoader,
     test_loader: DataLoader,
     device: torch.device,
+    retain_test_loader: Optional[DataLoader] = None,
+    forget_test_loader: Optional[DataLoader] = None,
 ) -> Dict[str, float]:
     model, _ = build_dense_model(spec)
     model = model.to(device)
@@ -379,7 +505,7 @@ def evaluate_endpoint_state(
     retain_stats = evaluate(model, retain_eval_loader, device)
     forget_stats = evaluate(model, forget_eval_loader, device)
     test_stats = evaluate(model, test_loader, device)
-    return {
+    out = {
         "retain_loss": float(retain_stats["loss"]),
         "retain_acc": float(retain_stats["acc"]),
         "forget_loss": float(forget_stats["loss"]),
@@ -387,6 +513,15 @@ def evaluate_endpoint_state(
         "test_loss": float(test_stats["loss"]),
         "test_acc": float(test_stats["acc"]),
     }
+    if retain_test_loader is not None:
+        retain_test_stats = evaluate(model, retain_test_loader, device)
+        out["retain_test_loss"] = float(retain_test_stats["loss"])
+        out["retain_test_acc"] = float(retain_test_stats["acc"])
+    if forget_test_loader is not None:
+        forget_test_stats = evaluate(model, forget_test_loader, device)
+        out["forget_test_loss"] = float(forget_test_stats["loss"])
+        out["forget_test_acc"] = float(forget_test_stats["acc"])
+    return out
 
 
 def make_lambdas(num: int) -> List[float]:
@@ -413,6 +548,7 @@ def main() -> None:
     parser.add_argument("--datapath", type=str, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--gpu", type=int, default=0, help="GPU index (used when CUDA is available)")
 
     parser.add_argument("--seed-a", type=int, default=43, help="Unlearning seed A")
     parser.add_argument("--seed-b", type=int, default=44, help="Unlearning seed B")
@@ -467,6 +603,23 @@ def main() -> None:
         choices=["retain_acc", "test_acc"],
         help="Best checkpoint selection metric for endpoint model",
     )
+    parser.add_argument(
+        "--train-scratch-retrain-baseline",
+        action="store_true",
+        help="Train scratch retrain baseline on Dr and report its test/retain-test acc",
+    )
+    parser.add_argument(
+        "--scratch-retrain-ckpt",
+        type=str,
+        default=None,
+        help="Optional precomputed scratch retrain checkpoint path for baseline reporting",
+    )
+    parser.add_argument("--scratch-retrain-epochs", type=int, default=200)
+    parser.add_argument("--scratch-retrain-lr", type=float, default=0.1)
+    parser.add_argument("--scratch-retrain-momentum", type=float, default=0.9)
+    parser.add_argument("--scratch-retrain-weight-decay", type=float, default=5e-4)
+    parser.add_argument("--scratch-retrain-nesterov", action="store_true")
+    parser.add_argument("--scratch-retrain-seed", type=int, default=123)
 
     parser.add_argument("--lambdas", type=int, default=21, help="Interpolation points count")
     bn_group = parser.add_mutually_exclusive_group()
@@ -493,6 +646,8 @@ def main() -> None:
         raise ValueError("--unlearn-steps must be >= 0")
     if args.retrain_epochs < 0:
         raise ValueError("--retrain-epochs must be >= 0")
+    if args.scratch_retrain_epochs <= 0 and args.train_scratch_retrain_baseline:
+        raise ValueError("--scratch-retrain-epochs must be > 0 when --train-scratch-retrain-baseline is set")
 
     dense_ckpt = Path(args.dense_ckpt)
     if not dense_ckpt.exists():
@@ -570,9 +725,105 @@ def main() -> None:
         train_eval, retain_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.split_seed + 1000
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    retain_test_loader: Optional[DataLoader] = None
+    forget_test_loader: Optional[DataLoader] = None
+    if df_spec.get("type") == "class":
+        test_targets = _get_dataset_targets(test_eval)
+        forget_test_idx, retain_test_idx = build_forget_retain_indices(
+            test_targets, df_spec=df_spec, split_seed=args.split_seed
+        )
+        if retain_test_idx:
+            retain_test_loader = make_subset_loader(
+                test_eval, retain_test_idx, spec.batch_size, spec.workers, shuffle=False, seed=0
+            )
+        if forget_test_idx:
+            forget_test_loader = make_subset_loader(
+                test_eval, forget_test_idx, spec.batch_size, spec.workers, shuffle=False, seed=0
+            )
+
+    if torch.cuda.is_available():
+        device = torch.device(f"cuda:{args.gpu}")
+    else:
+        device = torch.device("cpu")
     ckpt_a = run_dir / f"unlearn_seed{args.seed_a}.pth"
     ckpt_b = run_dir / f"unlearn_seed{args.seed_b}.pth"
+    scratch_baseline_metrics: Optional[Dict[str, Any]] = None
+    scratch_baseline_ckpt: Optional[Path] = None
+
+    if args.scratch_retrain_ckpt:
+        scratch_baseline_ckpt = Path(args.scratch_retrain_ckpt)
+        if not scratch_baseline_ckpt.exists():
+            raise FileNotFoundError(f"scratch retrain checkpoint not found: {scratch_baseline_ckpt}")
+        _, scratch_state = load_checkpoint(scratch_baseline_ckpt)
+        scratch_baseline_metrics = evaluate_endpoint_state(
+            spec=spec,
+            state=scratch_state,
+            retain_eval_loader=retain_eval_loader,
+            forget_eval_loader=forget_eval_loader,
+            test_loader=test_loader,
+            device=device,
+            retain_test_loader=retain_test_loader,
+            forget_test_loader=forget_test_loader,
+        )
+        print(
+            f"[scratch-retrain baseline] test_acc={scratch_baseline_metrics['test_acc']:.4f} "
+            f"retain_acc={scratch_baseline_metrics['retain_acc']:.4f} "
+            f"forget_acc={scratch_baseline_metrics['forget_acc']:.4f}"
+        )
+    elif args.train_scratch_retrain_baseline:
+        scratch_baseline_ckpt = run_dir / f"scratch_retrain_seed{args.scratch_retrain_seed}.pth"
+        if args.skip_existing and scratch_baseline_ckpt.exists():
+            _, scratch_state = load_checkpoint(scratch_baseline_ckpt)
+            scratch_baseline_metrics = evaluate_endpoint_state(
+                spec=spec,
+                state=scratch_state,
+                retain_eval_loader=retain_eval_loader,
+                forget_eval_loader=forget_eval_loader,
+                test_loader=test_loader,
+                device=device,
+                retain_test_loader=retain_test_loader,
+                forget_test_loader=forget_test_loader,
+            )
+            print(f"Reusing scratch retrain baseline: {scratch_baseline_ckpt}")
+        else:
+            scratch_retain_train_loader = make_subset_loader(
+                train_aug,
+                retain_idx,
+                spec.batch_size,
+                spec.workers,
+                shuffle=True,
+                seed=args.scratch_retrain_seed,
+            )
+            scratch_payload = train_scratch_retrain_baseline(
+                spec=spec,
+                retain_train_loader=scratch_retain_train_loader,
+                retain_eval_loader=retain_eval_loader,
+                forget_eval_loader=forget_eval_loader,
+                test_loader=test_loader,
+                device=device,
+                epochs=args.scratch_retrain_epochs,
+                lr=args.scratch_retrain_lr,
+                momentum=args.scratch_retrain_momentum,
+                weight_decay=args.scratch_retrain_weight_decay,
+                nesterov=args.scratch_retrain_nesterov,
+                seed=args.scratch_retrain_seed,
+            )
+            torch.save(scratch_payload, str(scratch_baseline_ckpt))
+            scratch_baseline_metrics = evaluate_endpoint_state(
+                spec=spec,
+                state=scratch_payload["state_dict"],
+                retain_eval_loader=retain_eval_loader,
+                forget_eval_loader=forget_eval_loader,
+                test_loader=test_loader,
+                device=device,
+                retain_test_loader=retain_test_loader,
+                forget_test_loader=forget_test_loader,
+            )
+            print(f"Saved scratch retrain baseline: {scratch_baseline_ckpt}")
+            print(
+                f"[scratch-retrain baseline] best_test_acc={scratch_baseline_metrics['test_acc']:.4f} "
+                f"retain_acc={scratch_baseline_metrics['retain_acc']:.4f}"
+            )
 
     if args.skip_existing and ckpt_a.exists():
         ep_a, s_a = load_checkpoint(ckpt_a)
@@ -673,6 +924,8 @@ def main() -> None:
             forget_eval_loader=forget_eval_loader,
             test_loader=test_loader,
             device=device,
+            retain_test_loader=retain_test_loader,
+            forget_test_loader=forget_test_loader,
         ),
         f"seed{args.seed_b}": evaluate_endpoint_state(
             spec=spec,
@@ -681,8 +934,19 @@ def main() -> None:
             forget_eval_loader=forget_eval_loader,
             test_loader=test_loader,
             device=device,
+            retain_test_loader=retain_test_loader,
+            forget_test_loader=forget_test_loader,
         ),
     }
+    if scratch_baseline_metrics is not None:
+        for seed_key in list(endpoint_metrics.keys()):
+            endpoint_metrics[seed_key]["test_acc_gap_vs_scratch_retrain"] = (
+                endpoint_metrics[seed_key]["test_acc"] - scratch_baseline_metrics["test_acc"]
+            )
+            if "retain_test_acc" in endpoint_metrics[seed_key] and "retain_test_acc" in scratch_baseline_metrics:
+                endpoint_metrics[seed_key]["retain_test_acc_gap_vs_scratch_retrain"] = (
+                    endpoint_metrics[seed_key]["retain_test_acc"] - scratch_baseline_metrics["retain_test_acc"]
+                )
     with open(run_dir / "endpoint_metrics.json", "w") as f:
         json.dump(endpoint_metrics, f, indent=2)
     print(
@@ -732,6 +996,11 @@ def main() -> None:
                 "ckpt_b": str(ckpt_b),
                 "metrics_file": str(run_dir / "endpoint_metrics.json"),
                 "metrics": endpoint_metrics,
+            },
+            "scratch_retrain_baseline": {
+                "enabled": bool(args.train_scratch_retrain_baseline or args.scratch_retrain_ckpt),
+                "ckpt": str(scratch_baseline_ckpt) if scratch_baseline_ckpt is not None else None,
+                "metrics": scratch_baseline_metrics,
             },
             "step1_only": True,
         }
@@ -861,6 +1130,11 @@ def main() -> None:
             "ckpt_b": str(ckpt_b),
             "metrics_file": str(run_dir / "endpoint_metrics.json"),
             "metrics": endpoint_metrics,
+        },
+        "scratch_retrain_baseline": {
+            "enabled": bool(args.train_scratch_retrain_baseline or args.scratch_retrain_ckpt),
+            "ckpt": str(scratch_baseline_ckpt) if scratch_baseline_ckpt is not None else None,
+            "metrics": scratch_baseline_metrics,
         },
     }
     with open(run_dir / "summary.json", "w") as f:

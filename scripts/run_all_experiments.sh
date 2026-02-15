@@ -36,6 +36,14 @@ MASK_TOPK="${MASK_TOPK:-0.1}"
 OUT_DIR="${OUT_DIR:-./runs/unlearning_connectivity}"
 GPU="${GPU:-0}"
 STEP1_ONLY="${STEP1_ONLY:-0}"
+TRAIN_SCRATCH_RETRAIN_BASELINE="${TRAIN_SCRATCH_RETRAIN_BASELINE:-0}"
+SCRATCH_RETRAIN_CKPT="${SCRATCH_RETRAIN_CKPT:-}"
+SCRATCH_RETRAIN_EPOCHS="${SCRATCH_RETRAIN_EPOCHS:-200}"
+SCRATCH_RETRAIN_LR="${SCRATCH_RETRAIN_LR:-0.1}"
+SCRATCH_RETRAIN_MOMENTUM="${SCRATCH_RETRAIN_MOMENTUM:-0.9}"
+SCRATCH_RETRAIN_WEIGHT_DECAY="${SCRATCH_RETRAIN_WEIGHT_DECAY:-0.0005}"
+SCRATCH_RETRAIN_NESTEROV="${SCRATCH_RETRAIN_NESTEROV:-0}"
+SCRATCH_RETRAIN_SEED="${SCRATCH_RETRAIN_SEED:-123}"
 
 if [[ -z "${DENSE_CKPT}" ]]; then
   echo "DENSE_CKPT env is required"
@@ -93,6 +101,22 @@ if [[ "${USE_DF_PRESETS}" == "1" ]]; then
   ARGS+=(--use-df-presets)
 else
   ARGS+=(--no-df-presets)
+fi
+if [[ "${TRAIN_SCRATCH_RETRAIN_BASELINE}" == "1" ]]; then
+  ARGS+=(
+    --train-scratch-retrain-baseline
+    --scratch-retrain-epochs "${SCRATCH_RETRAIN_EPOCHS}"
+    --scratch-retrain-lr "${SCRATCH_RETRAIN_LR}"
+    --scratch-retrain-momentum "${SCRATCH_RETRAIN_MOMENTUM}"
+    --scratch-retrain-weight-decay "${SCRATCH_RETRAIN_WEIGHT_DECAY}"
+    --scratch-retrain-seed "${SCRATCH_RETRAIN_SEED}"
+  )
+  if [[ "${SCRATCH_RETRAIN_NESTEROV}" == "1" ]]; then
+    ARGS+=(--scratch-retrain-nesterov)
+  fi
+fi
+if [[ -n "${SCRATCH_RETRAIN_CKPT}" ]]; then
+  ARGS+=(--scratch-retrain-ckpt "${SCRATCH_RETRAIN_CKPT}")
 fi
 scripts/run_unlearning_connectivity.sh "${ARGS[@]}"
 

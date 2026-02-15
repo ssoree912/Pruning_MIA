@@ -40,6 +40,14 @@ GPU="0"
 SKIP_EXISTING=0
 STEP1_ONLY=0
 USE_DF_PRESETS=1
+TRAIN_SCRATCH_RETRAIN_BASELINE=0
+SCRATCH_RETRAIN_CKPT=""
+SCRATCH_RETRAIN_EPOCHS="200"
+SCRATCH_RETRAIN_LR="0.1"
+SCRATCH_RETRAIN_MOMENTUM="0.9"
+SCRATCH_RETRAIN_WEIGHT_DECAY="0.0005"
+SCRATCH_RETRAIN_NESTEROV=0
+SCRATCH_RETRAIN_SEED="123"
 
 # Recommended per-DF performance-preserving initial presets.
 DF1_UNLEARN_STEPS="${DF1_UNLEARN_STEPS:-80}"
@@ -93,6 +101,14 @@ while [[ $# -gt 0 ]]; do
     --step1-only) STEP1_ONLY=1; shift 1 ;;
     --use-df-presets) USE_DF_PRESETS=1; shift 1 ;;
     --no-df-presets) USE_DF_PRESETS=0; shift 1 ;;
+    --train-scratch-retrain-baseline) TRAIN_SCRATCH_RETRAIN_BASELINE=1; shift 1 ;;
+    --scratch-retrain-ckpt) SCRATCH_RETRAIN_CKPT="$2"; shift 2 ;;
+    --scratch-retrain-epochs) SCRATCH_RETRAIN_EPOCHS="$2"; shift 2 ;;
+    --scratch-retrain-lr) SCRATCH_RETRAIN_LR="$2"; shift 2 ;;
+    --scratch-retrain-momentum) SCRATCH_RETRAIN_MOMENTUM="$2"; shift 2 ;;
+    --scratch-retrain-weight-decay) SCRATCH_RETRAIN_WEIGHT_DECAY="$2"; shift 2 ;;
+    --scratch-retrain-nesterov) SCRATCH_RETRAIN_NESTEROV=1; shift 1 ;;
+    --scratch-retrain-seed) SCRATCH_RETRAIN_SEED="$2"; shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -189,6 +205,22 @@ for DF in df1 df2 df3; do
   fi
   if [[ "${STEP1_ONLY}" -eq 1 ]]; then
     ARGS+=(--step1-only)
+  fi
+  if [[ "${TRAIN_SCRATCH_RETRAIN_BASELINE}" -eq 1 ]]; then
+    ARGS+=(
+      --train-scratch-retrain-baseline
+      --scratch-retrain-epochs "${SCRATCH_RETRAIN_EPOCHS}"
+      --scratch-retrain-lr "${SCRATCH_RETRAIN_LR}"
+      --scratch-retrain-momentum "${SCRATCH_RETRAIN_MOMENTUM}"
+      --scratch-retrain-weight-decay "${SCRATCH_RETRAIN_WEIGHT_DECAY}"
+      --scratch-retrain-seed "${SCRATCH_RETRAIN_SEED}"
+    )
+    if [[ "${SCRATCH_RETRAIN_NESTEROV}" -eq 1 ]]; then
+      ARGS+=(--scratch-retrain-nesterov)
+    fi
+  fi
+  if [[ -n "${SCRATCH_RETRAIN_CKPT}" ]]; then
+    ARGS+=(--scratch-retrain-ckpt "${SCRATCH_RETRAIN_CKPT}")
   fi
   python train.py "${ARGS[@]}"
 done
