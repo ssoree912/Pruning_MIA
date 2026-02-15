@@ -31,6 +31,12 @@ WORKERS="${WORKERS:-4}"
 DATAPATH="${DATAPATH:-~/Datasets/CIFAR}"
 LAMBDAS="${LAMBDAS:-21}"
 BN_BATCHES="${BN_BATCHES:-200}"
+SWA_MERGE="${SWA_MERGE:-1}"
+SWA_SOURCE="${SWA_SOURCE:-both}"
+SWA_TOPK="${SWA_TOPK:-5}"
+SWA_SELECT_METRIC="${SWA_SELECT_METRIC:-test_acc}"
+SWA_T_MIN="${SWA_T_MIN:-0.0}"
+SWA_T_MAX="${SWA_T_MAX:-1.0}"
 MASK_METHOD="${MASK_METHOD:-delta}"
 MASK_TOPK="${MASK_TOPK:-0.1}"
 OUT_DIR="${OUT_DIR:-./runs/unlearning_connectivity}"
@@ -71,13 +77,23 @@ ARGS=(
   --workers "${WORKERS}"
   --datapath "${DATAPATH}"
   --lambdas "${LAMBDAS}"
-  --bn-recalc
   --bn-batches "${BN_BATCHES}"
+  --swa-source "${SWA_SOURCE}"
+  --swa-topk "${SWA_TOPK}"
+  --swa-select-metric "${SWA_SELECT_METRIC}"
+  --swa-t-min "${SWA_T_MIN}"
+  --swa-t-max "${SWA_T_MAX}"
   --mask-method "${MASK_METHOD}"
   --mask-topk "${MASK_TOPK}"
   --out-dir "${OUT_DIR}"
   --gpu "${GPU}"
 )
+if [[ "${SWA_MERGE}" == "1" ]]; then
+  ARGS+=(--swa-merge)
+else
+  ARGS+=(--no-swa-merge)
+fi
+ARGS+=(--bn-recalc)
 if [[ -n "${RETRAIN_LR}" ]]; then
   ARGS+=(--retrain-lr "${RETRAIN_LR}")
 fi

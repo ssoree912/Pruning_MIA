@@ -33,6 +33,12 @@ DATAPATH="~/Datasets/CIFAR"
 LAMBDAS="21"
 BN_RECALC=1
 BN_BATCHES="200"
+SWA_MERGE=1
+SWA_SOURCE="both"
+SWA_TOPK="5"
+SWA_SELECT_METRIC="test_acc"
+SWA_T_MIN="0.0"
+SWA_T_MAX="1.0"
 MASK_METHOD="delta"
 MASK_TOPK="0.1"
 OUT_DIR="./runs/unlearning_connectivity"
@@ -93,6 +99,13 @@ while [[ $# -gt 0 ]]; do
     --bn-recalc) BN_RECALC=1; shift 1 ;;
     --no-bn-recalc) BN_RECALC=0; shift 1 ;;
     --bn-batches) BN_BATCHES="$2"; shift 2 ;;
+    --swa-merge) SWA_MERGE=1; shift 1 ;;
+    --no-swa-merge) SWA_MERGE=0; shift 1 ;;
+    --swa-source) SWA_SOURCE="$2"; shift 2 ;;
+    --swa-topk) SWA_TOPK="$2"; shift 2 ;;
+    --swa-select-metric) SWA_SELECT_METRIC="$2"; shift 2 ;;
+    --swa-t-min) SWA_T_MIN="$2"; shift 2 ;;
+    --swa-t-max) SWA_T_MAX="$2"; shift 2 ;;
     --mask-method) MASK_METHOD="$2"; shift 2 ;;
     --mask-topk) MASK_TOPK="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
@@ -177,6 +190,11 @@ for DF in df1 df2 df3; do
     --datapath "${DATAPATH}"
     --lambdas "${LAMBDAS}"
     --bn-batches "${BN_BATCHES}"
+    --swa-source "${SWA_SOURCE}"
+    --swa-topk "${SWA_TOPK}"
+    --swa-select-metric "${SWA_SELECT_METRIC}"
+    --swa-t-min "${SWA_T_MIN}"
+    --swa-t-max "${SWA_T_MAX}"
     --mask-method "${MASK_METHOD}"
     --mask-topk "${MASK_TOPK}"
     --out-dir "${OUT_DIR}"
@@ -185,6 +203,11 @@ for DF in df1 df2 df3; do
     ARGS+=(--bn-recalc)
   else
     ARGS+=(--no-bn-recalc)
+  fi
+  if [[ "${SWA_MERGE}" -eq 1 ]]; then
+    ARGS+=(--swa-merge)
+  else
+    ARGS+=(--no-swa-merge)
   fi
   if [[ -n "${CUR_RETRAIN_LR}" ]]; then
     ARGS+=(--retrain-lr "${CUR_RETRAIN_LR}")

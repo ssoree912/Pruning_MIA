@@ -347,6 +347,70 @@ def interpolate_state(
     return out
 
 
+def average_state_dicts(states: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    if not states:
+        raise ValueError("states must not be empty")
+    out: Dict[str, torch.Tensor] = {}
+    ref = states[0]
+    for k, v in ref.items():
+        if torch.is_tensor(v):
+            if v.dtype.is_floating_point:
+                acc = torch.zeros_like(v, dtype=torch.float32)
+                for st in states:
+                    acc += st[k].to(dtype=torch.float32)
+                out[k] = (acc / float(len(states))).to(dtype=v.dtype)
+            else:
+                out[k] = v.clone()
+        else:
+            out[k] = v
+    return out
+
+
+def build_swa_state_from_curve(
+    s0: Dict[str, torch.Tensor],
+    s1: Dict[str, torch.Tensor],
+    curve: List[Dict[str, float]],
+    topk: int,
+    metric: str,
+    t_min: float,
+    t_max: float,
+    subspace_mask: Optional[Dict[str, torch.Tensor]] = None,
+) -> Tuple[Dict[str, torch.Tensor], List[Dict[str, float]]]:
+    if metric not in {"test_acc", "retain_acc", "retain_loss"}:
+        raise ValueError(f"Unsupported SWA metric: {metric}")
+    points = [p for p in curve if float(p["t"]) >= t_min and float(p["t"]) <= t_max]
+    if not points:
+        points = list(curve)
+    if not points:
+        raise ValueError("curve is empty")
+
+    reverse = metric in {"test_acc", "retain_acc"}
+    points = sorted(points, key=lambda p: float(p[metric]), reverse=reverse)
+    k = len(points) if topk <= 0 else min(topk, len(points))
+    selected = points[:k]
+    selected_states = [
+        interpolate_state(s0, s1, float(p["t"]), subspace_mask=subspace_mask) for p in selected
+    ]
+    swa_state = average_state_dicts(selected_states)
+    return swa_state, selected
+
+
+def recalibrate_state_bn(
+    spec: ModelSpec,
+    state: Dict[str, torch.Tensor],
+    bn_loader: DataLoader,
+    device: torch.device,
+    bn_recalc_on: bool,
+    bn_batches: int,
+) -> Dict[str, torch.Tensor]:
+    model, _ = build_dense_model(spec)
+    model = model.to(device)
+    model.load_state_dict(state, strict=True)
+    if bn_recalc_on:
+        bn_recalibrate(model, bn_loader, device=device, max_batches=bn_batches)
+    return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+
 def build_delta_mask(
     s0: Dict[str, torch.Tensor],
     s1: Dict[str, torch.Tensor],
@@ -627,6 +691,21 @@ def main() -> None:
     bn_group.add_argument("--no-bn-recalc", dest="bn_recalc", action="store_false", help="Disable BN stats recalibration at each t")
     parser.set_defaults(bn_recalc=True)
     parser.add_argument("--bn-batches", type=int, default=200, help="Max Dr batches for BN recalibration")
+    swa_group = parser.add_mutually_exclusive_group()
+    swa_group.add_argument("--swa-merge", dest="swa_merge", action="store_true", help="Enable SWA merge from connectivity path")
+    swa_group.add_argument("--no-swa-merge", dest="swa_merge", action="store_false", help="Disable SWA merge from connectivity path")
+    parser.set_defaults(swa_merge=True)
+    parser.add_argument("--swa-source", type=str, default="both", choices=["step2", "step3", "both"])
+    parser.add_argument("--swa-topk", type=int, default=5, help="Top-k points on path to average (<=0 means all)")
+    parser.add_argument(
+        "--swa-select-metric",
+        type=str,
+        default="test_acc",
+        choices=["test_acc", "retain_acc", "retain_loss"],
+        help="Metric used to select top-k points for SWA",
+    )
+    parser.add_argument("--swa-t-min", type=float, default=0.0, help="Min interpolation t for SWA candidate points")
+    parser.add_argument("--swa-t-max", type=float, default=1.0, help="Max interpolation t for SWA candidate points")
 
     parser.add_argument("--mask-method", type=str, default="delta", choices=["delta", "saliency"])
     parser.add_argument("--mask-topk", type=float, default=0.1, help="Top-k ratio for step3 mask")
@@ -648,6 +727,8 @@ def main() -> None:
         raise ValueError("--retrain-epochs must be >= 0")
     if args.scratch_retrain_epochs <= 0 and args.train_scratch_retrain_baseline:
         raise ValueError("--scratch-retrain-epochs must be > 0 when --train-scratch-retrain-baseline is set")
+    if args.swa_t_min > args.swa_t_max:
+        raise ValueError("--swa-t-min must be <= --swa-t-max")
 
     dense_ckpt = Path(args.dense_ckpt)
     if not dense_ckpt.exists():
@@ -1075,6 +1156,82 @@ def main() -> None:
         f"retain_acc_drop_pp={step3['retain_acc_drop_pp']:.4f}"
     )
 
+    swa_results: List[Dict[str, Any]] = []
+    if args.swa_merge:
+        print("\n" + "=" * 80)
+        print("SWA Merge From Connectivity Path")
+        print("=" * 80)
+
+        sources: List[Tuple[str, Dict[str, Any], Optional[Dict[str, torch.Tensor]]]] = []
+        if args.swa_source in {"step2", "both"}:
+            sources.append(("step2", step2, None))
+        if args.swa_source in {"step3", "both"}:
+            sources.append(("step3", step3, mask))
+
+        for src_name, src_result, src_mask in sources:
+            swa_state_raw, selected_points = build_swa_state_from_curve(
+                s0=s_a,
+                s1=s_b,
+                curve=src_result["curve"],
+                topk=args.swa_topk,
+                metric=args.swa_select_metric,
+                t_min=args.swa_t_min,
+                t_max=args.swa_t_max,
+                subspace_mask=src_mask,
+            )
+            swa_state = recalibrate_state_bn(
+                spec=spec,
+                state=swa_state_raw,
+                bn_loader=bn_loader,
+                device=device,
+                bn_recalc_on=args.bn_recalc,
+                bn_batches=args.bn_batches,
+            )
+            swa_metrics = evaluate_endpoint_state(
+                spec=spec,
+                state=swa_state,
+                retain_eval_loader=retain_eval_loader,
+                forget_eval_loader=forget_eval_loader,
+                test_loader=test_loader,
+                device=device,
+                retain_test_loader=retain_test_loader,
+                forget_test_loader=forget_test_loader,
+            )
+            ckpt_path = run_dir / f"{src_name}_swa_merge.pth"
+            torch.save(
+                {
+                    "state_dict": swa_state,
+                    "source": src_name,
+                    "selected_points": selected_points,
+                    "select_metric": args.swa_select_metric,
+                    "swa_topk": args.swa_topk,
+                    "t_min": args.swa_t_min,
+                    "t_max": args.swa_t_max,
+                    "bn_recalc": args.bn_recalc,
+                    "bn_batches": args.bn_batches,
+                },
+                str(ckpt_path),
+            )
+            result_row = {
+                "source": src_name,
+                "select_metric": args.swa_select_metric,
+                "topk": args.swa_topk,
+                "t_min": args.swa_t_min,
+                "t_max": args.swa_t_max,
+                "selected_points": selected_points,
+                "ckpt": str(ckpt_path),
+                "metrics": swa_metrics,
+            }
+            swa_results.append(result_row)
+            print(
+                f"[swa:{src_name}] test_acc={swa_metrics['test_acc']:.4f} "
+                f"retain_acc={swa_metrics['retain_acc']:.4f} forget_acc={swa_metrics['forget_acc']:.4f} "
+                f"(points={len(selected_points)})"
+            )
+
+        with open(run_dir / "swa_merge_results.json", "w") as f:
+            json.dump({"swa_results": swa_results}, f, indent=2)
+
     def is_mia_candidate(result: Dict[str, Any]) -> bool:
         return (
             result["retain_acc_drop_pp"] <= args.max_acc_drop_pp
@@ -1136,6 +1293,16 @@ def main() -> None:
             "ckpt": str(scratch_baseline_ckpt) if scratch_baseline_ckpt is not None else None,
             "metrics": scratch_baseline_metrics,
         },
+        "swa_merge": {
+            "enabled": bool(args.swa_merge),
+            "source": args.swa_source,
+            "select_metric": args.swa_select_metric,
+            "topk": args.swa_topk,
+            "t_min": args.swa_t_min,
+            "t_max": args.swa_t_max,
+            "results_file": str(run_dir / "swa_merge_results.json") if args.swa_merge else None,
+            "results": swa_results,
+        },
     }
     with open(run_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
@@ -1147,6 +1314,8 @@ def main() -> None:
     print(f"step2   : {run_dir / 'step2_linear.json'}")
     print(f"step3   : {run_dir / 'step3_masked_linear.json'}")
     print(f"mask    : {run_dir / 'step3_mask.pt'}")
+    if args.swa_merge:
+        print(f"swa     : {run_dir / 'swa_merge_results.json'}")
 
 
 if __name__ == "__main__":
