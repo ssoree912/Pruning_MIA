@@ -1,478 +1,244 @@
 #!/usr/bin/env python3
 """
-Main experiment runner with comprehensive configuration support
+Main experiment runner (dense-only).
+
+This branch no longer runs static/dynamic pruning in training.
 """
 
 import os
 import sys
 import time
+from pathlib import Path
+
 import torch
+import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.optim as optim
-import torch.backends.cudnn as cudnn
-import numpy as np
-from pathlib import Path
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from configs.config import parse_config_args, setup_reproducibility
-from utils.logger import ExperimentLogger, get_system_info
-import models
-import pruning
 from data import DataLoader
+from utils.logger import ExperimentLogger, get_system_info
+from utils.utils import TrainAverageMeter as AverageMeter
+from utils.utils import accuracy
+import models
 
-# Import common utilities
-from utils.utils import (
-    TrainAverageMeter as AverageMeter,
-    TrainProgressMeter as ProgressMeter,
-    accuracy,
-    set_scheduler,
-    set_arch_name,
-)
-
-def monitor_masking_behavior(model, epoch, iteration, config):
-    """마스킹 디버그 출력 비활성화 (필요 시 다시 활성화)"""
-    return
-
-def check_dpf_gradient_flow(model, config):
-    """DPF에서 마스크된 영역의 그라디언트 플로우 확인"""
-    if not (config.pruning.enabled and config.pruning.method == 'dpf'):
-        return
-    
-    from pruning.dcil.mnn import MaskConv2d
-    net = model.module if hasattr(model, 'module') else model
-    
-    # 프리즈 상태 확인
-    is_frozen = getattr(net, "_masks_frozen", False)
-    
-    for name, module in net.named_modules():
-        if isinstance(module, MaskConv2d) and module.weight.grad is not None:
-            masked = (module.mask == 0)
-            if masked.any():
-                masked_grad_nonzero = (module.weight.grad[masked] != 0).float().mean().item()
-                print(f"[DPF-Check] {name[:20]}: frozen={is_frozen}, type_value={module.type_value}, "
-                      f"masked_grad_nonzero={masked_grad_nonzero:.3f}")
-            break  # 첫 번째 레이어만 확인
 
 def create_model(config):
-    """Create model based on configuration"""
-    if config.pruning.enabled:
-        # Create pruned model
-        pruner = pruning.dcil
-        model, image_size = pruning.models.__dict__[config.model.arch](
-            data=config.data.dataset,
-            num_layers=config.model.layers,
-            width_mult=config.model.width_mult,
-            depth_mult=config.model.depth_mult,
-            model_mult=config.model.model_mult,
-            mnn=pruner.mnn
-        )
-    else:
-        # Create dense model
-        model, image_size = models.__dict__[config.model.arch](
-            data=config.data.dataset,
-            num_layers=config.model.layers,
-            width_mult=config.model.width_mult,
-            depth_mult=config.model.depth_mult,
-            model_mult=config.model.model_mult
-        )
-    
-    # Check if model creation failed
+    """Create dense model based on configuration."""
+    model, image_size = models.__dict__[config.model.arch](
+        data=config.data.dataset,
+        num_layers=config.model.layers,
+        width_mult=config.model.width_mult,
+        depth_mult=config.model.depth_mult,
+        model_mult=config.model.model_mult,
+    )
     if model is None:
-        raise ValueError(f"Failed to create model: {config.model.arch} with {config.model.layers} layers for {config.data.dataset}")
-    
+        raise ValueError(
+            f"Failed to create model: {config.model.arch} with {config.model.layers} layers for {config.data.dataset}"
+        )
     return model, image_size
 
+
 def setup_training(model, config, start_epoch: int = 0):
-    """Setup training components"""
-    
-    # Loss function
+    """Setup loss/optimizer/scheduler."""
     criterion = nn.CrossEntropyLoss().cuda()
-    
-    # Optimizer
+
     optimizer = optim.SGD(
         model.parameters(),
         lr=config.training.lr,
         momentum=config.training.momentum,
         weight_decay=config.training.weight_decay,
-        nesterov=config.training.nesterov
+        nesterov=config.training.nesterov,
     )
-    # Ensure initial_lr is set for schedulers when resuming
     for group in optimizer.param_groups:
-        group.setdefault('initial_lr', group['lr'])
-    
-    # Learning rate scheduler
+        group.setdefault("initial_lr", group["lr"])
+
     last_epoch = start_epoch - 1
-    if config.training.scheduler == 'multistep':
+    if config.training.scheduler == "multistep":
         scheduler = optim.lr_scheduler.MultiStepLR(
             optimizer,
             milestones=config.training.milestones,
             gamma=config.training.gamma,
-            last_epoch=last_epoch
+            last_epoch=last_epoch,
         )
-    elif config.training.scheduler == 'step':
+    elif config.training.scheduler == "step":
         scheduler = optim.lr_scheduler.StepLR(
             optimizer,
             step_size=config.training.step_size,
             gamma=config.training.gamma,
-            last_epoch=last_epoch
+            last_epoch=last_epoch,
         )
-    elif config.training.scheduler == 'cosine':
+    elif config.training.scheduler == "cosine":
         scheduler = optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
             T_max=config.training.epochs,
-            last_epoch=last_epoch
+            last_epoch=last_epoch,
         )
-    elif config.training.scheduler == 'exp':
+    elif config.training.scheduler == "exp":
         scheduler = optim.lr_scheduler.ExponentialLR(
             optimizer,
             gamma=config.training.gamma,
-            last_epoch=last_epoch
+            last_epoch=last_epoch,
         )
     else:
         scheduler = None
-    
+
     return criterion, optimizer, scheduler
 
-def apply_static_pruning(model, config, logger):
-    """Apply static pruning to model"""
-    logger.logger.info(f"Applying static pruning with {config.pruning.sparsity:.2%} sparsity")
-    
-    # Magnitude-based pruning
-    all_weights = []
-    
-    # Collect all weights
-    for name, module in model.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            weights = module.weight.data.abs().view(-1)
-            all_weights.append(weights)
-    
-    # Calculate threshold
-    all_weights = torch.cat(all_weights)
-    threshold = torch.quantile(all_weights, config.pruning.sparsity)
-    
-    # Apply masks
-    total_params = 0
-    pruned_params = 0
-    
-    for name, module in model.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            weights = module.weight.data.abs()
-            mask = (weights > threshold).float()
-            module.mask.data = mask
-            
-            total_params += module.weight.numel()
-            pruned_params += (mask == 0).sum().item()
-    
-    actual_sparsity = pruned_params / total_params
-    logger.log_pruning_info(actual_sparsity)
-    
-    return actual_sparsity
-
-def apply_dynamic_pruning(model, config, epoch, iteration, logger):
-    """Apply dynamic pruning during training"""
-    
-    if iteration % config.pruning.prune_freq != 0:
-        return 0.0, 0.0
-    
-    # Calculate current target sparsity using polynomial schedule
-    if epoch >= config.pruning.target_epoch:
-        current_sparsity = config.pruning.sparsity
-    else:
-        progress = epoch / config.pruning.target_epoch
-        current_sparsity = config.pruning.sparsity * (1 - (1 - progress) ** 3)
-    
-    # Collect all weights
-    all_weights = []
-    modules_to_prune = []
-    
-    for name, module in model.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            weights = module.weight.data.abs().view(-1)
-            all_weights.append(weights)
-            modules_to_prune.append(module)
-    
-    # Calculate threshold
-    all_weights = torch.cat(all_weights)
-    threshold = torch.quantile(all_weights, current_sparsity)
-    
-    # Update masks
-    total_params = 0
-    pruned_params = 0
-    reactivations = 0
-    
-    for module in modules_to_prune:
-        weights = module.weight.data.abs()
-        old_mask = module.mask.data.clone()
-        new_mask = (weights > threshold).float()
-        
-        # Count reactivations (0 -> 1 transitions)
-        reactivations += ((old_mask == 0) & (new_mask == 1)).sum().item()
-        
-        module.mask.data = new_mask
-        
-        total_params += module.weight.numel()
-        pruned_params += (new_mask == 0).sum().item()
-    
-    actual_sparsity = pruned_params / total_params
-    reactivation_rate = reactivations / total_params
-    
-    if iteration % (config.pruning.prune_freq * 10) == 0:  # Log less frequently
-        logger.log_pruning_info(actual_sparsity, reactivation_rate)
-    
-    return actual_sparsity, reactivation_rate
 
 def train_epoch(model, train_loader, criterion, optimizer, epoch, config, logger, iteration_counter):
-    """Train for one epoch"""
-    batch_time = AverageMeter('Time', ':6.3f')
-    data_time = AverageMeter('Data', ':6.3f')
-    losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
-    
+    """Train for one epoch."""
+    batch_time = AverageMeter("Time", ":6.3f")
+    data_time = AverageMeter("Data", ":6.3f")
+    losses = AverageMeter("Loss", ":.4e")
+    top1 = AverageMeter("Acc@1", ":6.2f")
+    top5 = AverageMeter("Acc@5", ":6.2f")
+
     model.train()
     end = time.time()
-    
-    sparsity_updates = []
-    reactivation_updates = []
-    
+
     for i, (input, target) in enumerate(train_loader):
         data_time.update(time.time() - end)
-        
-        # Dynamic pruning update (only if masks not frozen)
-        if (config.pruning.enabled and config.pruning.method == 'dpf' and 
-            (config.pruning.freeze_epoch < 0 or epoch < config.pruning.freeze_epoch)):
-            sparsity, reactivation = apply_dynamic_pruning(
-                model, config, epoch, iteration_counter[0], logger
-            )
-            if sparsity > 0:
-                sparsity_updates.append(sparsity)
-                reactivation_updates.append(reactivation)
-        
+
         input = input.cuda()
         target = target.cuda()
-        
-        # Monitor masking behavior
-        monitor_masking_behavior(model, epoch, iteration_counter[0], config)
-        
-        # Forward pass
-        if config.pruning.enabled:
-            if config.pruning.method == 'static':
-                output = model(input, 5)  # MaskerStatic
-            elif config.pruning.method == 'dpf':
-                # Check if masks are frozen
-                net = model.module if hasattr(model, 'module') else model
-                if getattr(net, "_masks_frozen", False):
-                    output = model(input, 5)  # MaskerStatic (frozen)
-                else:
-                    output = model(input, 6)  # MaskerDynamic
-            else:
-                output = model(input, 0)  # Default sparse
-            loss = criterion(output, target)
-        else:
-            # Dense model - no type_value needed
-            output = model(input)
-            loss = criterion(output, target)
-        
-        # Measure accuracy
+
+        output = model(input)
+        loss = criterion(output, target)
+
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(acc1[0], input.size(0))
         top5.update(acc5[0], input.size(0))
-        
-        # Backward pass
+
         optimizer.zero_grad()
         loss.backward()
-        
-        # DPF 그라디언트 플로우 확인 (backward 직후)
-        if iteration_counter[0] % 100 == 0:
-            check_dpf_gradient_flow(model, config)
-        
         optimizer.step()
-        
-        # Measure elapsed time
+
         batch_time.update(time.time() - end)
-        
+
         if i % config.system.print_freq == 0:
             logger.logger.info(
-                f'Epoch: [{epoch}][{i}/{len(train_loader)}] '
-                f'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) '
-                f'Data {data_time.val:.3f} ({data_time.avg:.3f}) '
-                f'Loss {losses.val:.4f} ({losses.avg:.4f}) '
-                f'Acc@1 {top1.val:.3f} ({top1.avg:.3f}) '
-                f'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'
+                f"Epoch: [{epoch}][{i}/{len(train_loader)}] "
+                f"Time {batch_time.val:.3f} ({batch_time.avg:.3f}) "
+                f"Data {data_time.val:.3f} ({data_time.avg:.3f}) "
+                f"Loss {losses.val:.4f} ({losses.avg:.4f}) "
+                f"Acc@1 {top1.val:.3f} ({top1.avg:.3f}) "
+                f"Acc@5 {top5.val:.3f} ({top5.avg:.3f})"
             )
-        
+
         iteration_counter[0] += 1
         end = time.time()
-    
-    # Calculate average sparsity and reactivation for this epoch
-    avg_sparsity = np.mean(sparsity_updates) if sparsity_updates else 0
-    avg_reactivation = np.mean(reactivation_updates) if reactivation_updates else 0
-    
-    metrics = {
-        'acc1': top1.avg.item(),
-        'acc5': top5.avg.item(),
-        'loss': losses.avg
+
+    return {
+        "acc1": top1.avg.item(),
+        "acc5": top5.avg.item(),
+        "loss": losses.avg,
     }
-    
-    if avg_sparsity > 0:
-        metrics['sparsity'] = avg_sparsity
-        metrics['reactivation_rate'] = avg_reactivation
-    
-    return metrics
+
 
 def validate(model, val_loader, criterion, config, logger):
-    """Validate model"""
-    batch_time = AverageMeter('Time', ':6.3f')
-    losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
+    """Validate model."""
+    batch_time = AverageMeter("Time", ":6.3f")
+    losses = AverageMeter("Loss", ":.4e")
+    top1 = AverageMeter("Acc@1", ":6.2f")
+    top5 = AverageMeter("Acc@5", ":6.2f")
 
     model.eval()
-    # Unwrap DataParallel once and reuse safely
-    net = model.module if hasattr(model, 'module') else model
-    
     with torch.no_grad():
         end = time.time()
         for i, (input, target) in enumerate(val_loader):
             input = input.cuda()
             target = target.cuda()
-            
-            if config.pruning.enabled:
-                if config.pruning.method == 'static':
-                    type_val = 5
-                    output = model(input, type_val)  # MaskerStatic
-                elif config.pruning.method == 'dpf':
-                    # Check if masks are frozen
-                    if getattr(net, "_masks_frozen", False):
-                        type_val = 5
-                        output = model(input, type_val)  # MaskerStatic (frozen)
-                    else:
-                        type_val = 6
-                        output = model(input, type_val)  # MaskerDynamic
-                else:
-                    type_val = 0
-                    output = model(input, type_val)  # Default sparse
 
-                # Validation type_value 로깅 (첫 번째 배치에서만)
-                if i == 0:
-                    frozen_status = "FROZEN" if getattr(net, "_masks_frozen", False) else "ACTIVE"
-                    print(f"[VAL] {config.pruning.method.upper()} using type_value={type_val} ({frozen_status})")
-            else:
-                # Dense model - no type_value needed
-                output = model(input)
-            
+            output = model(input)
             loss = criterion(output, target)
-            
+
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
             losses.update(loss.item(), input.size(0))
             top1.update(acc1[0], input.size(0))
             top5.update(acc5[0], input.size(0))
-            
+
             batch_time.update(time.time() - end)
-            
+
             if i % config.system.print_freq == 0:
                 logger.logger.info(
-                    f'Test: [{i}/{len(val_loader)}] '
-                    f'Time {batch_time.val:.3f} ({batch_time.avg:.3f}) '
-                    f'Loss {losses.val:.4f} ({losses.avg:.4f}) '
-                    f'Acc@1 {top1.val:.3f} ({top1.avg:.3f}) '
-                    f'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'
+                    f"Test: [{i}/{len(val_loader)}] "
+                    f"Time {batch_time.val:.3f} ({batch_time.avg:.3f}) "
+                    f"Loss {losses.val:.4f} ({losses.avg:.4f}) "
+                    f"Acc@1 {top1.val:.3f} ({top1.avg:.3f}) "
+                    f"Acc@5 {top5.val:.3f} ({top5.avg:.3f})"
                 )
-            
+
             end = time.time()
-    
+
     return {
-        'acc1': top1.avg.item(),
-        'acc5': top5.avg.item(),
-        'loss': losses.avg
+        "acc1": top1.avg.item(),
+        "acc5": top5.avg.item(),
+        "loss": losses.avg,
     }
 
+
 def main():
-    # Parse configuration
     config = parse_config_args()
-    
+
     # Setup reproducibility (optionally decouple init/data seeds for model merging)
     init_seed = config.system.init_seed if config.system.init_seed is not None else config.system.seed
     setup_reproducibility(config.system, seed_override=init_seed)
-    
-    # Create save directory
+
     save_path = config.get_save_path()
     os.makedirs(save_path, exist_ok=True)
-    
-    # Setup GPU
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(config.system.gpu)
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(config.system.gpu)
     torch.cuda.set_device(0)
-    
-    # Initialize logger
+
     logger = ExperimentLogger(config.name, save_path)
-    
-    # Log configuration and system info
     logger.log_hyperparameters(config.to_dict())
     logger.log_system_info(get_system_info())
-    
-    # Save configuration
-    config.to_yaml(os.path.join(save_path, 'config.yaml'))
-    config.to_json(os.path.join(save_path, 'config.json'))
-    
+
+    config.to_yaml(os.path.join(save_path, "config.yaml"))
+    config.to_json(os.path.join(save_path, "config.json"))
+
     logger.logger.info(f"Starting experiment: {config.name}")
     logger.logger.info(f"Model: {config.model.arch}-{config.model.layers}")
     logger.logger.info(f"Dataset: {config.data.dataset}")
-    if config.pruning.enabled:
-        logger.logger.info(f"Pruning: {config.pruning.method} ({config.pruning.sparsity:.2%})")
-    
-    # Create model
+    logger.logger.info("Mode: dense-only (pruning disabled in this branch)")
+
     model, image_size = create_model(config)
     model = model.cuda()
-    
-    # Log model info
-    logger.log_model_info(model, 
-                         "pruned" if config.pruning.enabled else "dense",
-                         config.pruning.sparsity if config.pruning.enabled else None)
-    # Save initial weights for same-init verification
-    torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_model.pth'))
 
-    # Resume handling (skip pruning init if resuming)
+    logger.log_model_info(model, "dense", None)
+    torch.save({"state_dict": model.state_dict()}, os.path.join(save_path, "init_model.pth"))
+
     is_resuming = getattr(config.system, "resume", None) is not None
     resume_path = Path(config.system.resume) if is_resuming else None
-    
-    # Apply pruning init only for fresh runs
-    if not is_resuming:
-        if config.pruning.enabled and config.pruning.method == 'static':
-            apply_static_pruning(model, config, logger)
-            # Save pruned init snapshot (same mask + same init) for connectivity checks
-            torch.save({'state_dict': model.state_dict()}, os.path.join(save_path, 'init_pruned_model.pth'))
-        elif config.pruning.enabled and config.pruning.method == 'dpf':
-            # Initialize all masks to 1 for DPF
-            for name, module in model.named_modules():
-                if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-                    module.mask.data.fill_(1.0)
 
     # Reseed before data loader / training to allow shared init but different SGD noise
     data_seed = config.system.data_seed if config.system.data_seed is not None else config.system.seed
     if data_seed != init_seed:
         setup_reproducibility(config.system, seed_override=data_seed)
-    
+
     model = nn.DataParallel(model)
     cudnn.benchmark = config.system.benchmark
-    
-    # Create data loaders
+
     train_loader, val_loader = DataLoader(
-        config.data.batch_size, config.data.dataset, config.data.workers,
-        config.data.datapath, image_size, True
+        config.data.batch_size,
+        config.data.dataset,
+        config.data.workers,
+        config.data.datapath,
+        image_size,
+        True,
     )
-    
-    # Setup training
+
     start_epoch = getattr(config.training, "start_epoch", 0)
     criterion, optimizer, scheduler = setup_training(model, config, start_epoch=start_epoch)
-    
-    # Training loop
-    best_acc1 = 0.0
-    iteration_counter = [0]  # Use list for modification in nested function
 
-    # Resume AFTER DataParallel
+    best_acc1 = 0.0
+    iteration_counter = [0]
+
     if is_resuming:
         assert resume_path is not None and resume_path.exists(), f"resume not found: {resume_path}"
         ckpt = torch.load(str(resume_path), map_location="cpu")
@@ -485,127 +251,87 @@ def main():
             best_acc1 = float(ckpt["best_acc1"])
         if "iteration" in ckpt:
             iteration_counter[0] = int(ckpt["iteration"])
-        logger.logger.info(f"[RESUME] loaded={resume_path} start_epoch={start_epoch} best_acc1={best_acc1:.4f} iter={iteration_counter[0]}")
-    
+        logger.logger.info(
+            f"[RESUME] loaded={resume_path} start_epoch={start_epoch} "
+            f"best_acc1={best_acc1:.4f} iter={iteration_counter[0]}"
+        )
+
     logger.logger.info("Starting training...")
     start_time = time.time()
-    
     save_split_epoch = getattr(config.system, "save_split_ckpt_epoch", None)
+
     for epoch in range(start_epoch, config.training.epochs):
-        logger.logger.info(f'\nEpoch: {epoch}, lr = {optimizer.param_groups[0]["lr"]}')
-        
-        # Check if masks should be frozen (freeze_epoch = -1 means no freezing)
-        net = model.module if hasattr(model, 'module') else model
-        if (config.pruning.enabled and config.pruning.method == 'dpf' and 
-            config.pruning.freeze_epoch >= 0 and epoch >= config.pruning.freeze_epoch and 
-            not getattr(net, "_masks_frozen", False)):
-            print(f"[Mask Freeze] Freezing masks at epoch {epoch}")
-            final_sparsity = freeze_masks(model, logger)
-            
-        # Train
+        logger.logger.info(f"\nEpoch: {epoch}, lr = {optimizer.param_groups[0]['lr']}")
+
         train_metrics = train_epoch(
-            model, train_loader, criterion, optimizer, epoch, 
-            config, logger, iteration_counter
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            epoch,
+            config,
+            logger,
+            iteration_counter,
         )
-        
-        # Validate
         val_metrics = validate(model, val_loader, criterion, config, logger)
-        
-        # Update learning rate
+
         if scheduler:
             scheduler.step()
-        
-        # Log epoch results
+
         logger.log_epoch(epoch, train_metrics, val_metrics, optimizer.param_groups[0]["lr"])
-        
-        # Remaining epochs summary
+
         remaining = config.training.epochs - (epoch + 1)
         logger.logger.info(
             f"Remaining epochs: {remaining} | "
             f"Train acc1: {train_metrics.get('acc1', 0):.3f}, loss: {train_metrics.get('loss', 0):.4f} | "
             f"Val acc1: {val_metrics.get('acc1', 0):.3f}, loss: {val_metrics.get('loss', 0):.4f}"
         )
-        
-        # Save best model
-        is_best = val_metrics['acc1'] > best_acc1
-        best_acc1 = max(val_metrics['acc1'], best_acc1)
-        
+
+        is_best = val_metrics["acc1"] > best_acc1
+        best_acc1 = max(val_metrics["acc1"], best_acc1)
+
         if is_best or epoch % config.system.save_freq == 0:
             checkpoint = {
-                'epoch': epoch,
-                'config': config.to_dict(),
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer': optimizer.state_dict(),
-                'iteration': iteration_counter[0],
+                "epoch": epoch,
+                "config": config.to_dict(),
+                "state_dict": model.state_dict(),
+                "best_acc1": best_acc1,
+                "optimizer": optimizer.state_dict(),
+                "iteration": iteration_counter[0],
             }
-            
-            if is_best:
-                torch.save(checkpoint, os.path.join(save_path, 'best_model.pth'))
-                logger.save_checkpoint_info(epoch, best_acc1, 'best_model.pth')
-            
-            torch.save(checkpoint, os.path.join(save_path, 'checkpoint.pth'))
 
-        # Optional: save split checkpoint and exit
+            if is_best:
+                torch.save(checkpoint, os.path.join(save_path, "best_model.pth"))
+                logger.save_checkpoint_info(epoch, best_acc1, "best_model.pth")
+
+            torch.save(checkpoint, os.path.join(save_path, "checkpoint.pth"))
+
         if save_split_epoch is not None and epoch == int(save_split_epoch):
             split_path = os.path.join(save_path, f"split_ckpt_epoch{epoch}.pth")
             checkpoint = {
-                'epoch': epoch,
-                'config': config.to_dict(),
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer': optimizer.state_dict(),
-                'iteration': iteration_counter[0],
+                "epoch": epoch,
+                "config": config.to_dict(),
+                "state_dict": model.state_dict(),
+                "best_acc1": best_acc1,
+                "optimizer": optimizer.state_dict(),
+                "iteration": iteration_counter[0],
             }
             torch.save(checkpoint, split_path)
             logger.logger.info(f"[SPLIT] saved split ckpt at {split_path} and exiting")
             logger.finalize()
             return best_acc1
-    
-    # Training completed
+
     training_time = time.time() - start_time
-    logger.log_timing('training', training_time)
-    
-    logger.logger.info(f'\nTraining completed!')
-    logger.logger.info(f'Best accuracy: {best_acc1:.4f}')
-    logger.logger.info(f'Total training time: {training_time/3600:.2f} hours')
-    
-    # Finalize logging
+    logger.log_timing("training", training_time)
+
+    logger.logger.info("\nTraining completed!")
+    logger.logger.info(f"Best accuracy: {best_acc1:.4f}")
+    logger.logger.info(f"Total training time: {training_time / 3600:.2f} hours")
+
     logger.finalize()
-    
     return best_acc1
 
-def freeze_masks(model, logger):
-    """Freeze masks and switch to static gradient masking"""
-    # Get the original model (unwrap DataParallel if needed)
-    net = model.module if hasattr(model, 'module') else model
-    
-    total_params = 0
-    pruned_params = 0
-    
-    for name, module in net.named_modules():
-        if isinstance(module, pruning.dcil.mnn.MaskConv2d):
-            # 1) Freeze the mask by updating its data and setting requires_grad=False
-            module.mask.data = module.mask.data.detach()
-            module.mask.requires_grad = False
-            
-            # 2) Switch to static masking (type_value=5) for gradient blocking
-            module.type_value = 5
-            
-            # Count parameters for logging
-            total_params += module.weight.numel()
-            pruned_params += (module.mask == 0).sum().item()
-    
-    actual_sparsity = pruned_params / total_params if total_params > 0 else 0.0
-    
-    # Set flag to indicate masks are frozen
-    setattr(net, "_masks_frozen", True)
-    
-    if logger:
-        logger.logger.info(f"[Mask Freeze] Masks frozen with sparsity: {actual_sparsity:.4f}")
-        logger.logger.info(f"[Mask Freeze] Switched to static gradient masking (type_value=5)")
-    
-    return actual_sparsity
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+

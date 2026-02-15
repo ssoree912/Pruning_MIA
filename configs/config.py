@@ -53,7 +53,7 @@ class TrainingConfig:
 @dataclass
 class PruningConfig:
     enabled: bool = False
-    method: str = 'static'              # 'static', 'dpf', 'dcil'
+    method: str = 'static'              # kept for backward compatibility with old config files
     sparsity: float = 0.5
     prune_freq: int = 16
     target_epoch: int = 75
@@ -136,10 +136,8 @@ class ExperimentConfig:
         with open(path, 'r') as f: return cls.from_dict(yaml.safe_load(f))
     def get_model_name(self) -> str:
         parts = [f"{self.model.arch}{self.model.layers}", self.data.dataset]
-        if self.pruning.enabled:
-            parts.extend([self.pruning.method, f"sparsity{self.pruning.sparsity}"])
-        else:
-            parts.append("dense")
+        # This branch is dense-only during run_experiment execution.
+        parts.append("dense")
         parts.append(f"seed{self.system.seed}")
         return "_".join(parts)
     def get_save_path(self) -> str:
@@ -165,25 +163,12 @@ class ConfigManager:
     def create_preset_configs(self):
         dense = ExperimentConfig(name="dense_baseline", description="Dense ResNet-18 baseline")
         self.save_config(dense, "dense_baseline")
-        sparsities = [0.5,0.7,0.8,0.9,0.95]
-        for s in sparsities:
-            self.save_config(ExperimentConfig(
-                name=f"static_sparsity{s}",
-                description=f"Static pruning with {s:.0%} sparsity",
-                pruning=PruningConfig(enabled=True, method="static", sparsity=s)
-            ), f"static_sparsity{s}")
-        for s in sparsities:
-            self.save_config(ExperimentConfig(
-                name=f"dpf_sparsity{s}",
-                description=f"Dynamic pruning with {s:.0%} sparsity",
-                pruning=PruningConfig(enabled=True, method="dpf", sparsity=s)
-            ), f"dpf_sparsity{s}")
         self.save_config(ExperimentConfig(
             name="mia_evaluation",
             description="MIA evaluation with LiRA",
             mia=MIAConfig(enabled=True, attack_type="lira", num_shadow_models=64)
         ), "mia_evaluation")
-        print(f"Created {1 + 2*len(sparsities) + 1} preset configurations")
+        print("Created 2 preset configurations")
 
 def parse_config_args() -> ExperimentConfig:
     parser = argparse.ArgumentParser(description='Experiment Configuration')
@@ -205,14 +190,6 @@ def parse_config_args() -> ExperimentConfig:
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight-decay', type=float, default=5e-4)
-    # Pruning
-    parser.add_argument('--prune', action='store_true')
-    parser.add_argument('--prune-method', type=str, default='static', choices=['static','dpf','dcil'])
-    parser.add_argument('--sparsity', type=float, default=0.5)
-    parser.add_argument('--prune-freq', type=int, default=16)
-    parser.add_argument('--target-epoch', type=int, default=75)
-    parser.add_argument('--freeze-epoch', type=int, default=180)
-    parser.add_argument('--prune-type', type=str, default='unstructured')
     # MIA
     parser.add_argument('--mia', action='store_true')
     parser.add_argument('--num-shadows', type=int, default=64)
@@ -247,15 +224,7 @@ def parse_config_args() -> ExperimentConfig:
         training=TrainingConfig(epochs=args.epochs, lr=args.lr,
                                 momentum=args.momentum, weight_decay=args.weight_decay,
                                 start_epoch=args.start_epoch),
-        pruning=PruningConfig(
-            enabled=args.prune,
-            method=args.prune_method,
-            sparsity=args.sparsity,
-            prune_freq=args.prune_freq,
-            target_epoch=args.target_epoch,
-            freeze_epoch=args.freeze_epoch,
-            prune_type=getattr(args, 'prune_type', 'unstructured'),
-        ),
+        pruning=PruningConfig(enabled=False),
         mia=MIAConfig(enabled=args.mia, num_shadow_models=args.num_shadows),
         system=SystemConfig(
             gpu=args.gpu,

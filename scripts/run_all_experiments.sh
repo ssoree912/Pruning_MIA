@@ -1,96 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --------- Config ---------
+# Unlearning + connectivity 전용 실행 스크립트.
+# df1/df2/df3를 순차 실행한다.
+#
+# Required:
+#   DENSE_CKPT=/path/to/dense/best_model.pth scripts/run_all_experiments.sh
+
+DENSE_CKPT="${DENSE_CKPT:-}"
 DATASET="${DATASET:-cifar10}"
 ARCH="${ARCH:-resnet}"
-EPOCHS="${EPOCHS:-200}"
+LAYERS="${LAYERS:-20}"
+SEED_A="${SEED_A:-43}"
+SEED_B="${SEED_B:-44}"
+UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-20}"
+UNLEARN_LR="${UNLEARN_LR:-0.01}"
+FORGET_ALPHA="${FORGET_ALPHA:-0.05}"
+RETAIN_WEIGHT="${RETAIN_WEIGHT:-1.0}"
+GRAD_CLIP="${GRAD_CLIP:-1.0}"
+BATCH_SIZE="${BATCH_SIZE:-128}"
+WORKERS="${WORKERS:-4}"
+DATAPATH="${DATAPATH:-~/Datasets/CIFAR}"
+LAMBDAS="${LAMBDAS:-21}"
+BN_BATCHES="${BN_BATCHES:-200}"
+MASK_METHOD="${MASK_METHOD:-delta}"
+MASK_TOPK="${MASK_TOPK:-0.1}"
+OUT_DIR="${OUT_DIR:-./runs/unlearning_connectivity}"
 GPU="${GPU:-0}"
 
-# Seeds for merging: base seed + 2 extra seeds (3 total)
-START_SEED="${START_SEED:-42}"
-NUM_SEEDS="${NUM_SEEDS:-3}"
+if [[ -z "${DENSE_CKPT}" ]]; then
+  echo "DENSE_CKPT env is required"
+  echo "example:"
+  echo "  DENSE_CKPT=runs/dense/cifar10/seed42/best_model.pth scripts/run_all_experiments.sh"
+  exit 1
+fi
 
-# Same init across particles (paper-style)
-INIT_SEED="${INIT_SEED:-1234}"
-DATA_SEED_OFFSET="${DATA_SEED_OFFSET:-10000}"
+scripts/run_unlearning_connectivity.sh \
+  --dense-ckpt "${DENSE_CKPT}" \
+  --dataset "${DATASET}" \
+  --arch "${ARCH}" \
+  --layers "${LAYERS}" \
+  --seed-a "${SEED_A}" \
+  --seed-b "${SEED_B}" \
+  --unlearn-epochs "${UNLEARN_EPOCHS}" \
+  --unlearn-lr "${UNLEARN_LR}" \
+  --forget-alpha "${FORGET_ALPHA}" \
+  --retain-weight "${RETAIN_WEIGHT}" \
+  --grad-clip "${GRAD_CLIP}" \
+  --batch-size "${BATCH_SIZE}" \
+  --workers "${WORKERS}" \
+  --datapath "${DATAPATH}" \
+  --lambdas "${LAMBDAS}" \
+  --bn-recalc \
+  --bn-batches "${BN_BATCHES}" \
+  --mask-method "${MASK_METHOD}" \
+  --mask-topk "${MASK_TOPK}" \
+  --out-dir "${OUT_DIR}" \
+  --gpu "${GPU}"
 
-# Sparsity list for pruning methods
-SPARSITIES="${SPARSITIES:-0.5 0.6 0.7 0.8 0.9 0.95}"
-
-# Freeze epoch for dpf_freeze
-FREEZE_EPOCH="${FREEZE_EPOCH:-180}"
-
-# Output CSV
-OUT_CSV="${OUT_CSV:-results/runs_summary.csv}"
-
-echo "=== Running experiments ==="
-echo "Dataset=${DATASET} Arch=${ARCH} Epochs=${EPOCHS} GPU=${GPU}"
-echo "Seeds: start=${START_SEED} num=${NUM_SEEDS} (init_seed=${INIT_SEED})"
-echo "Sparsities: ${SPARSITIES}"
-echo
-
-# 1) Dense (multi-seed)
-python train.py \
-  --methods dense \
-  --dataset "${DATASET}" --arch "${ARCH}" \
-  --epochs "${EPOCHS}" --gpu "${GPU}" \
-  --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
-
-# 2) Static (multi-seed, all sparsities)
-python train.py \
-  --methods static \
-  --sparsities ${SPARSITIES} \
-  --dataset "${DATASET}" --arch "${ARCH}" \
-  --epochs "${EPOCHS}" --gpu "${GPU}" \
-  --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
-
-# 3) DPF (dynamic, no-freeze)
-python train.py \
-  --methods dpf \
-  --sparsities ${SPARSITIES} \
-  --dataset "${DATASET}" --arch "${ARCH}" \
-  --epochs "${EPOCHS}" --gpu "${GPU}" \
-  --freeze-epoch -1 \
-  --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
-
-# 4) DPF + freeze (freeze at epoch 180)
-python train.py \
-  --methods dpf \
-  --sparsities ${SPARSITIES} \
-  --dataset "${DATASET}" --arch "${ARCH}" \
-  --epochs "${EPOCHS}" --gpu "${GPU}" \
-  --freeze-epoch "${FREEZE_EPOCH}" \
-  --multi-seed --num-seeds "${NUM_SEEDS}" --start-seed "${START_SEED}" \
-  --init-seed "${INIT_SEED}" --data-seed-offset "${DATA_SEED_OFFSET}"
-
-# 5) Summarize results to CSV
-python scripts/summarize_runs.py --runs ./runs --out "${OUT_CSV}"
-
-# 6) Compact CSV (requested columns)
-OUT_CSV_PATH="${OUT_CSV}" python - <<PY
-import csv
-from pathlib import Path
-import os
-
-src = Path(os.environ["OUT_CSV_PATH"])
-dst = src.parent / "runs_summary_compact.csv"
-cols = ["seed", "method", "sparsity", "best_acc1", "final_acc1", "final_loss"]
-
-with open(src, newline="") as f:
-    r = csv.DictReader(f)
-    rows = [{k: row.get(k) for k in cols} for row in r]
-
-dst.parent.mkdir(parents=True, exist_ok=True)
-with open(dst, "w", newline="") as f:
-    w = csv.DictWriter(f, fieldnames=cols)
-    w.writeheader()
-    w.writerows(rows)
-
-print(f"Compact CSV written: {dst}")
-PY
-
-echo "=== Done. Summary CSV: ${OUT_CSV} ==="
+echo "=== Done. Output dir: ${OUT_DIR} ==="
