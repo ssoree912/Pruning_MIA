@@ -17,9 +17,15 @@ SEED_A="43"
 SEED_B="44"
 UNLEARN_EPOCHS="20"
 UNLEARN_LR="0.01"
+RETRAIN_EPOCHS="0"
+RETRAIN_LR=""
+RETRAIN_MOMENTUM=""
+RETRAIN_WEIGHT_DECAY=""
+RETRAIN_NESTEROV="-1"
 FORGET_ALPHA="0.05"
 RETAIN_WEIGHT="1.0"
 GRAD_CLIP="1.0"
+CKPT_SELECT="retain_acc"
 BATCH_SIZE="128"
 WORKERS="4"
 DATAPATH="~/Datasets/CIFAR"
@@ -43,9 +49,16 @@ while [[ $# -gt 0 ]]; do
     --seed-b) SEED_B="$2"; shift 2 ;;
     --unlearn-epochs) UNLEARN_EPOCHS="$2"; shift 2 ;;
     --unlearn-lr) UNLEARN_LR="$2"; shift 2 ;;
+    --retrain-epochs) RETRAIN_EPOCHS="$2"; shift 2 ;;
+    --retrain-lr) RETRAIN_LR="$2"; shift 2 ;;
+    --retrain-momentum) RETRAIN_MOMENTUM="$2"; shift 2 ;;
+    --retrain-weight-decay) RETRAIN_WEIGHT_DECAY="$2"; shift 2 ;;
+    --retrain-nesterov) RETRAIN_NESTEROV="1"; shift 1 ;;
+    --no-retrain-nesterov) RETRAIN_NESTEROV="0"; shift 1 ;;
     --forget-alpha) FORGET_ALPHA="$2"; shift 2 ;;
     --retain-weight) RETAIN_WEIGHT="$2"; shift 2 ;;
     --grad-clip) GRAD_CLIP="$2"; shift 2 ;;
+    --ckpt-select) CKPT_SELECT="$2"; shift 2 ;;
     --batch-size) BATCH_SIZE="$2"; shift 2 ;;
     --workers) WORKERS="$2"; shift 2 ;;
     --datapath) DATAPATH="$2"; shift 2 ;;
@@ -86,9 +99,11 @@ for DF in df1 df2 df3; do
     --df-profile "${DF}"
     --unlearn-epochs "${UNLEARN_EPOCHS}"
     --unlearn-lr "${UNLEARN_LR}"
+    --retrain-epochs "${RETRAIN_EPOCHS}"
     --forget-alpha "${FORGET_ALPHA}"
     --retain-weight "${RETAIN_WEIGHT}"
     --grad-clip "${GRAD_CLIP}"
+    --ckpt-select "${CKPT_SELECT}"
     --batch-size "${BATCH_SIZE}"
     --workers "${WORKERS}"
     --datapath "${DATAPATH}"
@@ -102,6 +117,20 @@ for DF in df1 df2 df3; do
     ARGS+=(--bn-recalc)
   else
     ARGS+=(--no-bn-recalc)
+  fi
+  if [[ -n "${RETRAIN_LR}" ]]; then
+    ARGS+=(--retrain-lr "${RETRAIN_LR}")
+  fi
+  if [[ -n "${RETRAIN_MOMENTUM}" ]]; then
+    ARGS+=(--retrain-momentum "${RETRAIN_MOMENTUM}")
+  fi
+  if [[ -n "${RETRAIN_WEIGHT_DECAY}" ]]; then
+    ARGS+=(--retrain-weight-decay "${RETRAIN_WEIGHT_DECAY}")
+  fi
+  if [[ "${RETRAIN_NESTEROV}" -eq 1 ]]; then
+    ARGS+=(--retrain-nesterov)
+  elif [[ "${RETRAIN_NESTEROV}" -eq 0 ]]; then
+    ARGS+=(--no-retrain-nesterov)
   fi
   if [[ "${SKIP_EXISTING}" -eq 1 ]]; then
     ARGS+=(--skip-existing)

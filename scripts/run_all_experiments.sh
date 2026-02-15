@@ -15,9 +15,15 @@ SEED_A="${SEED_A:-43}"
 SEED_B="${SEED_B:-44}"
 UNLEARN_EPOCHS="${UNLEARN_EPOCHS:-20}"
 UNLEARN_LR="${UNLEARN_LR:-0.01}"
+RETRAIN_EPOCHS="${RETRAIN_EPOCHS:-0}"
+RETRAIN_LR="${RETRAIN_LR:-}"
+RETRAIN_MOMENTUM="${RETRAIN_MOMENTUM:-}"
+RETRAIN_WEIGHT_DECAY="${RETRAIN_WEIGHT_DECAY:-}"
+RETRAIN_NESTEROV="${RETRAIN_NESTEROV:-}"
 FORGET_ALPHA="${FORGET_ALPHA:-0.05}"
 RETAIN_WEIGHT="${RETAIN_WEIGHT:-1.0}"
 GRAD_CLIP="${GRAD_CLIP:-1.0}"
+CKPT_SELECT="${CKPT_SELECT:-retain_acc}"
 BATCH_SIZE="${BATCH_SIZE:-128}"
 WORKERS="${WORKERS:-4}"
 DATAPATH="${DATAPATH:-~/Datasets/CIFAR}"
@@ -45,9 +51,11 @@ ARGS=(
   --seed-b "${SEED_B}"
   --unlearn-epochs "${UNLEARN_EPOCHS}"
   --unlearn-lr "${UNLEARN_LR}"
+  --retrain-epochs "${RETRAIN_EPOCHS}"
   --forget-alpha "${FORGET_ALPHA}"
   --retain-weight "${RETAIN_WEIGHT}"
   --grad-clip "${GRAD_CLIP}"
+  --ckpt-select "${CKPT_SELECT}"
   --batch-size "${BATCH_SIZE}"
   --workers "${WORKERS}"
   --datapath "${DATAPATH}"
@@ -59,6 +67,22 @@ ARGS=(
   --out-dir "${OUT_DIR}"
   --gpu "${GPU}"
 )
+if [[ -n "${RETRAIN_LR}" ]]; then
+  ARGS+=(--retrain-lr "${RETRAIN_LR}")
+fi
+if [[ -n "${RETRAIN_MOMENTUM}" ]]; then
+  ARGS+=(--retrain-momentum "${RETRAIN_MOMENTUM}")
+fi
+if [[ -n "${RETRAIN_WEIGHT_DECAY}" ]]; then
+  ARGS+=(--retrain-weight-decay "${RETRAIN_WEIGHT_DECAY}")
+fi
+if [[ -n "${RETRAIN_NESTEROV}" ]]; then
+  if [[ "${RETRAIN_NESTEROV}" == "1" ]]; then
+    ARGS+=(--retrain-nesterov)
+  elif [[ "${RETRAIN_NESTEROV}" == "0" ]]; then
+    ARGS+=(--no-retrain-nesterov)
+  fi
+fi
 if [[ "${STEP1_ONLY}" == "1" ]]; then
   ARGS+=(--step1-only)
 fi

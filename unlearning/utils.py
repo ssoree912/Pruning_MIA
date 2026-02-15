@@ -162,9 +162,28 @@ def train_unlearning_endpoint_ascent(
     retain_weight: float,
     grad_clip: float,
     model_config: Dict[str, Any],
+    retrain_epochs: int = 0,
+    retrain_lr: Optional[float] = None,
+    retrain_momentum: Optional[float] = None,
+    retrain_weight_decay: Optional[float] = None,
+    retrain_nesterov: Optional[bool] = None,
+    ckpt_select: str = "retain_acc",
 ) -> Dict[str, Any]:
     if forget_alpha <= 0:
         raise ValueError("forget_alpha must be > 0 for ascent-based unlearning")
+    if retrain_epochs < 0:
+        raise ValueError("retrain_epochs must be >= 0")
+    if ckpt_select not in {"retain_acc", "test_acc"}:
+        raise ValueError(f"Unsupported ckpt_select: {ckpt_select}")
+
+    if retrain_lr is None:
+        retrain_lr = lr
+    if retrain_momentum is None:
+        retrain_momentum = momentum
+    if retrain_weight_decay is None:
+        retrain_weight_decay = weight_decay
+    if retrain_nesterov is None:
+        retrain_nesterov = nesterov
 
     set_seed(seed)
     model.load_state_dict(base_state, strict=True)
@@ -183,13 +202,40 @@ def train_unlearning_endpoint_ascent(
         T_max=max(epochs, 1),
     )
 
-    best_retain_acc = -1.0
+    best_score = float("-inf")
     best_state = None
+    best_stage = ""
     best_epoch = -1
+    best_global_epoch = -1
     best_metrics: Dict[str, float] = {}
     history: List[Dict[str, Any]] = []
+    unlearn_history: List[Dict[str, Any]] = []
+    retrain_history: List[Dict[str, Any]] = []
 
-    for epoch in range(epochs):
+    def _update_best(
+        stage_name: str,
+        stage_epoch: int,
+        global_epoch: int,
+        metrics: Dict[str, float],
+    ) -> None:
+        nonlocal best_score, best_state, best_stage, best_epoch, best_global_epoch, best_metrics
+        score = float(metrics[ckpt_select])
+        if score > best_score:
+            best_score = score
+            best_stage = stage_name
+            best_epoch = stage_epoch
+            best_global_epoch = global_epoch
+            best_metrics = {
+                "retain_loss": float(metrics["retain_loss"]),
+                "retain_acc": float(metrics["retain_acc"]),
+                "forget_loss": float(metrics["forget_loss"]),
+                "forget_acc": float(metrics["forget_acc"]),
+                "test_loss": float(metrics["test_loss"]),
+                "test_acc": float(metrics["test_acc"]),
+            }
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+    for epoch in range(max(epochs, 0)):
         model.train()
         retain_it = iter(retain_train_loader)
         forget_it = iter(forget_train_loader)
@@ -240,6 +286,9 @@ def train_unlearning_endpoint_ascent(
         train_total = retain_weight * train_retain - forget_alpha * train_forget
 
         row = {
+            "stage": "unlearn",
+            "stage_epoch": int(epoch),
+            "global_epoch": int(len(history)),
             "epoch": epoch,
             "train_total_loss": train_total,
             "train_retain_loss": train_retain,
@@ -255,42 +304,156 @@ def train_unlearning_endpoint_ascent(
             "lr": optimizer.param_groups[0]["lr"],
         }
         history.append(row)
+        unlearn_history.append(row)
         print(
-            f"[seed={seed}] epoch {epoch + 1:03d}/{epochs:03d} "
+            f"[seed={seed}][unlearn] epoch {epoch + 1:03d}/{epochs:03d} "
             f"train_total={train_total:.4f} retain_loss={retain_stats['loss']:.4f} "
             f"forget_loss={forget_stats['loss']:.4f} retain_acc={retain_stats['acc']:.4f} "
             f"forget_acc={forget_stats['acc']:.4f} test_acc={test_stats['acc']:.4f}"
         )
+        _update_best(
+            stage_name="unlearn",
+            stage_epoch=epoch,
+            global_epoch=len(history) - 1,
+            metrics={
+                "retain_loss": retain_stats["loss"],
+                "retain_acc": retain_stats["acc"],
+                "forget_loss": forget_stats["loss"],
+                "forget_acc": forget_stats["acc"],
+                "test_loss": test_stats["loss"],
+                "test_acc": test_stats["acc"],
+            },
+        )
 
-        if retain_stats["acc"] > best_retain_acc:
-            best_retain_acc = retain_stats["acc"]
-            best_epoch = epoch
-            best_metrics = {
-                "retain_loss": float(retain_stats["loss"]),
-                "retain_acc": float(retain_stats["acc"]),
-                "forget_loss": float(forget_stats["loss"]),
-                "forget_acc": float(forget_stats["acc"]),
-                "test_loss": float(test_stats["loss"]),
-                "test_acc": float(test_stats["acc"]),
+    if retrain_epochs > 0:
+        retrain_optimizer = optim.SGD(
+            model.parameters(),
+            lr=float(retrain_lr),
+            momentum=float(retrain_momentum),
+            weight_decay=float(retrain_weight_decay),
+            nesterov=bool(retrain_nesterov),
+        )
+        retrain_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            retrain_optimizer,
+            T_max=max(retrain_epochs, 1),
+        )
+
+        for epoch in range(retrain_epochs):
+            model.train()
+            running_retain = 0.0
+            seen_r = 0
+            for batch_r in retain_train_loader:
+                xr, yr = _unpack_xy(batch_r)
+                xr = xr.to(device, non_blocking=True)
+                yr = yr.to(device, non_blocking=True)
+
+                retrain_optimizer.zero_grad(set_to_none=True)
+                logits_r = model(xr)
+                loss_r = loss_fn(logits_r, yr)
+                loss_r.backward()
+                if grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                retrain_optimizer.step()
+
+                bsz_r = xr.size(0)
+                seen_r += bsz_r
+                running_retain += float(loss_r.item()) * bsz_r
+
+            retrain_scheduler.step()
+
+            retain_stats = evaluate_fn(model, retain_eval_loader, device)
+            forget_stats = evaluate_fn(model, forget_eval_loader, device)
+            test_stats = evaluate_fn(model, test_loader, device)
+            train_retain = running_retain / max(seen_r, 1)
+
+            row = {
+                "stage": "retrain",
+                "stage_epoch": int(epoch),
+                "global_epoch": int(len(history)),
+                "epoch": int(epochs + epoch),
+                "train_total_loss": train_retain,
+                "train_retain_loss": train_retain,
+                "train_forget_loss": None,
+                "train_retain_samples": int(seen_r),
+                "train_forget_samples": 0,
+                "retain_loss": retain_stats["loss"],
+                "retain_acc": retain_stats["acc"],
+                "forget_loss": forget_stats["loss"],
+                "forget_acc": forget_stats["acc"],
+                "test_loss": test_stats["loss"],
+                "test_acc": test_stats["acc"],
+                "lr": retrain_optimizer.param_groups[0]["lr"],
             }
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            history.append(row)
+            retrain_history.append(row)
+            print(
+                f"[seed={seed}][retrain] epoch {epoch + 1:03d}/{retrain_epochs:03d} "
+                f"train_retain={train_retain:.4f} retain_loss={retain_stats['loss']:.4f} "
+                f"forget_loss={forget_stats['loss']:.4f} retain_acc={retain_stats['acc']:.4f} "
+                f"forget_acc={forget_stats['acc']:.4f} test_acc={test_stats['acc']:.4f}"
+            )
+            _update_best(
+                stage_name="retrain",
+                stage_epoch=epoch,
+                global_epoch=len(history) - 1,
+                metrics={
+                    "retain_loss": retain_stats["loss"],
+                    "retain_acc": retain_stats["acc"],
+                    "forget_loss": forget_stats["loss"],
+                    "forget_acc": forget_stats["acc"],
+                    "test_loss": test_stats["loss"],
+                    "test_acc": test_stats["acc"],
+                },
+            )
 
     if best_state is None:
         best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        retain_stats = evaluate_fn(model, retain_eval_loader, device)
+        forget_stats = evaluate_fn(model, forget_eval_loader, device)
+        test_stats = evaluate_fn(model, test_loader, device)
+        best_stage = "init"
+        best_epoch = -1
+        best_global_epoch = -1
+        best_metrics = {
+            "retain_loss": float(retain_stats["loss"]),
+            "retain_acc": float(retain_stats["acc"]),
+            "forget_loss": float(forget_stats["loss"]),
+            "forget_acc": float(forget_stats["acc"]),
+            "test_loss": float(test_stats["loss"]),
+            "test_acc": float(test_stats["acc"]),
+        }
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "state_dict": best_state,
         "seed": seed,
         "train_history": history,
+        "unlearn_history": unlearn_history,
+        "retrain_history": retrain_history,
+        "best_stage": best_stage,
         "best_epoch": int(best_epoch),
+        "best_global_epoch": int(best_global_epoch),
         "best_metrics": best_metrics,
-        "final_metrics": history[-1] if history else {},
+        "final_metrics": history[-1] if history else best_metrics,
         "unlearning": {
             "objective": "retain_descent_with_forget_ascent",
             "retain_weight": retain_weight,
             "forget_alpha": forget_alpha,
             "grad_clip": grad_clip,
+            "ckpt_select": ckpt_select,
+            "retrain_enabled": bool(retrain_epochs > 0),
+        },
+        "training_schedule": {
+            "unlearn_epochs": int(epochs),
+            "unlearn_lr": float(lr),
+            "unlearn_momentum": float(momentum),
+            "unlearn_weight_decay": float(weight_decay),
+            "unlearn_nesterov": bool(nesterov),
+            "retrain_epochs": int(retrain_epochs),
+            "retrain_lr": float(retrain_lr),
+            "retrain_momentum": float(retrain_momentum),
+            "retrain_weight_decay": float(retrain_weight_decay),
+            "retrain_nesterov": bool(retrain_nesterov),
         },
         "config": model_config,
     }

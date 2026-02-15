@@ -431,6 +431,41 @@ def main() -> None:
     parser.add_argument("--forget-alpha", type=float, default=0.05, help="Df ascent strength in L=Dr-alpha*Df")
     parser.add_argument("--retain-weight", type=float, default=1.0, help="Dr descent weight")
     parser.add_argument("--grad-clip", type=float, default=1.0, help="Gradient clipping norm (<=0 disables)")
+    parser.add_argument("--retrain-epochs", type=int, default=0, help="Retain-only retrain epochs after unlearning")
+    parser.add_argument("--retrain-lr", type=float, default=None, help="Retain retrain LR (default: unlearn-lr)")
+    parser.add_argument(
+        "--retrain-momentum",
+        type=float,
+        default=None,
+        help="Retain retrain momentum (default: momentum)",
+    )
+    parser.add_argument(
+        "--retrain-weight-decay",
+        type=float,
+        default=None,
+        help="Retain retrain weight decay (default: weight-decay)",
+    )
+    retrain_nesterov_group = parser.add_mutually_exclusive_group()
+    retrain_nesterov_group.add_argument(
+        "--retrain-nesterov",
+        dest="retrain_nesterov",
+        action="store_true",
+        help="Enable Nesterov for retrain stage",
+    )
+    retrain_nesterov_group.add_argument(
+        "--no-retrain-nesterov",
+        dest="retrain_nesterov",
+        action="store_false",
+        help="Disable Nesterov for retrain stage",
+    )
+    parser.set_defaults(retrain_nesterov=None)
+    parser.add_argument(
+        "--ckpt-select",
+        type=str,
+        default="retain_acc",
+        choices=["retain_acc", "test_acc"],
+        help="Best checkpoint selection metric for endpoint model",
+    )
 
     parser.add_argument("--lambdas", type=int, default=21, help="Interpolation points count")
     bn_group = parser.add_mutually_exclusive_group()
@@ -453,6 +488,8 @@ def main() -> None:
         raise ValueError("--mask-topk must be in (0,1]")
     if args.forget_alpha <= 0.0:
         raise ValueError("--forget-alpha must be > 0 for ascent-based unlearning")
+    if args.retrain_epochs < 0:
+        raise ValueError("--retrain-epochs must be >= 0")
 
     dense_ckpt = Path(args.dense_ckpt)
     if not dense_ckpt.exists():
@@ -559,6 +596,12 @@ def main() -> None:
             forget_alpha=args.forget_alpha,
             retain_weight=args.retain_weight,
             grad_clip=args.grad_clip,
+            retrain_epochs=args.retrain_epochs,
+            retrain_lr=args.retrain_lr,
+            retrain_momentum=args.retrain_momentum,
+            retrain_weight_decay=args.retrain_weight_decay,
+            retrain_nesterov=args.retrain_nesterov,
+            ckpt_select=args.ckpt_select,
             model_config={
                 "dataset": spec.dataset,
                 "arch": spec.arch,
@@ -595,6 +638,12 @@ def main() -> None:
             forget_alpha=args.forget_alpha,
             retain_weight=args.retain_weight,
             grad_clip=args.grad_clip,
+            retrain_epochs=args.retrain_epochs,
+            retrain_lr=args.retrain_lr,
+            retrain_momentum=args.retrain_momentum,
+            retrain_weight_decay=args.retrain_weight_decay,
+            retrain_nesterov=args.retrain_nesterov,
+            ckpt_select=args.ckpt_select,
             model_config={
                 "dataset": spec.dataset,
                 "arch": spec.arch,
@@ -654,6 +703,21 @@ def main() -> None:
                 "retain_weight": args.retain_weight,
                 "forget_alpha": args.forget_alpha,
                 "grad_clip": args.grad_clip,
+                "ckpt_select": args.ckpt_select,
+            },
+            "training_schedule": {
+                "unlearn_epochs": args.unlearn_epochs,
+                "unlearn_lr": args.unlearn_lr,
+                "momentum": args.momentum,
+                "weight_decay": args.weight_decay,
+                "nesterov": args.nesterov,
+                "retrain_epochs": args.retrain_epochs,
+                "retrain_lr": args.retrain_lr if args.retrain_lr is not None else args.unlearn_lr,
+                "retrain_momentum": args.retrain_momentum if args.retrain_momentum is not None else args.momentum,
+                "retrain_weight_decay": (
+                    args.retrain_weight_decay if args.retrain_weight_decay is not None else args.weight_decay
+                ),
+                "retrain_nesterov": args.retrain_nesterov if args.retrain_nesterov is not None else args.nesterov,
             },
             "endpoints": {
                 "seed_a": args.seed_a,
@@ -767,6 +831,21 @@ def main() -> None:
             "retain_weight": args.retain_weight,
             "forget_alpha": args.forget_alpha,
             "grad_clip": args.grad_clip,
+            "ckpt_select": args.ckpt_select,
+        },
+        "training_schedule": {
+            "unlearn_epochs": args.unlearn_epochs,
+            "unlearn_lr": args.unlearn_lr,
+            "momentum": args.momentum,
+            "weight_decay": args.weight_decay,
+            "nesterov": args.nesterov,
+            "retrain_epochs": args.retrain_epochs,
+            "retrain_lr": args.retrain_lr if args.retrain_lr is not None else args.unlearn_lr,
+            "retrain_momentum": args.retrain_momentum if args.retrain_momentum is not None else args.momentum,
+            "retrain_weight_decay": (
+                args.retrain_weight_decay if args.retrain_weight_decay is not None else args.weight_decay
+            ),
+            "retrain_nesterov": args.retrain_nesterov if args.retrain_nesterov is not None else args.nesterov,
         },
         "endpoints": {
             "seed_a": args.seed_a,
