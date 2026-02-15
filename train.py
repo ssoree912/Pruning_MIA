@@ -424,6 +424,7 @@ def main() -> None:
     parser.add_argument("--forget-ratio", type=float, default=0.1, help="Forget ratio for df-mode=random")
 
     parser.add_argument("--unlearn-epochs", type=int, default=20)
+    parser.add_argument("--unlearn-steps", type=int, default=0, help="Max unlearning optimizer steps (0 disables)")
     parser.add_argument("--unlearn-lr", type=float, default=0.01)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight-decay", type=float, default=5e-4)
@@ -488,6 +489,8 @@ def main() -> None:
         raise ValueError("--mask-topk must be in (0,1]")
     if args.forget_alpha <= 0.0:
         raise ValueError("--forget-alpha must be > 0 for ascent-based unlearning")
+    if args.unlearn_steps < 0:
+        raise ValueError("--unlearn-steps must be >= 0")
     if args.retrain_epochs < 0:
         raise ValueError("--retrain-epochs must be >= 0")
 
@@ -602,6 +605,7 @@ def main() -> None:
             retrain_weight_decay=args.retrain_weight_decay,
             retrain_nesterov=args.retrain_nesterov,
             ckpt_select=args.ckpt_select,
+            unlearn_steps=args.unlearn_steps,
             model_config={
                 "dataset": spec.dataset,
                 "arch": spec.arch,
@@ -644,6 +648,7 @@ def main() -> None:
             retrain_weight_decay=args.retrain_weight_decay,
             retrain_nesterov=args.retrain_nesterov,
             ckpt_select=args.ckpt_select,
+            unlearn_steps=args.unlearn_steps,
             model_config={
                 "dataset": spec.dataset,
                 "arch": spec.arch,
@@ -707,6 +712,7 @@ def main() -> None:
             },
             "training_schedule": {
                 "unlearn_epochs": args.unlearn_epochs,
+                "unlearn_steps": args.unlearn_steps,
                 "unlearn_lr": args.unlearn_lr,
                 "momentum": args.momentum,
                 "weight_decay": args.weight_decay,
@@ -835,6 +841,7 @@ def main() -> None:
         },
         "training_schedule": {
             "unlearn_epochs": args.unlearn_epochs,
+            "unlearn_steps": args.unlearn_steps,
             "unlearn_lr": args.unlearn_lr,
             "momentum": args.momentum,
             "weight_decay": args.weight_decay,

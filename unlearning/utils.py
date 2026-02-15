@@ -168,11 +168,14 @@ def train_unlearning_endpoint_ascent(
     retrain_weight_decay: Optional[float] = None,
     retrain_nesterov: Optional[bool] = None,
     ckpt_select: str = "retain_acc",
+    unlearn_steps: int = 0,
 ) -> Dict[str, Any]:
     if forget_alpha <= 0:
         raise ValueError("forget_alpha must be > 0 for ascent-based unlearning")
     if retrain_epochs < 0:
         raise ValueError("retrain_epochs must be >= 0")
+    if unlearn_steps < 0:
+        raise ValueError("unlearn_steps must be >= 0")
     if ckpt_select not in {"retain_acc", "test_acc"}:
         raise ValueError(f"Unsupported ckpt_select: {ckpt_select}")
 
@@ -235,6 +238,7 @@ def train_unlearning_endpoint_ascent(
             }
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
+    unlearn_steps_ran = 0
     for epoch in range(max(epochs, 0)):
         model.train()
         retain_it = iter(retain_train_loader)
@@ -247,6 +251,8 @@ def train_unlearning_endpoint_ascent(
         seen_f = 0
 
         for _ in range(steps):
+            if unlearn_steps > 0 and unlearn_steps_ran >= unlearn_steps:
+                break
             batch_r, retain_it = _next_batch(retain_it, retain_train_loader)
             batch_f, forget_it = _next_batch(forget_it, forget_train_loader)
 
@@ -275,6 +281,10 @@ def train_unlearning_endpoint_ascent(
             seen_f += bsz_f
             running_retain += float(loss_r.item()) * bsz_r
             running_forget += float(loss_f.item()) * bsz_f
+            unlearn_steps_ran += 1
+
+        if seen_r == 0 and seen_f == 0:
+            break
 
         scheduler.step()
 
@@ -324,6 +334,8 @@ def train_unlearning_endpoint_ascent(
                 "test_acc": test_stats["acc"],
             },
         )
+        if unlearn_steps > 0 and unlearn_steps_ran >= unlearn_steps:
+            break
 
     if retrain_epochs > 0:
         retrain_optimizer = optim.SGD(
@@ -445,6 +457,8 @@ def train_unlearning_endpoint_ascent(
         },
         "training_schedule": {
             "unlearn_epochs": int(epochs),
+            "unlearn_steps_target": int(unlearn_steps),
+            "unlearn_steps_ran": int(unlearn_steps_ran),
             "unlearn_lr": float(lr),
             "unlearn_momentum": float(momentum),
             "unlearn_weight_decay": float(weight_decay),

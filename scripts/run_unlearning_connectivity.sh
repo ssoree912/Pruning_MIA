@@ -16,6 +16,7 @@ LAYERS="20"
 SEED_A="43"
 SEED_B="44"
 UNLEARN_EPOCHS="20"
+UNLEARN_STEPS="0"
 UNLEARN_LR="0.01"
 RETRAIN_EPOCHS="0"
 RETRAIN_LR=""
@@ -25,7 +26,7 @@ RETRAIN_NESTEROV="-1"
 FORGET_ALPHA="0.05"
 RETAIN_WEIGHT="1.0"
 GRAD_CLIP="1.0"
-CKPT_SELECT="retain_acc"
+CKPT_SELECT="test_acc"
 BATCH_SIZE="128"
 WORKERS="4"
 DATAPATH="~/Datasets/CIFAR"
@@ -38,6 +39,23 @@ OUT_DIR="./runs/unlearning_connectivity"
 GPU="0"
 SKIP_EXISTING=0
 STEP1_ONLY=0
+USE_DF_PRESETS=1
+
+# Recommended per-DF performance-preserving initial presets.
+DF1_UNLEARN_STEPS="${DF1_UNLEARN_STEPS:-80}"
+DF1_FORGET_ALPHA="${DF1_FORGET_ALPHA:-0.008}"
+DF1_RETRAIN_EPOCHS="${DF1_RETRAIN_EPOCHS:-15}"
+DF1_RETRAIN_LR="${DF1_RETRAIN_LR:-0.005}"
+
+DF2_UNLEARN_STEPS="${DF2_UNLEARN_STEPS:-120}"
+DF2_FORGET_ALPHA="${DF2_FORGET_ALPHA:-0.010}"
+DF2_RETRAIN_EPOCHS="${DF2_RETRAIN_EPOCHS:-20}"
+DF2_RETRAIN_LR="${DF2_RETRAIN_LR:-0.004}"
+
+DF3_UNLEARN_STEPS="${DF3_UNLEARN_STEPS:-160}"
+DF3_FORGET_ALPHA="${DF3_FORGET_ALPHA:-0.012}"
+DF3_RETRAIN_EPOCHS="${DF3_RETRAIN_EPOCHS:-25}"
+DF3_RETRAIN_LR="${DF3_RETRAIN_LR:-0.003}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --seed-a) SEED_A="$2"; shift 2 ;;
     --seed-b) SEED_B="$2"; shift 2 ;;
     --unlearn-epochs) UNLEARN_EPOCHS="$2"; shift 2 ;;
+    --unlearn-steps) UNLEARN_STEPS="$2"; shift 2 ;;
     --unlearn-lr) UNLEARN_LR="$2"; shift 2 ;;
     --retrain-epochs) RETRAIN_EPOCHS="$2"; shift 2 ;;
     --retrain-lr) RETRAIN_LR="$2"; shift 2 ;;
@@ -72,6 +91,8 @@ while [[ $# -gt 0 ]]; do
     --gpu) GPU="$2"; shift 2 ;;
     --skip-existing) SKIP_EXISTING=1; shift 1 ;;
     --step1-only) STEP1_ONLY=1; shift 1 ;;
+    --use-df-presets) USE_DF_PRESETS=1; shift 1 ;;
+    --no-df-presets) USE_DF_PRESETS=0; shift 1 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -88,6 +109,36 @@ for DF in df1 df2 df3; do
   echo "============================================================"
   echo "Running ${DF}"
   echo "============================================================"
+  CUR_UNLEARN_STEPS="${UNLEARN_STEPS}"
+  CUR_FORGET_ALPHA="${FORGET_ALPHA}"
+  CUR_RETRAIN_EPOCHS="${RETRAIN_EPOCHS}"
+  CUR_RETRAIN_LR="${RETRAIN_LR}"
+
+  if [[ "${USE_DF_PRESETS}" -eq 1 ]]; then
+    case "${DF}" in
+      df1)
+        CUR_UNLEARN_STEPS="${DF1_UNLEARN_STEPS}"
+        CUR_FORGET_ALPHA="${DF1_FORGET_ALPHA}"
+        CUR_RETRAIN_EPOCHS="${DF1_RETRAIN_EPOCHS}"
+        CUR_RETRAIN_LR="${DF1_RETRAIN_LR}"
+        ;;
+      df2)
+        CUR_UNLEARN_STEPS="${DF2_UNLEARN_STEPS}"
+        CUR_FORGET_ALPHA="${DF2_FORGET_ALPHA}"
+        CUR_RETRAIN_EPOCHS="${DF2_RETRAIN_EPOCHS}"
+        CUR_RETRAIN_LR="${DF2_RETRAIN_LR}"
+        ;;
+      df3)
+        CUR_UNLEARN_STEPS="${DF3_UNLEARN_STEPS}"
+        CUR_FORGET_ALPHA="${DF3_FORGET_ALPHA}"
+        CUR_RETRAIN_EPOCHS="${DF3_RETRAIN_EPOCHS}"
+        CUR_RETRAIN_LR="${DF3_RETRAIN_LR}"
+        ;;
+    esac
+  fi
+
+  echo "[hparam] df=${DF} unlearn_steps=${CUR_UNLEARN_STEPS} forget_alpha=${CUR_FORGET_ALPHA} retrain_epochs=${CUR_RETRAIN_EPOCHS} retrain_lr=${CUR_RETRAIN_LR:-auto} ckpt_select=${CKPT_SELECT}"
+
   ARGS=(
     --dense-ckpt "${DENSE_CKPT}"
     --dataset "${DATASET}"
@@ -98,9 +149,10 @@ for DF in df1 df2 df3; do
     --df-mode profile
     --df-profile "${DF}"
     --unlearn-epochs "${UNLEARN_EPOCHS}"
+    --unlearn-steps "${CUR_UNLEARN_STEPS}"
     --unlearn-lr "${UNLEARN_LR}"
-    --retrain-epochs "${RETRAIN_EPOCHS}"
-    --forget-alpha "${FORGET_ALPHA}"
+    --retrain-epochs "${CUR_RETRAIN_EPOCHS}"
+    --forget-alpha "${CUR_FORGET_ALPHA}"
     --retain-weight "${RETAIN_WEIGHT}"
     --grad-clip "${GRAD_CLIP}"
     --ckpt-select "${CKPT_SELECT}"
@@ -118,8 +170,8 @@ for DF in df1 df2 df3; do
   else
     ARGS+=(--no-bn-recalc)
   fi
-  if [[ -n "${RETRAIN_LR}" ]]; then
-    ARGS+=(--retrain-lr "${RETRAIN_LR}")
+  if [[ -n "${CUR_RETRAIN_LR}" ]]; then
+    ARGS+=(--retrain-lr "${CUR_RETRAIN_LR}")
   fi
   if [[ -n "${RETRAIN_MOMENTUM}" ]]; then
     ARGS+=(--retrain-momentum "${RETRAIN_MOMENTUM}")
