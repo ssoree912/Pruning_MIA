@@ -561,6 +561,7 @@ def evaluate_endpoint_state(
     device: torch.device,
     retain_test_loader: Optional[DataLoader] = None,
     forget_test_loader: Optional[DataLoader] = None,
+    normalized_full_scale: Optional[float] = None,
 ) -> Dict[str, float]:
     model, _ = build_dense_model(spec)
     model = model.to(device)
@@ -585,6 +586,10 @@ def evaluate_endpoint_state(
         forget_test_stats = evaluate(model, forget_test_loader, device)
         out["forget_test_loss"] = float(forget_test_stats["loss"])
         out["forget_test_acc"] = float(forget_test_stats["acc"])
+    if normalized_full_scale is not None and normalized_full_scale > 0.0:
+        out["normalized_full_scale"] = float(normalized_full_scale)
+        out["normalized_full_test_acc"] = float(out["test_acc"] / normalized_full_scale)
+        out["normalized_full"] = out["normalized_full_test_acc"]
     return out
 
 
@@ -630,6 +635,13 @@ def main() -> None:
     parser.add_argument("--weight-decay", type=float, default=5e-4)
     parser.add_argument("--nesterov", action="store_true")
     parser.add_argument("--forget-alpha", type=float, default=0.05, help="Df ascent strength in L=Dr-alpha*Df")
+    parser.add_argument(
+        "--forget-objective",
+        type=str,
+        default="ce_ascent",
+        choices=["ce_ascent", "kl_uniform", "entropy"],
+        help="Df objective: CE-ascent or KL-to-uniform / entropy-max variants",
+    )
     parser.add_argument("--retain-weight", type=float, default=1.0, help="Dr descent weight")
     parser.add_argument("--grad-clip", type=float, default=1.0, help="Gradient clipping norm (<=0 disables)")
     parser.add_argument("--retrain-epochs", type=int, default=0, help="Retain-only retrain epochs after unlearning")
@@ -720,7 +732,7 @@ def main() -> None:
     if args.mask_topk <= 0.0 or args.mask_topk > 1.0:
         raise ValueError("--mask-topk must be in (0,1]")
     if args.forget_alpha <= 0.0:
-        raise ValueError("--forget-alpha must be > 0 for ascent-based unlearning")
+        raise ValueError("--forget-alpha must be > 0")
     if args.unlearn_steps < 0:
         raise ValueError("--unlearn-steps must be >= 0")
     if args.retrain_epochs < 0:
@@ -808,11 +820,16 @@ def main() -> None:
 
     retain_test_loader: Optional[DataLoader] = None
     forget_test_loader: Optional[DataLoader] = None
+    retain_test_idx: List[int] = []
+    forget_test_idx: List[int] = []
+    normalized_full_scale: Optional[float] = None
     if df_spec.get("type") == "class":
         test_targets = _get_dataset_targets(test_eval)
         forget_test_idx, retain_test_idx = build_forget_retain_indices(
             test_targets, df_spec=df_spec, split_seed=args.split_seed
         )
+        if len(test_targets) > 0:
+            normalized_full_scale = float(len(retain_test_idx) / len(test_targets))
         if retain_test_idx:
             retain_test_loader = make_subset_loader(
                 test_eval, retain_test_idx, spec.batch_size, spec.workers, shuffle=False, seed=0
@@ -845,6 +862,7 @@ def main() -> None:
             device=device,
             retain_test_loader=retain_test_loader,
             forget_test_loader=forget_test_loader,
+            normalized_full_scale=normalized_full_scale,
         )
         print(
             f"[scratch-retrain baseline] test_acc={scratch_baseline_metrics['test_acc']:.4f} "
@@ -864,6 +882,7 @@ def main() -> None:
                 device=device,
                 retain_test_loader=retain_test_loader,
                 forget_test_loader=forget_test_loader,
+                normalized_full_scale=normalized_full_scale,
             )
             print(f"Reusing scratch retrain baseline: {scratch_baseline_ckpt}")
         else:
@@ -899,6 +918,7 @@ def main() -> None:
                 device=device,
                 retain_test_loader=retain_test_loader,
                 forget_test_loader=forget_test_loader,
+                normalized_full_scale=normalized_full_scale,
             )
             print(f"Saved scratch retrain baseline: {scratch_baseline_ckpt}")
             print(
@@ -929,6 +949,7 @@ def main() -> None:
             weight_decay=args.weight_decay,
             nesterov=args.nesterov,
             forget_alpha=args.forget_alpha,
+            forget_objective=args.forget_objective,
             retain_weight=args.retain_weight,
             grad_clip=args.grad_clip,
             retrain_epochs=args.retrain_epochs,
@@ -972,6 +993,7 @@ def main() -> None:
             weight_decay=args.weight_decay,
             nesterov=args.nesterov,
             forget_alpha=args.forget_alpha,
+            forget_objective=args.forget_objective,
             retain_weight=args.retain_weight,
             grad_clip=args.grad_clip,
             retrain_epochs=args.retrain_epochs,
@@ -1007,6 +1029,7 @@ def main() -> None:
             device=device,
             retain_test_loader=retain_test_loader,
             forget_test_loader=forget_test_loader,
+            normalized_full_scale=normalized_full_scale,
         ),
         f"seed{args.seed_b}": evaluate_endpoint_state(
             spec=spec,
@@ -1017,6 +1040,7 @@ def main() -> None:
             device=device,
             retain_test_loader=retain_test_loader,
             forget_test_loader=forget_test_loader,
+            normalized_full_scale=normalized_full_scale,
         ),
     }
     if scratch_baseline_metrics is not None:
@@ -1048,8 +1072,17 @@ def main() -> None:
             "device": str(device),
             "model_spec": spec.__dict__,
             "df_spec": df_spec,
+            "evaluation_normalization": {
+                "normalized_full_scale": normalized_full_scale,
+                "normalized_full_formula": (
+                    "normalized_full_test_acc = test_acc / normalized_full_scale"
+                    if normalized_full_scale is not None and normalized_full_scale > 0.0
+                    else None
+                ),
+            },
             "unlearning_objective": {
-                "type": "retain_descent_with_forget_ascent",
+                "type": "retain_descent_with_forget",
+                "forget_objective": args.forget_objective,
                 "retain_weight": args.retain_weight,
                 "forget_alpha": args.forget_alpha,
                 "grad_clip": args.grad_clip,
@@ -1196,6 +1229,7 @@ def main() -> None:
                 device=device,
                 retain_test_loader=retain_test_loader,
                 forget_test_loader=forget_test_loader,
+                normalized_full_scale=normalized_full_scale,
             )
             ckpt_path = run_dir / f"{src_name}_swa_merge.pth"
             torch.save(
@@ -1244,6 +1278,14 @@ def main() -> None:
         "device": str(device),
         "model_spec": spec.__dict__,
         "df_spec": df_spec,
+        "evaluation_normalization": {
+            "normalized_full_scale": normalized_full_scale,
+            "normalized_full_formula": (
+                "normalized_full_test_acc = test_acc / normalized_full_scale"
+                if normalized_full_scale is not None and normalized_full_scale > 0.0
+                else None
+            ),
+        },
         "step2": {
             "retain_loss_barrier": step2["retain_loss_barrier"],
             "retain_acc_drop_pp": step2["retain_acc_drop_pp"],
@@ -1259,7 +1301,8 @@ def main() -> None:
             "max_loss_barrier": args.max_loss_barrier,
         },
         "unlearning_objective": {
-            "type": "retain_descent_with_forget_ascent",
+            "type": "retain_descent_with_forget",
+            "forget_objective": args.forget_objective,
             "retain_weight": args.retain_weight,
             "forget_alpha": args.forget_alpha,
             "grad_clip": args.grad_clip,

@@ -24,6 +24,7 @@ RETRAIN_MOMENTUM=""
 RETRAIN_WEIGHT_DECAY=""
 RETRAIN_NESTEROV="-1"
 FORGET_ALPHA="0.05"
+FORGET_OBJECTIVE="ce_ascent"
 RETAIN_WEIGHT="1.0"
 GRAD_CLIP="1.0"
 CKPT_SELECT="test_acc"
@@ -89,6 +90,7 @@ while [[ $# -gt 0 ]]; do
     --retrain-nesterov) RETRAIN_NESTEROV="1"; shift 1 ;;
     --no-retrain-nesterov) RETRAIN_NESTEROV="0"; shift 1 ;;
     --forget-alpha) FORGET_ALPHA="$2"; shift 2 ;;
+    --forget-objective) FORGET_OBJECTIVE="$2"; shift 2 ;;
     --retain-weight) RETAIN_WEIGHT="$2"; shift 2 ;;
     --grad-clip) GRAD_CLIP="$2"; shift 2 ;;
     --ckpt-select) CKPT_SELECT="$2"; shift 2 ;;
@@ -166,7 +168,7 @@ for DF in df1 df2 df3; do
     esac
   fi
 
-  echo "[hparam] df=${DF} unlearn_steps=${CUR_UNLEARN_STEPS} forget_alpha=${CUR_FORGET_ALPHA} retrain_epochs=${CUR_RETRAIN_EPOCHS} retrain_lr=${CUR_RETRAIN_LR:-auto} ckpt_select=${CKPT_SELECT}"
+  echo "[hparam] df=${DF} objective=${FORGET_OBJECTIVE} unlearn_steps=${CUR_UNLEARN_STEPS} forget_alpha=${CUR_FORGET_ALPHA} retrain_epochs=${CUR_RETRAIN_EPOCHS} retrain_lr=${CUR_RETRAIN_LR:-auto} ckpt_select=${CKPT_SELECT}"
 
   ARGS=(
     --dense-ckpt "${DENSE_CKPT}"
@@ -182,6 +184,7 @@ for DF in df1 df2 df3; do
     --unlearn-lr "${UNLEARN_LR}"
     --retrain-epochs "${CUR_RETRAIN_EPOCHS}"
     --forget-alpha "${CUR_FORGET_ALPHA}"
+    --forget-objective "${FORGET_OBJECTIVE}"
     --retain-weight "${RETAIN_WEIGHT}"
     --grad-clip "${GRAD_CLIP}"
     --ckpt-select "${CKPT_SELECT}"

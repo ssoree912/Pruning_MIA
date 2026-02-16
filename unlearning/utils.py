@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 
 
@@ -141,6 +142,22 @@ def _unpack_xy(batch):
     return batch[0], batch[1]
 
 
+def _kl_to_uniform(logits: torch.Tensor) -> torch.Tensor:
+    # KL(p || u), u: uniform over classes.
+    logp = F.log_softmax(logits, dim=1)
+    p = logp.exp()
+    n_cls = logits.size(1)
+    log_n_cls = torch.log(torch.tensor(float(n_cls), device=logits.device))
+    return (p * logp).sum(dim=1).mean() + log_n_cls
+
+
+def _neg_entropy(logits: torch.Tensor) -> torch.Tensor:
+    # -H(p) = sum p * log p
+    logp = F.log_softmax(logits, dim=1)
+    p = logp.exp()
+    return (p * logp).sum(dim=1).mean()
+
+
 def train_unlearning_endpoint_ascent(
     model: nn.Module,
     base_state: Dict[str, torch.Tensor],
@@ -169,6 +186,7 @@ def train_unlearning_endpoint_ascent(
     retrain_nesterov: Optional[bool] = None,
     ckpt_select: str = "retain_acc",
     unlearn_steps: int = 0,
+    forget_objective: str = "ce_ascent",
 ) -> Dict[str, Any]:
     if forget_alpha <= 0:
         raise ValueError("forget_alpha must be > 0 for ascent-based unlearning")
@@ -178,6 +196,8 @@ def train_unlearning_endpoint_ascent(
         raise ValueError("unlearn_steps must be >= 0")
     if ckpt_select not in {"retain_acc", "test_acc"}:
         raise ValueError(f"Unsupported ckpt_select: {ckpt_select}")
+    if forget_objective not in {"ce_ascent", "kl_uniform", "entropy"}:
+        raise ValueError(f"Unsupported forget_objective: {forget_objective}")
 
     if retrain_lr is None:
         retrain_lr = lr
@@ -267,9 +287,16 @@ def train_unlearning_endpoint_ascent(
             logits_r = model(xr)
             logits_f = model(xf)
             loss_r = loss_fn(logits_r, yr)
-            loss_f = loss_fn(logits_f, yf)
-            # Ascent on Df is implemented by subtracting Df loss.
-            loss = retain_weight * loss_r - forget_alpha * loss_f
+            if forget_objective == "ce_ascent":
+                loss_f = loss_fn(logits_f, yf)
+                # Ascent on Df is implemented by subtracting Df loss.
+                loss = retain_weight * loss_r - forget_alpha * loss_f
+            elif forget_objective == "kl_uniform":
+                loss_f = _kl_to_uniform(logits_f)
+                loss = retain_weight * loss_r + forget_alpha * loss_f
+            else:
+                loss_f = _neg_entropy(logits_f)
+                loss = retain_weight * loss_r + forget_alpha * loss_f
             loss.backward()
             if grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -293,7 +320,10 @@ def train_unlearning_endpoint_ascent(
         test_stats = evaluate_fn(model, test_loader, device)
         train_retain = running_retain / max(seen_r, 1)
         train_forget = running_forget / max(seen_f, 1)
-        train_total = retain_weight * train_retain - forget_alpha * train_forget
+        if forget_objective == "ce_ascent":
+            train_total = retain_weight * train_retain - forget_alpha * train_forget
+        else:
+            train_total = retain_weight * train_retain + forget_alpha * train_forget
 
         row = {
             "stage": "unlearn",
@@ -305,6 +335,7 @@ def train_unlearning_endpoint_ascent(
             "train_forget_loss": train_forget,
             "train_retain_samples": int(seen_r),
             "train_forget_samples": int(seen_f),
+            "forget_objective": forget_objective,
             "retain_loss": retain_stats["loss"],
             "retain_acc": retain_stats["acc"],
             "forget_loss": forget_stats["loss"],
@@ -388,6 +419,7 @@ def train_unlearning_endpoint_ascent(
                 "train_forget_loss": None,
                 "train_retain_samples": int(seen_r),
                 "train_forget_samples": 0,
+                "forget_objective": forget_objective,
                 "retain_loss": retain_stats["loss"],
                 "retain_acc": retain_stats["acc"],
                 "forget_loss": forget_stats["loss"],
@@ -448,7 +480,8 @@ def train_unlearning_endpoint_ascent(
         "best_metrics": best_metrics,
         "final_metrics": history[-1] if history else best_metrics,
         "unlearning": {
-            "objective": "retain_descent_with_forget_ascent",
+            "objective": "retain_descent_with_forget",
+            "forget_objective": forget_objective,
             "retain_weight": retain_weight,
             "forget_alpha": forget_alpha,
             "grad_clip": grad_clip,
