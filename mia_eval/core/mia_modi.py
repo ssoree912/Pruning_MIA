@@ -133,10 +133,17 @@ def main(args):
     np.random.seed(args.seed)
     device = f"cuda:{args.device}"
     cudnn.benchmark = True
+    attack_original = bool(getattr(args, "original", False))
     print(f"Running MIA attack:")
     print(f"Victim seed: {args.victim_seed}")
     print(f"Shadow seeds: {args.shadow_seeds}")
     print(f"Sparsity: {args.sparsity}")
+    print(f"Attack mode: {'original(dense baseline)' if attack_original else 'target checkpoint(unlearn/pruned-style)'}")
+    if args.prune_method == "static":
+        print(
+            "[INFO] prune_method=static is used as a workspace path tag; "
+            "it does not run additional pruning in this MIA evaluation."
+        )
 
     base_path = args.base_path if args.base_path else str(REPO_ROOT / "runs")
     # Result location
@@ -296,16 +303,20 @@ def main(args):
     )
     _model_sanity_print(victim_model.model, f"victim(seed={args.victim_seed})")
 
-    # Also prepare a dense (unpruned) victim model for original-mode comparison
-    try:
-        victim_dense_model, _ = load_model_from_seed_folder(
-            base_path, args.victim_seed, args.dataset_name, args.model_name,
-            0.0, 'dense',
-            device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
-        )
-        _model_sanity_print(victim_dense_model.model, f"victim_dense(seed={args.victim_seed})")
-    except Exception as e:
-        print(f"[WARN] Failed to load dense victim model for seed {args.victim_seed}: {e}")
+    # Dense counterpart is only needed for --original mode.
+    if attack_original:
+        try:
+            victim_dense_model, _ = load_model_from_seed_folder(
+                base_path, args.victim_seed, args.dataset_name, args.model_name,
+                0.0, 'dense',
+                device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
+            )
+            _model_sanity_print(victim_dense_model.model, f"victim_dense(seed={args.victim_seed})")
+        except Exception as e:
+            print(f"[WARN] Failed to load dense victim model for seed {args.victim_seed}: {e}")
+            victim_dense_model = victim_model
+    else:
+        print("[INFO] --original is off; skipping dense victim model load.")
         victim_dense_model = victim_model
     # Auto-tune type_value if needed to maximize accuracy on a small sample
     def _sample_accuracy(model, loader, tv=None, max_batches=2):
@@ -431,8 +442,8 @@ def main(args):
         print(f"[DEBUG] Victim meta: enabled={victim_meta['enabled']} method={victim_meta['method']} sparsity={victim_meta['sparsity']} seed={victim_meta['seed']}")
 
     # Load shadow models with fixed data splits
-    shadow_model_list = []          # pruned shadows
-    shadow_dense_model_list = []    # dense shadows
+    shadow_model_list = []          # target checkpoint shadows
+    shadow_dense_model_list = []    # dense shadows (used only in --original mode)
     shadow_train_loader_list = []
     shadow_test_loader_list = []
     shadow_cfg_map = {}
@@ -449,15 +460,18 @@ def main(args):
             args.sparsity, args.prune_method,
             device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
         )
-        # dense counterpart for original-mode comparison
-        try:
-            shadow_dense_model, _ = load_model_from_seed_folder(
-                base_path, shadow_seed, args.dataset_name, args.model_name,
-                0.0, 'dense',
-                device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
-            )
-        except Exception as e:
-            print(f"[WARN] Failed to load dense shadow model for seed {shadow_seed}: {e}")
+        # Dense counterpart is only needed for --original mode.
+        if attack_original:
+            try:
+                shadow_dense_model, _ = load_model_from_seed_folder(
+                    base_path, shadow_seed, args.dataset_name, args.model_name,
+                    0.0, 'dense',
+                    device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
+                )
+            except Exception as e:
+                print(f"[WARN] Failed to load dense shadow model for seed {shadow_seed}: {e}")
+                shadow_dense_model = shadow_model
+        else:
             shadow_dense_model = shadow_model
         shadow_cfg_map[str(shadow_seed)] = s_cfg
 
@@ -531,13 +545,6 @@ def main(args):
             _basic_stats(shadow_model, shadow_test_loader,  f'shadow {shadow_seed} non-members (test)')
 
     print("Start Membership Inference Attacks")
-
-    if hasattr(args, 'original') and args.original:
-        attack_original = True
-    else:
-        attack_original = False
-    
-    print(f"Attack mode: {'Original models' if attack_original else 'Pruned models'}")
     
     # Prepare optional scores directory
     scores_dir = None
