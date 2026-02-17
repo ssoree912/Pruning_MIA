@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# DF1 endpoint utility-first grid launcher.
+# DF1 endpoint tradeoff grid launcher.
 #
 # Usage:
 #   bash scripts/experiment/run_df1_endpoint_grid.sh
@@ -15,14 +15,15 @@ LAYERS="${LAYERS:-20}"
 SEED_A="${SEED_A:-43}"
 SEED_B="${SEED_B:-44}"
 GPU="${GPU:-0}"
-BASE_OUT_DIR="${BASE_OUT_DIR:-./runs/unlearning_df1_grid_utility}"
+BASE_OUT_DIR="${BASE_OUT_DIR:-./runs/unlearning_df1_grid_tradeoff}"
 UNLEARN_LR="${UNLEARN_LR:-0.01}"
 DRY_RUN="${DRY_RUN:-0}"
 SKIP_EXISTING="${SKIP_EXISTING:-0}"
 
-# New objective/baseline knobs.
-FORGET_OBJECTIVE="${FORGET_OBJECTIVE:-kl_uniform}"   # ce_ascent | kl_uniform | entropy
-RUN_SCRATCH_BASELINE="${RUN_SCRATCH_BASELINE:-1}"    # 1 to train/eval scratch retrain baseline
+# Grid/baseline knobs.
+# RUN_SET: partial | complete | both
+RUN_SET="${RUN_SET:-both}"
+RUN_SCRATCH_BASELINE="${RUN_SCRATCH_BASELINE:-0}"    # default OFF (avoid full scratch retrain overhead)
 SCRATCH_EPOCHS="${SCRATCH_EPOCHS:-200}"
 SCRATCH_LR="${SCRATCH_LR:-0.1}"
 SCRATCH_SEED="${SCRATCH_SEED:-123}"
@@ -32,28 +33,36 @@ if [[ ! -f "${DENSE_CKPT}" ]]; then
   exit 1
 fi
 
-if [[ "${FORGET_OBJECTIVE}" != "ce_ascent" && "${FORGET_OBJECTIVE}" != "kl_uniform" && "${FORGET_OBJECTIVE}" != "entropy" ]]; then
-  echo "Invalid FORGET_OBJECTIVE: ${FORGET_OBJECTIVE}"
-  echo "Allowed: ce_ascent | kl_uniform | entropy"
+if [[ "${RUN_SET}" != "partial" && "${RUN_SET}" != "complete" && "${RUN_SET}" != "both" ]]; then
+  echo "Invalid RUN_SET: ${RUN_SET}"
+  echo "Allowed: partial | complete | both"
   exit 1
 fi
 
 mkdir -p "${BASE_OUT_DIR}"
 
-# id alpha unlearn_steps retrain_epochs retrain_lr
-EXPERIMENTS=(
-  "K1 0.02 100 50 0.10"
-  "K2 0.02 200 50 0.10"
-  "K3 0.05 100 50 0.10"
-  "K4 0.05 200 50 0.10"
-  "K5 0.05 300 80 0.10"
-  "K6 0.10 100 50 0.10"
-  "K7 0.10 200 50 0.10"
-  "K8 0.10 300 80 0.10"
+# id objective alpha unlearn_steps retrain_epochs retrain_lr
+PARTIAL_EXPERIMENTS=(
+  "P1 kl_uniform 0.005 50 80 0.10"
+  "P2 kl_uniform 0.010 100 80 0.10"
+  "P3 entropy 0.010 100 80 0.10"
+)
+COMPLETE_EXPERIMENTS=(
+  "C1 kl_uniform 0.02 100 120 0.10"
+  "C2 kl_uniform 0.05 200 120 0.10"
+  "C3 entropy 0.05 200 120 0.10"
 )
 
+EXPERIMENTS=()
+if [[ "${RUN_SET}" == "partial" || "${RUN_SET}" == "both" ]]; then
+  EXPERIMENTS+=("${PARTIAL_EXPERIMENTS[@]}")
+fi
+if [[ "${RUN_SET}" == "complete" || "${RUN_SET}" == "both" ]]; then
+  EXPERIMENTS+=("${COMPLETE_EXPERIMENTS[@]}")
+fi
+
 for row in "${EXPERIMENTS[@]}"; do
-  read -r ID ALPHA UNLEARN_STEPS RETRAIN_EPOCHS RETRAIN_LR <<< "${row}"
+  read -r ID FORGET_OBJECTIVE ALPHA UNLEARN_STEPS RETRAIN_EPOCHS RETRAIN_LR <<< "${row}"
   OUT_DIR="${BASE_OUT_DIR}/${ID}"
   mkdir -p "${OUT_DIR}"
 
