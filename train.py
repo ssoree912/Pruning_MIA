@@ -502,6 +502,7 @@ def run_connectivity(
     s0: Dict[str, torch.Tensor],
     s1: Dict[str, torch.Tensor],
     retain_eval_loader: DataLoader,
+    forget_eval_loader: DataLoader,
     test_loader: DataLoader,
     bn_loader: DataLoader,
     device: torch.device,
@@ -509,6 +510,9 @@ def run_connectivity(
     bn_recalc_on: bool,
     bn_batches: int,
     subspace_mask: Optional[Dict[str, torch.Tensor]] = None,
+    retain_test_loader: Optional[DataLoader] = None,
+    forget_test_loader: Optional[DataLoader] = None,
+    normalized_full_scale: Optional[float] = None,
 ) -> Dict[str, Any]:
     model, _ = build_dense_model(spec)
     model = model.to(device)
@@ -520,20 +524,40 @@ def run_connectivity(
         if bn_recalc_on:
             bn_recalibrate(model, bn_loader, device=device, max_batches=bn_batches)
         retain_stats = evaluate(model, retain_eval_loader, device)
+        forget_stats = evaluate(model, forget_eval_loader, device)
         test_stats = evaluate(model, test_loader, device)
         point = {
             "t": float(t),
             "retain_loss": float(retain_stats["loss"]),
             "retain_acc": float(retain_stats["acc"]),
+            "forget_loss": float(forget_stats["loss"]),
+            "forget_acc": float(forget_stats["acc"]),
             "test_loss": float(test_stats["loss"]),
             "test_acc": float(test_stats["acc"]),
         }
+        if retain_test_loader is not None:
+            retain_test_stats = evaluate(model, retain_test_loader, device)
+            point["retain_test_loss"] = float(retain_test_stats["loss"])
+            point["retain_test_acc"] = float(retain_test_stats["acc"])
+        if forget_test_loader is not None:
+            forget_test_stats = evaluate(model, forget_test_loader, device)
+            point["forget_test_loss"] = float(forget_test_stats["loss"])
+            point["forget_test_acc"] = float(forget_test_stats["acc"])
+        if normalized_full_scale is not None and normalized_full_scale > 0.0:
+            point["normalized_full_scale"] = float(normalized_full_scale)
+            point["normalized_full_test_acc"] = float(point["test_acc"] / normalized_full_scale)
+            point["normalized_full"] = point["normalized_full_test_acc"]
         curve.append(point)
-        print(
+        log_msg = (
             f"[interp {i:03d}/{len(lambdas):03d}] t={t:.3f} "
             f"retain_loss={point['retain_loss']:.4f} retain_acc={point['retain_acc']:.4f} "
-            f"test_acc={point['test_acc']:.4f}"
+            f"forget_acc={point['forget_acc']:.4f} test_acc={point['test_acc']:.4f}"
         )
+        if "retain_test_acc" in point:
+            log_msg += f" retain_test_acc={point['retain_test_acc']:.4f}"
+        if "forget_test_acc" in point:
+            log_msg += f" forget_test_acc={point['forget_test_acc']:.4f}"
+        print(log_msg)
 
     l0 = curve[0]["retain_loss"]
     l1 = curve[-1]["retain_loss"]
@@ -551,6 +575,9 @@ def run_connectivity(
         "retain_loss_max": float(lmax),
         "retain_loss_barrier": float(barrier),
         "retain_acc_drop_pp": float(acc_drop_pp),
+        "best_by_test_acc": max(curve, key=lambda x: float(x["test_acc"])),
+        "best_by_retain_acc": max(curve, key=lambda x: float(x["retain_acc"])),
+        "best_by_retain_loss": min(curve, key=lambda x: float(x["retain_loss"])),
     }
 
 
@@ -1441,6 +1468,7 @@ def main() -> None:
         s0=s_a,
         s1=s_b,
         retain_eval_loader=retain_eval_loader,
+        forget_eval_loader=forget_eval_loader,
         test_loader=test_loader,
         bn_loader=bn_loader,
         device=device,
@@ -1448,6 +1476,9 @@ def main() -> None:
         bn_recalc_on=args.bn_recalc,
         bn_batches=args.bn_batches,
         subspace_mask=None,
+        retain_test_loader=retain_test_loader,
+        forget_test_loader=forget_test_loader,
+        normalized_full_scale=normalized_full_scale,
     )
     with open(run_dir / "step2_linear.json", "w") as f:
         json.dump(step2, f, indent=2)
@@ -1504,6 +1535,7 @@ def main() -> None:
         s0=s_a,
         s1=s_b,
         retain_eval_loader=retain_eval_loader,
+        forget_eval_loader=forget_eval_loader,
         test_loader=test_loader,
         bn_loader=bn_loader,
         device=device,
@@ -1511,6 +1543,9 @@ def main() -> None:
         bn_recalc_on=args.bn_recalc,
         bn_batches=args.bn_batches,
         subspace_mask=mask,
+        retain_test_loader=retain_test_loader,
+        forget_test_loader=forget_test_loader,
+        normalized_full_scale=normalized_full_scale,
     )
     with open(run_dir / "step3_masked_linear.json", "w") as f:
         json.dump(step3, f, indent=2)
