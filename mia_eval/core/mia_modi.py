@@ -79,6 +79,54 @@ parser.add_argument('--result_file', default=None, type=str,
                     help='Optional absolute/relative JSON output path (overrides default mia_results path)')
 
 
+def _model_sanity_print(model: torch.nn.Module, label: str) -> None:
+    keys = list(model.state_dict().keys())
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(
+        f"[SANITY] {label}: total_params={total_params:,} "
+        f"trainable_params={trainable_params:,} "
+        f"first_state_keys={keys[:5]}"
+    )
+
+
+def _loader_batch_stats(loader: DataLoader, label: str) -> None:
+    try:
+        x, y = next(iter(loader))
+    except StopIteration:
+        print(f"[SANITY] {label}: empty loader")
+        return
+    print(
+        f"[SANITY] {label}: x.mean={x.mean().item():.4f} x.std={x.std().item():.4f} "
+        f"x.min={x.min().item():.4f} x.max={x.max().item():.4f} "
+        f"n={x.size(0)} y0={int(y[0].item()) if y.numel() > 0 else -1}"
+    )
+
+
+def _build_explicit_cifar_eval_loader(dataset_name: str, indices, batch_size: int) -> DataLoader:
+    import torchvision
+    import torchvision.transforms as transforms
+
+    if dataset_name == "cifar10":
+        ds_cls = torchvision.datasets.CIFAR10
+    elif dataset_name == "cifar100":
+        ds_cls = torchvision.datasets.CIFAR100
+    else:
+        raise ValueError(f"Explicit CIFAR eval loader is only supported for cifar10/cifar100, got: {dataset_name}")
+
+    # Match the training/evaluation path used in this project.
+    normalize = transforms.Normalize(
+        mean=[0.4914, 0.4822, 0.4465],
+        std=[0.2023, 0.1994, 0.2010],
+    )
+    eval_tf = transforms.Compose([transforms.ToTensor(), normalize])
+    trainset = ds_cls(root=f"./data/datasets/{dataset_name}-data", train=True, download=True, transform=eval_tf)
+    testset = ds_cls(root=f"./data/datasets/{dataset_name}-data", train=False, download=True, transform=eval_tf)
+    total_dataset = ConcatDataset([trainset, testset])
+    subset = Subset(total_dataset, list(indices))
+    return DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=False)
+
+
 def main(args):
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -195,9 +243,7 @@ def main(args):
 
         print(f"Loading model with forward_mode: {forward_mode}")
 
-        # Prefer config-aware loading whenever a config.json is found (any method)
-        loaded_config = None
-        # Try to locate a config.json near the seed folder
+        # Require config-aware loading to avoid architecture mismatch.
         candidate_cfgs = [
             os.path.join(model_dir, 'config.json'),
             os.path.join(os.path.dirname(model_dir), 'config.json'),
@@ -208,54 +254,38 @@ def main(args):
             if os.path.exists(c):
                 config_path = c
                 break
-        if config_path:
-            print(f"[Loader] Using config: {config_path}")
+        if config_path is None:
+            raise FileNotFoundError(
+                f"No config.json found near {model_dir}. "
+                "MIA now requires config-aware loading to prevent arch mismatch."
+            )
+        print(f"[Loader] Using config: {config_path}")
+
         try:
-            if config_path:
-                loaded_model, loaded_config = load_pruned_model(model_path, config_path=config_path, device=device)
-                # Wrap into BaseModel interface for downstream predict_target_sensitivity
-                safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
-                wrapper = BaseModel(safe_name, num_cls=num_cls, input_dim=input_dim, device=device)
-                wrapper.model = loaded_model.to(device)
-
-                # Best-effort: set forward behavior from config when available
-                if loaded_config and loaded_config.get('pruning', {}).get('enabled', False):
-                    method = loaded_config['pruning'].get('method', '').lower()
-                    if method in ('static', 'dpf', 'dcil'):
-                        wrapper.preferred_type_value = 5 if method == 'static' else 6
-                elif forward_mode == 'scaling' and hasattr(wrapper.model, 'set_scaling_mode'):
-                    wrapper.model.set_scaling_mode(True)
-                    print("[Loader] Enabled confidence scaling mode (from args)")
-                elif forward_mode == 'dpf':
-                    wrapper.preferred_type_value = 6
-
-                return wrapper, loaded_config
+            loaded_model, loaded_config = load_pruned_model(model_path, config_path=config_path, device=device)
         except Exception as e:
-            # Fail fast if config is present but cannot be honored
-            if config_path is not None:
-                raise RuntimeError(f"Failed to load/apply config at {config_path}: {e}")
-            print(f"Warning: config-aware loading failed ({e}); falling back to generic model loader.")
+            raise RuntimeError(f"Failed to load/apply config at {config_path}: {e}")
 
-        # Fallback: generic model + state_dict (may be partial)
+        # Wrap into BaseModel interface for downstream methods.
         safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
         wrapper = BaseModel(safe_name, num_cls=num_cls, input_dim=input_dim, device=device)
-        try:
-            state = torch.load(model_path, map_location=device)
-            # Attempt robust load via BaseModel.load for relaxed matching
-            wrapper.load(model_path, verbose=True)
-        except Exception as e:
-            print(f"Warning: Fallback load failed ({e}); using randomly initialized weights.")
-        # Provide a minimal synthetic config so result JSON is not null
-        if loaded_config is None:
-            loaded_config = {
-                'pruning': {
-                    'enabled': prune_method.lower() != 'dense',
-                    'method': prune_method,
-                    'sparsity': sparsity,
-                },
-                'data': {'dataset': dataset_name},
-                'model': {'arch': safe_name, 'layers': 18},
-            }
+        wrapper.model = loaded_model.to(device)
+
+        arch = loaded_config.get('model', {}).get('arch', 'unknown')
+        layers = loaded_config.get('model', {}).get('layers', 'unknown')
+        print(f"[Loader] Loaded model from config: arch={arch}, layers={layers}")
+
+        # Best-effort: set forward behavior from config when available
+        if loaded_config.get('pruning', {}).get('enabled', False):
+            method = loaded_config['pruning'].get('method', '').lower()
+            if method in ('static', 'dpf', 'dcil'):
+                wrapper.preferred_type_value = 5 if method == 'static' else 6
+        elif forward_mode == 'scaling' and hasattr(wrapper.model, 'set_scaling_mode'):
+            wrapper.model.set_scaling_mode(True)
+            print("[Loader] Enabled confidence scaling mode (from args)")
+        elif forward_mode == 'dpf':
+            wrapper.preferred_type_value = 6
+
         return wrapper, loaded_config
     
     print(f"Loading victim model (seed {args.victim_seed}) with forward_mode={args.forward_mode}...")
@@ -264,6 +294,8 @@ def main(args):
         args.sparsity, args.prune_method,
         device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
     )
+    _model_sanity_print(victim_model.model, f"victim(seed={args.victim_seed})")
+
     # Also prepare a dense (unpruned) victim model for original-mode comparison
     try:
         victim_dense_model, _ = load_model_from_seed_folder(
@@ -271,6 +303,7 @@ def main(args):
             0.0, 'dense',
             device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
         )
+        _model_sanity_print(victim_dense_model.model, f"victim_dense(seed={args.victim_seed})")
     except Exception as e:
         print(f"[WARN] Failed to load dense victim model for seed {args.victim_seed}: {e}")
         victim_dense_model = victim_model
@@ -302,9 +335,27 @@ def main(args):
     victim_model.preferred_type_value = best_tv
     print(f"[Victim] Selected type_value={best_tv} (probe acc~{acc_scores[best_tv]*100:.2f}%)")
 
+    _loader_batch_stats(victim_train_loader, "victim_train_loader")
+    _loader_batch_stats(victim_test_loader, "victim_test_loader")
+
     victim_model.test(victim_train_loader, "Victim Model Train")
     test_acc, loss = victim_model.test(victim_test_loader, "Victim Model Test")
     print(f"Victim model test accuracy: {test_acc:.3f}")
+    if args.dataset_name in ("cifar10", "cifar100"):
+        try:
+            explicit_test_loader = _build_explicit_cifar_eval_loader(
+                args.dataset_name,
+                victim_test_indices,
+                args.batch_size,
+            )
+            _loader_batch_stats(explicit_test_loader, "explicit_eval_test_loader")
+            explicit_acc, _ = victim_model.test(explicit_test_loader, "Victim Model Test (Explicit Eval TF)")
+            print(
+                f"[SANITY] victim_test_acc(default_loader)={test_acc:.3f} "
+                f"victim_test_acc(explicit_eval_tf)={explicit_acc:.3f}"
+            )
+        except Exception as e:
+            print(f"[SANITY] explicit eval-transform comparison skipped: {e}")
 
     # Debug: split integrity and member/non-member gaps
     if args.debug:
