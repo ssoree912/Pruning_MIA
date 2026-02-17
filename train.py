@@ -3,7 +3,7 @@
 Dense checkpoint 기반 unlearning + connectivity (Step 1/2/3) 실행 스크립트.
 
 운영 원칙:
-- MIA는 이 스크립트에서 수행하지 않음
+- MIA는 기본적으로 비활성화이며, --run-mia로 선택적으로 수행
 - Step 2: 선형 경로 barrier 진단
 - Step 3: 고정 mask(subspace) 경로 barrier 진단
 """
@@ -11,6 +11,8 @@ Dense checkpoint 기반 unlearning + connectivity (Step 1/2/3) 실행 스크립�
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -599,6 +601,155 @@ def make_lambdas(num: int) -> List[float]:
     return [i / (num - 1) for i in range(num)]
 
 
+def _split_csv(raw: str) -> List[str]:
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def _build_mia_config(spec: ModelSpec, seed: int, sparsity: float) -> Dict[str, Any]:
+    return {
+        "seed": int(seed),
+        "data": {
+            "dataset": spec.dataset,
+            "datapath": spec.datapath,
+            "batch_size": int(spec.batch_size),
+            "workers": int(spec.workers),
+        },
+        "model": {
+            "arch": spec.arch,
+            "layers": int(spec.layers),
+            "width_mult": float(spec.width_mult),
+            "depth_mult": float(spec.depth_mult),
+            "model_mult": int(spec.model_mult),
+        },
+        "pruning": {
+            "enabled": True,
+            "method": "static",
+            "sparsity": float(sparsity),
+        },
+    }
+
+
+def _prepare_mia_workspace(
+    stage_dir: Path,
+    spec: ModelSpec,
+    victim_ckpt: Path,
+    shadow_ckpts: List[Path],
+    victim_seed: int,
+    shadow_seeds: List[int],
+    mia_sparsity: float,
+) -> Path:
+    if len(shadow_ckpts) != len(shadow_seeds):
+        raise ValueError("shadow_ckpts and shadow_seeds length mismatch")
+    runs_base = stage_dir / "runs"
+    dataset_root = runs_base / "static" / f"sparsity_{mia_sparsity}" / spec.dataset
+    dataset_root.mkdir(parents=True, exist_ok=True)
+
+    victim_seed_dir = dataset_root / f"seed{victim_seed}"
+    victim_seed_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(victim_ckpt), str(victim_seed_dir / "best_model.pth"))
+    with open(victim_seed_dir / "config.json", "w") as f:
+        json.dump(_build_mia_config(spec, seed=victim_seed, sparsity=mia_sparsity), f, indent=2)
+
+    for ckpt, seed in zip(shadow_ckpts, shadow_seeds):
+        seed_dir = dataset_root / f"seed{seed}"
+        seed_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(ckpt), str(seed_dir / "best_model.pth"))
+        with open(seed_dir / "config.json", "w") as f:
+            json.dump(_build_mia_config(spec, seed=seed, sparsity=mia_sparsity), f, indent=2)
+
+    return runs_base
+
+
+def _ensure_mia_split(
+    repo_root: Path,
+    dataset: str,
+    split_seed: int,
+    victim_seed: int,
+    shadow_seeds: List[int],
+) -> None:
+    create_script = repo_root / "mia_eval" / "create_data" / "create_fixed_data_splits.py"
+    cmd = [
+        sys.executable,
+        str(create_script),
+        "--dataset",
+        dataset,
+        "--seed",
+        str(split_seed),
+        "--victim_seed",
+        str(victim_seed),
+        "--shadow_seeds",
+        *[str(s) for s in shadow_seeds],
+    ]
+    subprocess.run(cmd, check=True, cwd=str(repo_root))
+
+
+def _run_mia_core(
+    repo_root: Path,
+    runs_base: Path,
+    result_file: Path,
+    dataset: str,
+    victim_seed: int,
+    shadow_seeds: List[int],
+    device: int,
+    split_seed: int,
+    attacks: str,
+    forward_mode: str,
+    tpr_fprs: str,
+    save_scores: bool,
+    debug: bool,
+    mia_sparsity: float,
+) -> Dict[str, Any]:
+    mia_script = repo_root / "mia_eval" / "core" / "mia_modi.py"
+    cmd = [
+        sys.executable,
+        str(mia_script),
+        "--device",
+        str(device),
+        "--dataset_name",
+        dataset,
+        "--sparsity",
+        str(mia_sparsity),
+        "--victim_seed",
+        str(victim_seed),
+        "--seed",
+        str(split_seed),
+        "--shadow_seeds",
+        *[str(s) for s in shadow_seeds],
+        "--prune_method",
+        "static",
+        "--forward_mode",
+        forward_mode,
+        "--attacks",
+        attacks,
+        "--tpr_fprs",
+        tpr_fprs,
+        "--base_path",
+        str(runs_base),
+        "--result_file",
+        str(result_file),
+    ]
+    if save_scores:
+        cmd.append("--save_scores")
+    if debug:
+        cmd.append("--debug")
+    subprocess.run(cmd, check=True, cwd=str(repo_root))
+    with open(result_file, "r") as f:
+        return json.load(f)
+
+
+def _choose_curve_point(curve: List[Dict[str, float]], metric: str) -> Dict[str, float]:
+    if metric in {"test_acc", "retain_acc"}:
+        return max(curve, key=lambda x: float(x[metric]))
+    if metric in {"retain_loss", "test_loss"}:
+        return min(curve, key=lambda x: float(x[metric]))
+    raise ValueError(f"Unsupported mia curve metric: {metric}")
+
+
+def _save_state_dict_checkpoint(state: Dict[str, torch.Tensor], out_path: Path, stage: str) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save({"state_dict": state, "stage": stage}, str(out_path))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Dense checkpoint -> 2 unlearning endpoints + Step2/3 connectivity"
@@ -697,6 +848,60 @@ def main() -> None:
     parser.add_argument("--scratch-retrain-nesterov", action="store_true")
     parser.add_argument("--scratch-retrain-seed", type=int, default=123)
 
+    # optional MIA evaluation
+    parser.add_argument("--run-mia", action="store_true", help="Run MIA after checkpoint generation")
+    parser.add_argument(
+        "--mia-stages",
+        type=str,
+        default="unlearn,step2,step3",
+        help="Comma-separated stages: unlearn,step2,step3,swa_step2,swa_step3,baseline",
+    )
+    parser.add_argument(
+        "--mia-select-metric",
+        type=str,
+        default="test_acc",
+        choices=["test_acc", "retain_acc", "retain_loss", "test_loss"],
+        help="Curve metric for selecting step2/step3 checkpoint used in MIA",
+    )
+    parser.add_argument("--mia-device", type=int, default=-1, help="GPU id for MIA (-1 uses --gpu)")
+    parser.add_argument("--mia-split-seed", type=int, default=7, help="Split seed for MIA split generation")
+    parser.add_argument("--mia-victim-seed", type=int, default=None, help="Victim seed id used by MIA")
+    parser.add_argument(
+        "--mia-shadow-seeds",
+        type=str,
+        default="",
+        help="Comma-separated shadow seeds for MIA workspace (default: auto from seed-b)",
+    )
+    parser.add_argument(
+        "--mia-attacks",
+        type=str,
+        default="samia,threshold,nn,nn_top3,nn_cls,lira",
+        help="Comma-separated MIA attacks",
+    )
+    parser.add_argument(
+        "--mia-forward-mode",
+        type=str,
+        default="standard",
+        choices=["standard", "scaling", "dpf"],
+        help="MIA model forward mode",
+    )
+    parser.add_argument("--mia-tpr-fprs", type=str, default="0.1,1,5")
+    parser.add_argument("--mia-save-scores", action="store_true")
+    parser.add_argument("--mia-debug", action="store_true")
+    parser.add_argument("--mia-sparsity", type=float, default=0.0, help="Virtual sparsity tag used in MIA workspace")
+    parser.add_argument(
+        "--mia-baseline-ckpt",
+        type=str,
+        default=None,
+        help="Optional baseline victim checkpoint path for extra MIA stage",
+    )
+    parser.add_argument(
+        "--mia-baseline-shadow-ckpts",
+        type=str,
+        default="",
+        help="Comma-separated shadow checkpoint paths for baseline MIA stage",
+    )
+
     parser.add_argument("--lambdas", type=int, default=21, help="Interpolation points count")
     bn_group = parser.add_mutually_exclusive_group()
     bn_group.add_argument("--bn-recalc", dest="bn_recalc", action="store_true", help="Enable BN stats recalibration at each t")
@@ -741,6 +946,11 @@ def main() -> None:
         raise ValueError("--scratch-retrain-epochs must be > 0 when --train-scratch-retrain-baseline is set")
     if args.swa_t_min > args.swa_t_max:
         raise ValueError("--swa-t-min must be <= --swa-t-max")
+    if args.run_mia:
+        valid_stages = {"unlearn", "step2", "step3", "swa_step2", "swa_step3", "baseline"}
+        bad = [s for s in _split_csv(args.mia_stages) if s not in valid_stages]
+        if bad:
+            raise ValueError(f"Invalid --mia-stages entries: {bad}")
 
     dense_ckpt = Path(args.dense_ckpt)
     if not dense_ckpt.exists():
@@ -759,6 +969,17 @@ def main() -> None:
         / f"seed{args.seed_a}_seed{args.seed_b}"
     )
     run_dir.mkdir(parents=True, exist_ok=True)
+    repo_root = Path(__file__).resolve().parent
+    mia_selected_stages = set(_split_csv(args.mia_stages)) if args.run_mia else set()
+    mia_results: Dict[str, Any] = {"enabled": bool(args.run_mia), "stages": {}, "errors": []}
+    mia_victim_seed = int(args.mia_victim_seed) if args.mia_victim_seed is not None else int(args.seed_a)
+    if args.mia_shadow_seeds.strip():
+        mia_shadow_seeds = [int(x) for x in _split_csv(args.mia_shadow_seeds)]
+    else:
+        default_shadow = int(args.seed_b) if int(args.seed_b) != mia_victim_seed else int(args.seed_a)
+        mia_shadow_seeds = [default_shadow]
+    mia_device = int(args.gpu) if int(args.mia_device) < 0 else int(args.mia_device)
+    baseline_shadow_ckpts = [Path(p).expanduser().resolve() for p in _split_csv(args.mia_baseline_shadow_ckpts)]
 
     print("=" * 80)
     print("Step 1: Build Df/Dr and train two unlearning endpoints")
@@ -1065,7 +1286,88 @@ def main() -> None:
         f"test_acc={endpoint_metrics[f'seed{args.seed_b}']['test_acc']:.4f}"
     )
 
+    def _run_stage_mia(stage_name: str, victim_ckpt_path: Path, shadow_ckpt_paths: List[Path]) -> None:
+        if not args.run_mia:
+            return
+        if stage_name not in mia_selected_stages:
+            return
+        try:
+            if not victim_ckpt_path.exists():
+                raise FileNotFoundError(f"victim ckpt not found: {victim_ckpt_path}")
+            if not shadow_ckpt_paths:
+                raise ValueError(f"{stage_name}: no shadow ckpts provided for MIA")
+            for p in shadow_ckpt_paths:
+                if not p.exists():
+                    raise FileNotFoundError(f"shadow ckpt not found: {p}")
+
+            shadow_seed_list = list(mia_shadow_seeds)
+            if len(shadow_seed_list) < len(shadow_ckpt_paths):
+                start = max(shadow_seed_list) + 1 if shadow_seed_list else (mia_victim_seed + 1)
+                for i in range(len(shadow_ckpt_paths) - len(shadow_seed_list)):
+                    shadow_seed_list.append(start + i)
+            shadow_seed_list = shadow_seed_list[:len(shadow_ckpt_paths)]
+
+            stage_dir = run_dir / "mia_workspace" / stage_name
+            stage_dir.mkdir(parents=True, exist_ok=True)
+            runs_base = _prepare_mia_workspace(
+                stage_dir=stage_dir,
+                spec=spec,
+                victim_ckpt=victim_ckpt_path,
+                shadow_ckpts=shadow_ckpt_paths,
+                victim_seed=mia_victim_seed,
+                shadow_seeds=shadow_seed_list,
+                mia_sparsity=float(args.mia_sparsity),
+            )
+            _ensure_mia_split(
+                repo_root=repo_root,
+                dataset=spec.dataset,
+                split_seed=int(args.mia_split_seed),
+                victim_seed=mia_victim_seed,
+                shadow_seeds=shadow_seed_list,
+            )
+            result_file = run_dir / "mia_results" / f"{stage_name}.json"
+            result_file.parent.mkdir(parents=True, exist_ok=True)
+            result_payload = _run_mia_core(
+                repo_root=repo_root,
+                runs_base=runs_base,
+                result_file=result_file,
+                dataset=spec.dataset,
+                victim_seed=mia_victim_seed,
+                shadow_seeds=shadow_seed_list,
+                device=mia_device,
+                split_seed=int(args.mia_split_seed),
+                attacks=str(args.mia_attacks),
+                forward_mode=str(args.mia_forward_mode),
+                tpr_fprs=str(args.mia_tpr_fprs),
+                save_scores=bool(args.mia_save_scores),
+                debug=bool(args.mia_debug),
+                mia_sparsity=float(args.mia_sparsity),
+            )
+            mia_results["stages"][stage_name] = {
+                "victim_ckpt": str(victim_ckpt_path),
+                "shadow_ckpts": [str(p) for p in shadow_ckpt_paths],
+                "result_file": str(result_file),
+                "result": result_payload,
+            }
+            print(f"[MIA:{stage_name}] saved -> {result_file}")
+        except Exception as e:
+            msg = f"{stage_name}: {e}"
+            mia_results["errors"].append(msg)
+            print(f"[MIA:{stage_name}] ERROR: {e}")
+
+    # Stage: unlearn endpoint MIA (victim=seed_a, shadow=seed_b)
+    _run_stage_mia("unlearn", ckpt_a, [ckpt_b])
+    # Optional external baseline MIA
+    if args.run_mia and "baseline" in mia_selected_stages and args.mia_baseline_ckpt:
+        baseline_victim = Path(args.mia_baseline_ckpt).expanduser().resolve()
+        baseline_shadows = baseline_shadow_ckpts if baseline_shadow_ckpts else [ckpt_b]
+        _run_stage_mia("baseline", baseline_victim, baseline_shadows)
+
     if args.step1_only:
+        if args.run_mia and "baseline" in mia_selected_stages and not args.mia_baseline_ckpt:
+            msg = "baseline stage requested in --mia-stages but --mia-baseline-ckpt was not provided"
+            mia_results["errors"].append(msg)
+            print(f"[MIA:baseline] ERROR: {msg}")
         step1_summary = {
             "dense_ckpt": str(dense_ckpt),
             "run_dir": str(run_dir),
@@ -1116,6 +1418,7 @@ def main() -> None:
                 "ckpt": str(scratch_baseline_ckpt) if scratch_baseline_ckpt is not None else None,
                 "metrics": scratch_baseline_metrics,
             },
+            "mia": mia_results,
             "step1_only": True,
         }
         with open(run_dir / "summary.json", "w") as f:
@@ -1131,7 +1434,7 @@ def main() -> None:
     lambdas = make_lambdas(args.lambdas)
 
     print("\n" + "=" * 80)
-    print("Step 2: Linear interpolation barrier (MIA 없음)")
+    print("Step 2: Linear interpolation barrier")
     print("=" * 80)
     step2 = run_connectivity(
         spec=spec,
@@ -1152,9 +1455,36 @@ def main() -> None:
         f"[step2] retain_loss_barrier={step2['retain_loss_barrier']:.6f}, "
         f"retain_acc_drop_pp={step2['retain_acc_drop_pp']:.4f}"
     )
+    if args.run_mia and "step2" in mia_selected_stages:
+        best_p2 = _choose_curve_point(step2["curve"], metric=args.mia_select_metric)
+        t2 = float(best_p2["t"])
+        t2_shadow = float(max(0.0, min(1.0, 1.0 - t2)))
+        state_p2_v = interpolate_state(s_a, s_b, t2, subspace_mask=None)
+        state_p2_s = interpolate_state(s_a, s_b, t2_shadow, subspace_mask=None)
+        state_p2_v = recalibrate_state_bn(
+            spec=spec,
+            state=state_p2_v,
+            bn_loader=bn_loader,
+            device=device,
+            bn_recalc_on=args.bn_recalc,
+            bn_batches=args.bn_batches,
+        )
+        state_p2_s = recalibrate_state_bn(
+            spec=spec,
+            state=state_p2_s,
+            bn_loader=bn_loader,
+            device=device,
+            bn_recalc_on=args.bn_recalc,
+            bn_batches=args.bn_batches,
+        )
+        step2_v_ckpt = run_dir / "mia_ckpts" / f"step2_victim_t{t2:.3f}.pth"
+        step2_s_ckpt = run_dir / "mia_ckpts" / f"step2_shadow_t{t2_shadow:.3f}.pth"
+        _save_state_dict_checkpoint(state_p2_v, step2_v_ckpt, stage="step2_victim")
+        _save_state_dict_checkpoint(state_p2_s, step2_s_ckpt, stage="step2_shadow")
+        _run_stage_mia("step2", step2_v_ckpt, [step2_s_ckpt])
 
     print("\n" + "=" * 80)
-    print("Step 3: Mask 고정 subspace interpolation barrier (MIA 없음)")
+    print("Step 3: Mask 고정 subspace interpolation barrier")
     print("=" * 80)
     if args.mask_method == "delta":
         mask = build_delta_mask(s_a, s_b, topk=args.mask_topk)
@@ -1188,6 +1518,33 @@ def main() -> None:
         f"[step3] retain_loss_barrier={step3['retain_loss_barrier']:.6f}, "
         f"retain_acc_drop_pp={step3['retain_acc_drop_pp']:.4f}"
     )
+    if args.run_mia and "step3" in mia_selected_stages:
+        best_p3 = _choose_curve_point(step3["curve"], metric=args.mia_select_metric)
+        t3 = float(best_p3["t"])
+        t3_shadow = float(max(0.0, min(1.0, 1.0 - t3)))
+        state_p3_v = interpolate_state(s_a, s_b, t3, subspace_mask=mask)
+        state_p3_s = interpolate_state(s_a, s_b, t3_shadow, subspace_mask=mask)
+        state_p3_v = recalibrate_state_bn(
+            spec=spec,
+            state=state_p3_v,
+            bn_loader=bn_loader,
+            device=device,
+            bn_recalc_on=args.bn_recalc,
+            bn_batches=args.bn_batches,
+        )
+        state_p3_s = recalibrate_state_bn(
+            spec=spec,
+            state=state_p3_s,
+            bn_loader=bn_loader,
+            device=device,
+            bn_recalc_on=args.bn_recalc,
+            bn_batches=args.bn_batches,
+        )
+        step3_v_ckpt = run_dir / "mia_ckpts" / f"step3_victim_t{t3:.3f}.pth"
+        step3_s_ckpt = run_dir / "mia_ckpts" / f"step3_shadow_t{t3_shadow:.3f}.pth"
+        _save_state_dict_checkpoint(state_p3_v, step3_v_ckpt, stage="step3_victim")
+        _save_state_dict_checkpoint(state_p3_s, step3_s_ckpt, stage="step3_shadow")
+        _run_stage_mia("step3", step3_v_ckpt, [step3_s_ckpt])
 
     swa_results: List[Dict[str, Any]] = []
     if args.swa_merge:
@@ -1262,6 +1619,9 @@ def main() -> None:
                 f"retain_acc={swa_metrics['retain_acc']:.4f} forget_acc={swa_metrics['forget_acc']:.4f} "
                 f"(points={len(selected_points)})"
             )
+            mia_stage_name = f"swa_{src_name}"
+            if args.run_mia and mia_stage_name in mia_selected_stages:
+                _run_stage_mia(mia_stage_name, ckpt_path, [ckpt_b])
 
         with open(run_dir / "swa_merge_results.json", "w") as f:
             json.dump({"swa_results": swa_results}, f, indent=2)
@@ -1271,6 +1631,11 @@ def main() -> None:
             result["retain_acc_drop_pp"] <= args.max_acc_drop_pp
             or result["retain_loss_barrier"] <= args.max_loss_barrier
         )
+
+    if args.run_mia and "baseline" in mia_selected_stages and not args.mia_baseline_ckpt:
+        msg = "baseline stage requested in --mia-stages but --mia-baseline-ckpt was not provided"
+        mia_results["errors"].append(msg)
+        print(f"[MIA:baseline] ERROR: {msg}")
 
     summary = {
         "dense_ckpt": str(dense_ckpt),
@@ -1346,6 +1711,7 @@ def main() -> None:
             "results_file": str(run_dir / "swa_merge_results.json") if args.swa_merge else None,
             "results": swa_results,
         },
+        "mia": mia_results,
     }
     with open(run_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)

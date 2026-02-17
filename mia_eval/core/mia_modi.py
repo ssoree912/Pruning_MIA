@@ -73,6 +73,10 @@ parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5',
                     help='Comma-separated FPR percentages to report TPR@FPR (e.g., "0.1,1,5")')
 parser.add_argument('--save_scores', action='store_true',
                     help='Save per-sample labels/scores for each attack alongside JSON')
+parser.add_argument('--base_path', default=None, type=str,
+                    help='Optional base runs path (default: <repo>/runs)')
+parser.add_argument('--result_file', default=None, type=str,
+                    help='Optional absolute/relative JSON output path (overrides default mia_results path)')
 
 
 def main(args):
@@ -86,21 +90,26 @@ def main(args):
     print(f"Shadow seeds: {args.shadow_seeds}")
     print(f"Sparsity: {args.sparsity}")
 
-    base_path = str(REPO_ROOT / "runs")
+    base_path = args.base_path if args.base_path else str(REPO_ROOT / "runs")
     # Result location
-    if args.prune_method == 'dpf':
-        tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
-        result_dir = str(REPO_ROOT / 'mia_results' / f"dpf{tag}")
+    if args.result_file:
+        result_file = str(Path(args.result_file).expanduser().resolve())
+        result_dir = str(Path(result_file).parent)
         os.makedirs(result_dir, exist_ok=True)
-        result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
-    elif args.prune_method == 'static':
-        result_dir = str(REPO_ROOT / 'mia_results' / 'static')
-        os.makedirs(result_dir, exist_ok=True)
-        result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
-    else:  # dense
-        result_dir = str(REPO_ROOT / 'mia_results' / 'dense')
-        os.makedirs(result_dir, exist_ok=True)
-        result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}.json"
+    else:
+        if args.prune_method == 'dpf':
+            tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
+            result_dir = str(REPO_ROOT / 'mia_results' / f"dpf{tag}")
+            os.makedirs(result_dir, exist_ok=True)
+            result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
+        elif args.prune_method == 'static':
+            result_dir = str(REPO_ROOT / 'mia_results' / 'static')
+            os.makedirs(result_dir, exist_ok=True)
+            result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
+        else:  # dense
+            result_dir = str(REPO_ROOT / 'mia_results' / 'dense')
+            os.makedirs(result_dir, exist_ok=True)
+            result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}.json"
     os.makedirs(REPO_ROOT / 'log' / f'{args.dataset_name}_{args.model_name}', exist_ok=True)
 
     # Load data splits: prefer training-time data_prepare.pkl if available
