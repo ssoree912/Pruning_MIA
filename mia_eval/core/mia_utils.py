@@ -174,7 +174,13 @@ def load_pruned_model(model_path, config_path=None, device='cuda'):
             new_state_dict[name] = v
         state_dict = new_state_dict
     
-    model.load_state_dict(state_dict, strict=False)
+    try:
+        model.load_state_dict(state_dict, strict=True)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Strict state_dict load failed for {model_path} "
+            f"(arch={config['model'].get('arch')}, layers={config['model'].get('layers')}): {e}"
+        ) from e
     model = model.to(device)
     
     return model, config

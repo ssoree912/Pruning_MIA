@@ -46,7 +46,7 @@ parser = argparse.ArgumentParser(description='Membership inference Attacks on Ne
 parser.add_argument('--device', default=0, type=int, help="GPU id to use")
 parser.add_argument('--config_path', default=None, type=str, help="config file path")
 parser.add_argument('--dataset_name', default='cifar10', type=str)
-parser.add_argument('--model_name', default='auto', type=str, help='Model resolved from config; use only as fallback')
+parser.add_argument('--model_name', default='auto', type=str, help='(Ignored) model is always resolved from config.json')
 parser.add_argument('--num_cls', default=10, type=int)
 parser.add_argument('--input_dim', default=3, type=int)
 parser.add_argument('--image_size', default=32, type=int)
@@ -77,6 +77,22 @@ parser.add_argument('--base_path', default=None, type=str,
                     help='Optional base runs path (default: <repo>/runs)')
 parser.add_argument('--result_file', default=None, type=str,
                     help='Optional absolute/relative JSON output path (overrides default mia_results path)')
+
+
+class LoadedModelAdapter(BaseModel):
+    """
+    BaseModel API adapter backed by a prebuilt checkpoint model.
+    Avoids constructing any fallback architecture in MIA.
+    """
+    def __init__(self, model: torch.nn.Module, device: str, num_cls: int):
+        self.model = model.to(device)
+        self.device = device
+        self.criterion = torch.nn.CrossEntropyLoss()
+        self.softmax = torch.nn.Softmax(dim=1)
+        self.num_cls = num_cls
+        self.scheduler = None
+        self.optimizer = None
+        self.optimizer_risk = None
 
 
 def _model_sanity_print(model: torch.nn.Module, label: str) -> None:
@@ -267,19 +283,23 @@ def main(args):
                 "MIA now requires config-aware loading to prevent arch mismatch."
             )
         print(f"[Loader] Using config: {config_path}")
+        print("[Loader] Fallback model construction: disabled (config-only + strict state_dict load)")
 
         try:
             loaded_model, loaded_config = load_pruned_model(model_path, config_path=config_path, device=device)
         except Exception as e:
             raise RuntimeError(f"Failed to load/apply config at {config_path}: {e}")
 
-        # Wrap into BaseModel interface for downstream methods.
-        safe_name = model_name if (model_name and model_name != 'auto') else 'resnet18'
-        wrapper = BaseModel(safe_name, num_cls=num_cls, input_dim=input_dim, device=device)
-        wrapper.model = loaded_model.to(device)
+        # Wrap into BaseModel-compatible interface without constructing any fallback model.
+        wrapper = LoadedModelAdapter(loaded_model, device=device, num_cls=num_cls)
 
-        arch = loaded_config.get('model', {}).get('arch', 'unknown')
-        layers = loaded_config.get('model', {}).get('layers', 'unknown')
+        model_cfg = loaded_config.get('model', {})
+        arch = model_cfg.get('arch', 'unknown')
+        layers = model_cfg.get('layers', 'unknown')
+        if arch == 'unknown' or layers == 'unknown':
+            raise RuntimeError(
+                f"Invalid config at {config_path}: missing model.arch/model.layers for strict model reconstruction."
+            )
         print(f"[Loader] Loaded model from config: arch={arch}, layers={layers}")
 
         # Best-effort: set forward behavior from config when available

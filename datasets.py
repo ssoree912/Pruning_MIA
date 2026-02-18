@@ -10,24 +10,24 @@ import torchvision.transforms as transforms
 from torch.utils.data import TensorDataset, Subset
 
 
+def _cifar_eval_transform():
+    """Eval transform aligned with training pipeline (data.py/train.py)."""
+    mean = (0.4914, 0.4822, 0.4465)
+    std = (0.2023, 0.1994, 0.2010)
+    return transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean, std),
+    ])
+
+
 
 def get_dataset(name, train=True):
     print(f"Build Dataset {name}")
     if name == "cifar10":
-        mean = (0.4914, 0.4822, 0.4465)
-        std = (0.2023, 0.1994, 0.2010)
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-        ])
+        transform = _cifar_eval_transform()
         dataset = torchvision.datasets.CIFAR10(root='./data/datasets/cifar10-data', train=train, download=True, transform=transform)
     elif name == "cifar100":
-        mean = (0.5071, 0.4867, 0.4408)
-        std = (0.2675, 0.2565, 0.2761)
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-        ])
+        transform = _cifar_eval_transform()
         dataset = torchvision.datasets.CIFAR100(root='./data/datasets/cifar100-data', train=train, download=True, transform=transform)
     elif name == "mnist":
         mean = (0.1307,)
@@ -128,4 +128,3 @@ def get_dataset(name, train=True):
         raise ValueError
 
     return dataset
-
