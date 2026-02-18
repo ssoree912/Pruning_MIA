@@ -46,7 +46,6 @@ parser = argparse.ArgumentParser(description='Membership inference Attacks on Ne
 parser.add_argument('--device', default=0, type=int, help="GPU id to use")
 parser.add_argument('--config_path', default=None, type=str, help="config file path")
 parser.add_argument('--dataset_name', default='cifar10', type=str)
-parser.add_argument('--model_name', default='auto', type=str, help='(Ignored) model is always resolved from config.json')
 parser.add_argument('--num_cls', default=10, type=int)
 parser.add_argument('--input_dim', default=3, type=int)
 parser.add_argument('--image_size', default=32, type=int)
@@ -54,12 +53,8 @@ parser.add_argument('--hidden_size', default=128, type=int)
 parser.add_argument('--seed', default=7, type=int)
 parser.add_argument('--early_stop', default=5, type=int)
 parser.add_argument('--batch_size', default=128, type=int)
-parser.add_argument('--pruner_name', default='l1unstructure', type=str, help="prune method for victim model")
-parser.add_argument('--sparsity', default=0.9, type=float, help="sparsity level (same for all models)")
 parser.add_argument('--victim_seed', default=42, type=int, help="victim model seed")
 parser.add_argument('--shadow_seeds', default=[43,44,45,46,47,48,49,50], nargs='+', type=int, help="shadow model seeds")
-parser.add_argument('--prune_method', default='static', type=str, choices=['static','dpf','dense'])
-parser.add_argument('--freeze_tag', default=None, type=str, help='DPF only: sparsity_<s>_<freeze_tag> selector (e.g., freeze180 or nofreeze)')
 parser.add_argument('--defend', default='', type=str)
 parser.add_argument('--defend_arg', default=4, type=float)
 parser.add_argument('--attacks', default="samia,threshold,nn,nn_top3,nn_cls,lira", type=str)
@@ -73,10 +68,20 @@ parser.add_argument('--tpr_fprs', type=str, default='0.1,1,5',
                     help='Comma-separated FPR percentages to report TPR@FPR (e.g., "0.1,1,5")')
 parser.add_argument('--save_scores', action='store_true',
                     help='Save per-sample labels/scores for each attack alongside JSON')
-parser.add_argument('--base_path', default=None, type=str,
-                    help='Optional base runs path (default: <repo>/runs)')
 parser.add_argument('--result_file', default=None, type=str,
                     help='Optional absolute/relative JSON output path (overrides default mia_results path)')
+parser.add_argument('--victim_ckpt_path', required=True, type=str,
+                    help='Direct victim checkpoint path.')
+parser.add_argument('--victim_config_path', default=None, type=str,
+                    help='Optional direct victim config.json path. Used with --victim_ckpt_path.')
+parser.add_argument('--shadow_ckpt_paths', nargs='+', required=True, type=str,
+                    help='Direct shadow checkpoint paths (same order as --shadow_seeds).')
+parser.add_argument('--shadow_config_paths', nargs='*', default=None, type=str,
+                    help='Optional direct shadow config.json paths aligned with --shadow_ckpt_paths.')
+parser.add_argument('--failfast_min_acc', default=0.12, type=float,
+                    help='Fail-fast threshold on 1-2 batch probe accuracy (fraction). Set <=0 to disable.')
+parser.add_argument('--failfast_batches', default=2, type=int,
+                    help='Number of probe batches for fail-fast sanity.')
 
 
 class LoadedModelAdapter(BaseModel):
@@ -99,9 +104,14 @@ def _model_sanity_print(model: torch.nn.Module, label: str) -> None:
     keys = list(model.state_dict().keys())
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    l1_checksum = 0.0
+    with torch.no_grad():
+        for p in model.parameters():
+            l1_checksum += float(p.detach().float().abs().sum().item())
     print(
         f"[SANITY] {label}: total_params={total_params:,} "
         f"trainable_params={trainable_params:,} "
+        f"l1_checksum={l1_checksum:.4e} "
         f"first_state_keys={keys[:5]}"
     )
 
@@ -143,6 +153,38 @@ def _build_explicit_cifar_eval_loader(dataset_name: str, indices, batch_size: in
     return DataLoader(subset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=False)
 
 
+def _resolve_config_path(model_path: str, explicit_config_path: str = None) -> str:
+    if explicit_config_path:
+        cfg = os.path.abspath(os.path.expanduser(explicit_config_path))
+        if not os.path.exists(cfg):
+            raise FileNotFoundError(f"Provided config path does not exist: {cfg}")
+        return cfg
+
+    model_dir = os.path.dirname(model_path)
+    candidate_cfgs = [
+        os.path.join(model_dir, 'config.json'),
+        os.path.join(os.path.dirname(model_dir), 'config.json'),
+        os.path.join(os.path.dirname(os.path.dirname(model_dir)), 'config.json'),
+    ]
+    for c in candidate_cfgs:
+        if os.path.exists(c):
+            return c
+    raise FileNotFoundError(
+        f"No config.json found near checkpoint: {model_path}. "
+        "MIA requires config-aware loading to prevent arch mismatch."
+    )
+
+
+def _validate_optional_path_list(name: str, paths, expected_len: int) -> None:
+    if paths is None:
+        return
+    if len(paths) != expected_len:
+        raise ValueError(
+            f"{name} length mismatch: expected {expected_len}, got {len(paths)}. "
+            f"Provide one path per shadow seed."
+        )
+
+
 def main(args):
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -153,81 +195,34 @@ def main(args):
     print(f"Running MIA attack:")
     print(f"Victim seed: {args.victim_seed}")
     print(f"Shadow seeds: {args.shadow_seeds}")
-    print(f"Sparsity: {args.sparsity}")
-    print(f"Attack mode: {'original(dense baseline)' if attack_original else 'target checkpoint(unlearn/pruned-style)'}")
-    if args.prune_method == "static":
-        print(
-            "[INFO] prune_method=static is used as a workspace path tag; "
-            "it does not run additional pruning in this MIA evaluation."
-        )
+    print(f"Attack mode: {'original(dense baseline)' if attack_original else 'target checkpoint(direct-ckpt)'}")
 
-    base_path = args.base_path if args.base_path else str(REPO_ROOT / "runs")
+    _validate_optional_path_list("shadow_ckpt_paths", args.shadow_ckpt_paths, len(args.shadow_seeds))
+    _validate_optional_path_list("shadow_config_paths", args.shadow_config_paths, len(args.shadow_seeds))
+
     # Result location
     if args.result_file:
         result_file = str(Path(args.result_file).expanduser().resolve())
         result_dir = str(Path(result_file).parent)
         os.makedirs(result_dir, exist_ok=True)
     else:
-        if args.prune_method == 'dpf':
-            tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
-            result_dir = str(REPO_ROOT / 'mia_results' / f"dpf{tag}")
-            os.makedirs(result_dir, exist_ok=True)
-            result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
-        elif args.prune_method == 'static':
-            result_dir = str(REPO_ROOT / 'mia_results' / 'static')
-            os.makedirs(result_dir, exist_ok=True)
-            result_file = f"{result_dir}/{args.dataset_name}_sparsity_{args.sparsity}_victim{args.victim_seed}.json"
-        else:  # dense
-            result_dir = str(REPO_ROOT / 'mia_results' / 'dense')
-            os.makedirs(result_dir, exist_ok=True)
-            result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}.json"
-    os.makedirs(REPO_ROOT / 'log' / f'{args.dataset_name}_{args.model_name}', exist_ok=True)
+        result_dir = str(REPO_ROOT / 'mia_results' / 'direct')
+        os.makedirs(result_dir, exist_ok=True)
+        result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}.json"
+    os.makedirs(REPO_ROOT / 'log' / f'{args.dataset_name}', exist_ok=True)
 
-    # Load data splits: prefer training-time data_prepare.pkl if available
-    print("Loading data splits (prefer training-time data_prepare.pkl if available)...")
-
-    # Try to locate experiment directory for this victim
-    # Locate experiment directory depending on method
-    if args.prune_method == 'static':
-        exp_dir = Path(base_path) / 'static' / f"sparsity_{args.sparsity}" / args.dataset_name
-    elif args.prune_method == 'dpf':
-        tag = f"_{args.freeze_tag}" if args.freeze_tag else ''
-        exp_dir = Path(base_path) / 'dpf' / f"sparsity_{args.sparsity}{tag}" / args.dataset_name
-    elif args.prune_method == 'dense':
-        exp_dir = Path(base_path) / 'dense' / args.dataset_name
-    else:
-        exp_dir = Path(base_path)
-    data_prepare_path = exp_dir / 'data_prepare.pkl'
-
-    use_training_splits = False
-    if data_prepare_path.exists():
-        try:
-            with open(data_prepare_path, 'rb') as f:
-                vp_idx, v_tr, v_dv, v_te, attack_split_list, shadow_train_list = pickle.load(f)
-            # Extract indices from Subset objects
-            victim_train_indices = getattr(v_tr, 'indices', None) or v_tr.dataset.indices
-            victim_test_indices = getattr(v_te, 'indices', None) or v_te.dataset.indices
-            training_shadow_splits = []
-            for tr, dv, te in attack_split_list:
-                tr_idx = getattr(tr, 'indices', None) or tr.dataset.indices
-                te_idx = getattr(te, 'indices', None) or te.dataset.indices
-                training_shadow_splits.append((tr_idx, te_idx))
-            use_training_splits = True
-            print(f"✅ Using training-time splits: {data_prepare_path}")
-        except Exception as e:
-            print(f"⚠️ Failed to parse training splits ({e}); falling back to fixed pkl.")
-
-    if not use_training_splits:
-        data_split_path = str(REPO_ROOT / 'mia_data_splits' / f"{args.dataset_name}_seed{args.seed}_victim{args.victim_seed}.pkl")
-        if not os.path.exists(data_split_path):
-            print(f"❌ Data split file not found: {data_split_path}")
-            print("Please run: python mia_eval/create_data/create_fixed_data_splits.py --dataset {args.dataset_name} --victim_seed {args.victim_seed}")
-            raise FileNotFoundError(f"Data split file not found: {data_split_path}")
-        with open(data_split_path, 'rb') as f:
-            data_splits = pickle.load(f)
-        print(f"✅ Loaded fixed splits from {data_split_path}")
-        victim_train_indices = data_splits['victim']['train_indices']
-        victim_test_indices  = data_splits['victim']['test_indices']
+    # Load data splits from fixed split file.
+    print("Loading data splits from fixed split file...")
+    data_split_path = str(REPO_ROOT / 'mia_data_splits' / f"{args.dataset_name}_seed{args.seed}_victim{args.victim_seed}.pkl")
+    if not os.path.exists(data_split_path):
+        print(f"❌ Data split file not found: {data_split_path}")
+        print("Please run: python mia_eval/create_data/create_fixed_data_splits.py --dataset {args.dataset_name} --victim_seed {args.victim_seed}")
+        raise FileNotFoundError(f"Data split file not found: {data_split_path}")
+    with open(data_split_path, 'rb') as f:
+        data_splits = pickle.load(f)
+    print(f"✅ Loaded fixed splits from {data_split_path}")
+    victim_train_indices = data_splits['victim']['train_indices']
+    victim_test_indices  = data_splits['victim']['test_indices']
     
     # Load full dataset to create subsets
     trainset = get_dataset(args.dataset_name, train=True)
@@ -246,42 +241,20 @@ def main(args):
     victim_test_loader = DataLoader(victim_test_dataset, batch_size=args.batch_size, 
                                   shuffle=False, num_workers=4, pin_memory=False)
 
-    # Load victim model
-    def load_model_from_seed_folder(base_path, seed, dataset_name, model_name, sparsity,
-                                   prune_method, device, forward_mode='standard', num_cls=10, input_dim=3,
-                                   freeze_tag=None):
-        # Build seed folder by method
-        if prune_method == 'static':
-            model_dir = f"{base_path}/static/sparsity_{sparsity}/{dataset_name}/seed{seed}"
-        elif prune_method == 'dpf':
-            tag = f"_{freeze_tag}" if freeze_tag else ''
-            model_dir = f"{base_path}/dpf/sparsity_{sparsity}{tag}/{dataset_name}/seed{seed}"
-        elif prune_method == 'dense':
-            model_dir = f"{base_path}/dense/{dataset_name}/seed{seed}"
-        else:
-            model_dir = f"{base_path}/{prune_method}/{dataset_name}/seed{seed}"
-        model_path = f"{model_dir}/best_model.pth"
+    # Load victim/shadow model
+    def load_model_from_ckpt_path(
+        model_path,
+        device,
+        forward_mode='standard',
+        num_cls=10,
+        explicit_config_path=None,
+    ):
+        model_path = os.path.abspath(os.path.expanduser(model_path))
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found at {model_path}")
 
-        print(f"Loading model with forward_mode: {forward_mode}")
-
-        # Require config-aware loading to avoid architecture mismatch.
-        candidate_cfgs = [
-            os.path.join(model_dir, 'config.json'),
-            os.path.join(os.path.dirname(model_dir), 'config.json'),
-            os.path.join(os.path.dirname(os.path.dirname(model_dir)), 'config.json')
-        ]
-        config_path = None
-        for c in candidate_cfgs:
-            if os.path.exists(c):
-                config_path = c
-                break
-        if config_path is None:
-            raise FileNotFoundError(
-                f"No config.json found near {model_dir}. "
-                "MIA now requires config-aware loading to prevent arch mismatch."
-            )
+        config_path = _resolve_config_path(model_path, explicit_config_path=explicit_config_path)
+        print(f"[Loader] Using checkpoint: {model_path}")
         print(f"[Loader] Using config: {config_path}")
         print("[Loader] Fallback model construction: disabled (config-only + strict state_dict load)")
 
@@ -292,6 +265,8 @@ def main(args):
 
         # Wrap into BaseModel-compatible interface without constructing any fallback model.
         wrapper = LoadedModelAdapter(loaded_model, device=device, num_cls=num_cls)
+        wrapper.loaded_model_path = model_path
+        wrapper.loaded_config_path = config_path
 
         model_cfg = loaded_config.get('model', {})
         arch = model_cfg.get('arch', 'unknown')
@@ -314,29 +289,25 @@ def main(args):
             wrapper.preferred_type_value = 6
 
         return wrapper, loaded_config
-    
+
     print(f"Loading victim model (seed {args.victim_seed}) with forward_mode={args.forward_mode}...")
-    victim_model, victim_cfg = load_model_from_seed_folder(
-        base_path, args.victim_seed, args.dataset_name, args.model_name,
-        args.sparsity, args.prune_method,
-        device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
+    victim_model, victim_cfg = load_model_from_ckpt_path(
+        model_path=args.victim_ckpt_path,
+        device=device,
+        forward_mode=args.forward_mode,
+        num_cls=args.num_cls,
+        explicit_config_path=args.victim_config_path,
     )
+    victim_ckpt_used = getattr(victim_model, "loaded_model_path", None)
+    victim_cfg_used = getattr(victim_model, "loaded_config_path", None)
     _model_sanity_print(victim_model.model, f"victim(seed={args.victim_seed})")
 
-    # Dense counterpart is only needed for --original mode.
+    # Direct-ckpt mode does not infer separate dense baselines automatically.
     if attack_original:
-        try:
-            victim_dense_model, _ = load_model_from_seed_folder(
-                base_path, args.victim_seed, args.dataset_name, args.model_name,
-                0.0, 'dense',
-                device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
-            )
-            _model_sanity_print(victim_dense_model.model, f"victim_dense(seed={args.victim_seed})")
-        except Exception as e:
-            print(f"[WARN] Failed to load dense victim model for seed {args.victim_seed}: {e}")
-            victim_dense_model = victim_model
+        print("[WARN] --original requested, but direct-ckpt mode has no auto dense-loader; using victim checkpoint for both paths.")
+        victim_dense_model = victim_model
     else:
-        print("[INFO] --original is off; skipping dense victim model load.")
+        print("[INFO] --original is off; using victim checkpoint as target path.")
         victim_dense_model = victim_model
     # Auto-tune type_value if needed to maximize accuracy on a small sample
     def _sample_accuracy(model, loader, tv=None, max_batches=2):
@@ -349,13 +320,33 @@ def main(args):
                     break
                 xb, yb = xb.to(model.device), yb.to(model.device)
                 try:
-                    logits = model.model(xb) if tv is None else model.model(xb, type_value=tv)
+                    if tv is None:
+                        logits = model._safe_forward(xb)
+                    else:
+                        logits = model.model(xb, type_value=tv)
                 except TypeError:
-                    logits = model.model(xb)
+                    logits = model._safe_forward(xb)
                 _, pred = logits.max(1)
                 correct += pred.eq(yb).sum().item()
                 total += yb.size(0)
         return (correct / total) if total > 0 else 0.0
+
+    def _failfast_loader_accuracy(model, train_loader, test_loader, label):
+        probe_batches = max(1, int(args.failfast_batches))
+        tr_probe = _sample_accuracy(model, train_loader, tv=None, max_batches=probe_batches)
+        te_probe = _sample_accuracy(model, test_loader, tv=None, max_batches=probe_batches)
+        print(
+            f"[FAIL-FAST] {label}: "
+            f"probe_train_acc={tr_probe:.4f}, probe_test_acc={te_probe:.4f}, "
+            f"min_required={args.failfast_min_acc:.4f}, batches={probe_batches}"
+        )
+        if args.failfast_min_acc > 0:
+            if tr_probe < args.failfast_min_acc or te_probe < args.failfast_min_acc:
+                raise RuntimeError(
+                    f"[FAIL-FAST] {label} probe accuracy too low. "
+                    f"train={tr_probe:.4f}, test={te_probe:.4f}, min={args.failfast_min_acc:.4f}. "
+                    "Likely ckpt/data/config mismatch; aborting MIA run."
+                )
 
     # Try a few candidates commonly used in masked conv paths
     candidate_tvs = [0, 5, 6]
@@ -368,6 +359,7 @@ def main(args):
 
     _loader_batch_stats(victim_train_loader, "victim_train_loader")
     _loader_batch_stats(victim_test_loader, "victim_test_loader")
+    _failfast_loader_accuracy(victim_model, victim_train_loader, victim_test_loader, "victim")
 
     victim_model.test(victim_train_loader, "Victim Model Train")
     test_acc, loss = victim_model.test(victim_test_loader, "Victim Model Test")
@@ -399,7 +391,8 @@ def main(args):
             if len(inter) > 0:
                 print("[WARN] Victim train/test overlap detected; splits may be invalid.")
             # Check shadow overlaps with victim train
-            for sid, sdata in (data_splits.get('shadows', {}) or {}).items():
+            split_shadow_map = (locals().get('data_splits', {}) or {}).get('shadows', {}) or {}
+            for sid, sdata in split_shadow_map.items():
                 st = set(sdata['train_indices'])
                 ov = len(vt.intersection(st))
                 if ov > 0:
@@ -467,6 +460,8 @@ def main(args):
     shadow_train_loader_list = []
     shadow_test_loader_list = []
     shadow_cfg_map = {}
+    shadow_ckpt_used_map = {}
+    shadow_config_used_map = {}
     
     total_shadows = len(args.shadow_seeds)
     for i, shadow_seed in enumerate(args.shadow_seeds):
@@ -475,25 +470,23 @@ def main(args):
             continue
             
         print(f"[{i+1}/{total_shadows}] Loading shadow model (seed {shadow_seed}) with forward_mode={args.forward_mode}...")
-        shadow_model, s_cfg = load_model_from_seed_folder(
-            base_path, shadow_seed, args.dataset_name, args.model_name,
-            args.sparsity, args.prune_method,
-            device, args.forward_mode, args.num_cls, args.input_dim, args.freeze_tag
+        s_ckpt = args.shadow_ckpt_paths[i]
+        s_cfg_override = args.shadow_config_paths[i] if args.shadow_config_paths is not None else None
+        shadow_model, s_cfg = load_model_from_ckpt_path(
+            model_path=s_ckpt,
+            device=device,
+            forward_mode=args.forward_mode,
+            num_cls=args.num_cls,
+            explicit_config_path=s_cfg_override,
         )
-        # Dense counterpart is only needed for --original mode.
+        # Direct-ckpt mode does not infer separate dense baselines automatically.
         if attack_original:
-            try:
-                shadow_dense_model, _ = load_model_from_seed_folder(
-                    base_path, shadow_seed, args.dataset_name, args.model_name,
-                    0.0, 'dense',
-                    device, 'standard', args.num_cls, args.input_dim, args.freeze_tag
-                )
-            except Exception as e:
-                print(f"[WARN] Failed to load dense shadow model for seed {shadow_seed}: {e}")
-                shadow_dense_model = shadow_model
+            shadow_dense_model = shadow_model
         else:
             shadow_dense_model = shadow_model
         shadow_cfg_map[str(shadow_seed)] = s_cfg
+        shadow_ckpt_used_map[str(shadow_seed)] = getattr(shadow_model, "loaded_model_path", None)
+        shadow_config_used_map[str(shadow_seed)] = getattr(shadow_model, "loaded_config_path", None)
 
         # Validate shadow config vs victim to guard against misfoldered runs
         s_meta = _extract_training_meta(s_cfg)
@@ -511,10 +504,13 @@ def main(args):
                 # Sparsity must match when pruned
                 if s_meta['enabled']:
                     try:
-                        vs = float(victim_meta.get('sparsity', args.sparsity))
-                        ss = float(s_meta.get('sparsity', -1))
-                        if abs(vs - ss) > 1e-6:
-                            problems.append(f"sparsity_mismatch(shadow={ss} vs victim={vs})")
+                        vs_raw = victim_meta.get('sparsity')
+                        ss_raw = s_meta.get('sparsity')
+                        if vs_raw is not None and ss_raw is not None:
+                            vs = float(vs_raw)
+                            ss = float(ss_raw)
+                            if abs(vs - ss) > 1e-6:
+                                problems.append(f"sparsity_mismatch(shadow={ss} vs victim={vs})")
                     except Exception:
                         pass
                 # Method check (be lenient with 'dcil' backend)
@@ -528,19 +524,10 @@ def main(args):
         if problems:
             print(f"[WARN] Skipping shadow seed {shadow_seed}: {'; '.join(problems)}")
             continue
-        # Auto-tune type_value for shadow
-        acc_scores = {tv: _sample_accuracy(shadow_model, victim_train_loader, tv=tv, max_batches=2) for tv in candidate_tvs}
-        best_tv = max(acc_scores, key=acc_scores.get)
-        shadow_model.preferred_type_value = best_tv
-        print(f"[Shadow {shadow_seed}] Selected type_value={best_tv} (probe acc~{acc_scores[best_tv]*100:.2f}%)")
         
-        # Use shadow data splits (training-time if available)
-        if use_training_splits and i < len(training_shadow_splits):
-            shadow_train_indices, shadow_test_indices = training_shadow_splits[i]
-        else:
-            shadow_data = data_splits['shadows'][shadow_seed]
-            shadow_train_indices = shadow_data['train_indices']  # members
-            shadow_test_indices  = shadow_data['test_indices']   # non-members
+        shadow_data = data_splits['shadows'][shadow_seed]
+        shadow_train_indices = shadow_data['train_indices']  # members
+        shadow_test_indices  = shadow_data['test_indices']   # non-members
         
         shadow_train_dataset = Subset(total_dataset, shadow_train_indices)
         shadow_test_dataset = Subset(total_dataset, shadow_test_indices)
@@ -549,6 +536,13 @@ def main(args):
                                        shuffle=False, num_workers=4, pin_memory=False)
         shadow_test_loader = DataLoader(shadow_test_dataset, batch_size=args.batch_size,
                                       shuffle=False, num_workers=4, pin_memory=False)
+
+        # Auto-tune type_value for shadow on its own member split, then fail-fast sanity.
+        acc_scores = {tv: _sample_accuracy(shadow_model, shadow_train_loader, tv=tv, max_batches=max(1, int(args.failfast_batches))) for tv in candidate_tvs}
+        best_tv = max(acc_scores, key=acc_scores.get)
+        shadow_model.preferred_type_value = best_tv
+        print(f"[Shadow {shadow_seed}] Selected type_value={best_tv} (probe acc~{acc_scores[best_tv]*100:.2f}%)")
+        _failfast_loader_accuracy(shadow_model, shadow_train_loader, shadow_test_loader, f"shadow(seed={shadow_seed})")
         
         print(f"[{i+1}/{total_shadows}] Shadow {shadow_seed}: {len(shadow_train_indices)} members, {len(shadow_test_indices)} non-members")
         shadow_model.test(shadow_train_loader, f"[{i+1}/{total_shadows}] Shadow Model {shadow_seed} Train (Members)")
@@ -701,16 +695,10 @@ def main(args):
         print(f"LiRA: AUC={lira['auc']:.3f}, Acc={lira['accuracy']:.3f}, BalAcc={lira['balanced_accuracy']:.3f}, Adv={lira['advantage']:.3f}")
     
     # Build data split summary
-    if use_training_splits:
-        victim_members_count = len(victim_train_indices)
-        victim_nonmembers_count = len(victim_test_indices)
-        shadow_counts = {str(k): len(ts[0]) for k, ts in zip(args.shadow_seeds, training_shadow_splits)}
-        split_source = str(data_prepare_path)
-    else:
-        victim_members_count = len(data_splits['victim']['train_indices'])
-        victim_nonmembers_count = len(data_splits['victim']['test_indices'])
-        shadow_counts = {str(k): len(v['train_indices']) for k, v in data_splits['shadows'].items()}
-        split_source = data_split_path
+    victim_members_count = len(data_splits['victim']['train_indices'])
+    victim_nonmembers_count = len(data_splits['victim']['test_indices'])
+    shadow_counts = {str(k): len(v['train_indices']) for k, v in data_splits['shadows'].items()}
+    split_source = data_split_path
 
     # Save results with data split info
     import json
@@ -722,11 +710,12 @@ def main(args):
             'experiment_info': {
                 'forward_mode': args.forward_mode,
                 'threshold_strategy': args.threshold_strategy,
-                'attack_mode': 'original' if (hasattr(args, 'original') and args.original) else 'pruned',
-                'pruning_params': {
-                    'method': args.prune_method,
-                    'sparsity': args.sparsity,
-                    'freeze_tag': args.freeze_tag,
+                'attack_mode': 'original' if (hasattr(args, 'original') and args.original) else 'direct-ckpt',
+                'loader_paths': {
+                    'victim_ckpt_path': victim_ckpt_used,
+                    'victim_config_path': victim_cfg_used,
+                    'shadow_ckpt_paths': shadow_ckpt_used_map,
+                    'shadow_config_paths': shadow_config_used_map,
                 },
                 'victim_config': victim_cfg,
                 'shadow_configs': shadow_cfg_map

@@ -173,6 +173,36 @@ def load_pruned_model(model_path, config_path=None, device='cuda'):
             name = k[7:] if k.startswith('module.') else k  # remove 'module.'
             new_state_dict[name] = v
         state_dict = new_state_dict
+
+    # Fail-fast key/shape validation before strict load.
+    model_state = model.state_dict()
+    model_keys = set(model_state.keys())
+    ckpt_keys = set(state_dict.keys())
+    missing_keys = sorted(model_keys - ckpt_keys)
+    unexpected_keys = sorted(ckpt_keys - model_keys)
+    shape_mismatches = []
+    for k in sorted(model_keys.intersection(ckpt_keys)):
+        if hasattr(model_state[k], "shape") and hasattr(state_dict[k], "shape"):
+            if tuple(model_state[k].shape) != tuple(state_dict[k].shape):
+                shape_mismatches.append((k, tuple(state_dict[k].shape), tuple(model_state[k].shape)))
+
+    if missing_keys or unexpected_keys or shape_mismatches:
+        details = []
+        if missing_keys:
+            details.append(f"missing_keys={len(missing_keys)} sample={missing_keys[:5]}")
+        if unexpected_keys:
+            details.append(f"unexpected_keys={len(unexpected_keys)} sample={unexpected_keys[:5]}")
+        if shape_mismatches:
+            details.append(f"shape_mismatches={len(shape_mismatches)} sample={shape_mismatches[:3]}")
+        raise RuntimeError(
+            f"state_dict schema mismatch for {model_path} "
+            f"(arch={config['model'].get('arch')}, layers={config['model'].get('layers')}): "
+            + " | ".join(details)
+        )
+    print(
+        f"[Loader] state_dict key check passed: "
+        f"model_keys={len(model_keys)} checkpoint_keys={len(ckpt_keys)}"
+    )
     
     try:
         model.load_state_dict(state_dict, strict=True)
