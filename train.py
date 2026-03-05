@@ -649,9 +649,10 @@ def _build_mia_config(spec: ModelSpec, seed: int, sparsity: float) -> Dict[str, 
             "model_mult": int(spec.model_mult),
         },
         "pruning": {
-            "enabled": True,
-            "method": "static",
-            "sparsity": float(sparsity),
+            # Unlearning endpoints in this script are dense-model checkpoints.
+            "enabled": False,
+            "method": "dense",
+            "sparsity": float(0.0),
         },
     }
 
@@ -664,27 +665,39 @@ def _prepare_mia_workspace(
     victim_seed: int,
     shadow_seeds: List[int],
     mia_sparsity: float,
-) -> Path:
+) -> Dict[str, Any]:
     if len(shadow_ckpts) != len(shadow_seeds):
         raise ValueError("shadow_ckpts and shadow_seeds length mismatch")
-    runs_base = stage_dir / "runs"
-    dataset_root = runs_base / "static" / f"sparsity_{mia_sparsity}" / spec.dataset
+    dataset_root = stage_dir / "inputs" / spec.dataset
     dataset_root.mkdir(parents=True, exist_ok=True)
 
     victim_seed_dir = dataset_root / f"seed{victim_seed}"
     victim_seed_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(str(victim_ckpt), str(victim_seed_dir / "best_model.pth"))
-    with open(victim_seed_dir / "config.json", "w") as f:
+    victim_ckpt_out = victim_seed_dir / "best_model.pth"
+    victim_cfg_out = victim_seed_dir / "config.json"
+    shutil.copy2(str(victim_ckpt), str(victim_ckpt_out))
+    with open(victim_cfg_out, "w") as f:
         json.dump(_build_mia_config(spec, seed=victim_seed, sparsity=mia_sparsity), f, indent=2)
 
+    shadow_ckpt_outs: List[Path] = []
+    shadow_cfg_outs: List[Path] = []
     for ckpt, seed in zip(shadow_ckpts, shadow_seeds):
         seed_dir = dataset_root / f"seed{seed}"
         seed_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(ckpt), str(seed_dir / "best_model.pth"))
-        with open(seed_dir / "config.json", "w") as f:
+        shadow_ckpt_out = seed_dir / "best_model.pth"
+        shadow_cfg_out = seed_dir / "config.json"
+        shutil.copy2(str(ckpt), str(shadow_ckpt_out))
+        with open(shadow_cfg_out, "w") as f:
             json.dump(_build_mia_config(spec, seed=seed, sparsity=mia_sparsity), f, indent=2)
+        shadow_ckpt_outs.append(shadow_ckpt_out)
+        shadow_cfg_outs.append(shadow_cfg_out)
 
-    return runs_base
+    return {
+        "victim_ckpt": victim_ckpt_out,
+        "victim_config": victim_cfg_out,
+        "shadow_ckpts": shadow_ckpt_outs,
+        "shadow_configs": shadow_cfg_outs,
+    }
 
 
 def _ensure_mia_split(
@@ -712,11 +725,14 @@ def _ensure_mia_split(
 
 def _run_mia_core(
     repo_root: Path,
-    runs_base: Path,
     result_file: Path,
     dataset: str,
     victim_seed: int,
     shadow_seeds: List[int],
+    victim_ckpt: Path,
+    victim_config: Path,
+    shadow_ckpts: List[Path],
+    shadow_configs: List[Path],
     device: int,
     split_seed: int,
     attacks: str,
@@ -734,24 +750,26 @@ def _run_mia_core(
         str(device),
         "--dataset_name",
         dataset,
-        "--sparsity",
-        str(mia_sparsity),
         "--victim_seed",
         str(victim_seed),
         "--seed",
         str(split_seed),
         "--shadow_seeds",
         *[str(s) for s in shadow_seeds],
-        "--prune_method",
-        "static",
+        "--victim_ckpt_path",
+        str(victim_ckpt),
+        "--victim_config_path",
+        str(victim_config),
+        "--shadow_ckpt_paths",
+        *[str(p) for p in shadow_ckpts],
+        "--shadow_config_paths",
+        *[str(p) for p in shadow_configs],
         "--forward_mode",
         forward_mode,
         "--attacks",
         attacks,
         "--tpr_fprs",
         tpr_fprs,
-        "--base_path",
-        str(runs_base),
         "--result_file",
         str(result_file),
     ]
@@ -762,6 +780,94 @@ def _run_mia_core(
     subprocess.run(cmd, check=True, cwd=str(repo_root))
     with open(result_file, "r") as f:
         return json.load(f)
+
+
+def _extract_mia_metrics(payload: Dict[str, Any]) -> Dict[str, float]:
+    out: Dict[str, float] = {}
+    if not isinstance(payload, dict):
+        return out
+    res = payload.get("results", {})
+    if not isinstance(res, dict):
+        return out
+
+    conf_ext = res.get("confidence_extended", {})
+    if isinstance(conf_ext, dict):
+        if "auroc" in conf_ext:
+            out["threshold_auroc"] = float(conf_ext["auroc"])
+        if "advantage" in conf_ext:
+            out["threshold_advantage"] = float(conf_ext["advantage"])
+        if "tpr_at_1fpr" in conf_ext and conf_ext["tpr_at_1fpr"] is not None:
+            out["threshold_tpr_at_1fpr"] = float(conf_ext["tpr_at_1fpr"])
+
+    for attack in ("lira", "nn", "nn_top3", "nn_cls", "samia"):
+        a = res.get(attack, {})
+        if isinstance(a, dict):
+            if "auc" in a:
+                out[f"{attack}_auc"] = float(a["auc"])
+            if "advantage" in a:
+                out[f"{attack}_advantage"] = float(a["advantage"])
+            if "tpr_at_1fpr" in a and a["tpr_at_1fpr"] is not None:
+                out[f"{attack}_tpr_at_1fpr"] = float(a["tpr_at_1fpr"])
+    return out
+
+
+def _build_retrain_alignment_report(
+    endpoint_metrics: Dict[str, Dict[str, float]],
+    scratch_baseline_metrics: Optional[Dict[str, Any]],
+    mia_results: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    if scratch_baseline_metrics is None:
+        return None
+
+    baseline_test = float(scratch_baseline_metrics.get("test_acc", 0.0))
+    baseline_retain = float(scratch_baseline_metrics.get("retain_acc", 0.0))
+    endpoint_rows: Dict[str, Any] = {}
+    for seed_key, m in endpoint_metrics.items():
+        test_acc = float(m.get("test_acc", 0.0))
+        retain_acc = float(m.get("retain_acc", 0.0))
+        d_test = test_acc - baseline_test
+        d_retain = retain_acc - baseline_retain
+        endpoint_rows[seed_key] = {
+            "test_acc": test_acc,
+            "retain_acc": retain_acc,
+            "delta_test_acc_vs_retrain": d_test,
+            "delta_retain_acc_vs_retrain": d_retain,
+            "abs_delta_test_acc": abs(d_test),
+            "abs_delta_retain_acc": abs(d_retain),
+            "l1_distance_to_retrain": abs(d_test) + abs(d_retain),
+            "l2_distance_to_retrain": (d_test * d_test + d_retain * d_retain) ** 0.5,
+        }
+
+    best_seed = None
+    best_val = float("inf")
+    for seed_key, row in endpoint_rows.items():
+        cur = float(row["l2_distance_to_retrain"])
+        if cur < best_val:
+            best_val = cur
+            best_seed = seed_key
+
+    mia_stage_map = mia_results.get("stages", {}) if isinstance(mia_results, dict) else {}
+    unlearn_stage = mia_stage_map.get("unlearn", {})
+    baseline_stage = mia_stage_map.get("baseline", {})
+    unlearn_metrics = _extract_mia_metrics(unlearn_stage.get("result", {})) if isinstance(unlearn_stage, dict) else {}
+    baseline_metrics = _extract_mia_metrics(baseline_stage.get("result", {})) if isinstance(baseline_stage, dict) else {}
+
+    mia_deltas: Dict[str, float] = {}
+    for k, v in unlearn_metrics.items():
+        if k in baseline_metrics:
+            mia_deltas[f"{k}_delta_unlearn_minus_retrain"] = float(v - baseline_metrics[k])
+
+    return {
+        "retrain_baseline": {
+            "test_acc": baseline_test,
+            "retain_acc": baseline_retain,
+        },
+        "endpoint_distances": endpoint_rows,
+        "closest_seed_by_l2": best_seed,
+        "mia_unlearn": unlearn_metrics,
+        "mia_retrain_baseline": baseline_metrics,
+        "mia_delta_unlearn_minus_retrain": mia_deltas,
+    }
 
 
 def _choose_curve_point(curve: List[Dict[str, float]], metric: str) -> Dict[str, float]:
@@ -915,7 +1021,12 @@ def main() -> None:
     parser.add_argument("--mia-tpr-fprs", type=str, default="0.1,1,5")
     parser.add_argument("--mia-save-scores", action="store_true")
     parser.add_argument("--mia-debug", action="store_true")
-    parser.add_argument("--mia-sparsity", type=float, default=0.0, help="Virtual sparsity tag used in MIA workspace")
+    parser.add_argument(
+        "--mia-sparsity",
+        type=float,
+        default=0.0,
+        help="Compatibility field written into temporary MIA configs (direct-ckpt mode).",
+    )
     parser.add_argument(
         "--mia-baseline-ckpt",
         type=str,
@@ -1336,7 +1447,7 @@ def main() -> None:
 
             stage_dir = run_dir / "mia_workspace" / stage_name
             stage_dir.mkdir(parents=True, exist_ok=True)
-            runs_base = _prepare_mia_workspace(
+            prepared = _prepare_mia_workspace(
                 stage_dir=stage_dir,
                 spec=spec,
                 victim_ckpt=victim_ckpt_path,
@@ -1356,11 +1467,14 @@ def main() -> None:
             result_file.parent.mkdir(parents=True, exist_ok=True)
             result_payload = _run_mia_core(
                 repo_root=repo_root,
-                runs_base=runs_base,
                 result_file=result_file,
                 dataset=spec.dataset,
                 victim_seed=mia_victim_seed,
                 shadow_seeds=shadow_seed_list,
+                victim_ckpt=prepared["victim_ckpt"],
+                victim_config=prepared["victim_config"],
+                shadow_ckpts=prepared["shadow_ckpts"],
+                shadow_configs=prepared["shadow_configs"],
                 device=mia_device,
                 split_seed=int(args.mia_split_seed),
                 attacks=str(args.mia_attacks),
@@ -1384,15 +1498,25 @@ def main() -> None:
 
     # Stage: unlearn endpoint MIA (victim=seed_a, shadow=seed_b)
     _run_stage_mia("unlearn", ckpt_a, [ckpt_b])
-    # Optional external baseline MIA
-    if args.run_mia and "baseline" in mia_selected_stages and args.mia_baseline_ckpt:
+    # Baseline MIA: explicit --mia-baseline-ckpt, or auto-fallback to scratch-retrain ckpt.
+    baseline_victim: Optional[Path] = None
+    if args.mia_baseline_ckpt:
         baseline_victim = Path(args.mia_baseline_ckpt).expanduser().resolve()
+    elif scratch_baseline_ckpt is not None:
+        baseline_victim = scratch_baseline_ckpt
+    if args.run_mia and "baseline" in mia_selected_stages and baseline_victim is not None:
         baseline_shadows = baseline_shadow_ckpts if baseline_shadow_ckpts else [ckpt_b]
         _run_stage_mia("baseline", baseline_victim, baseline_shadows)
 
+    retrain_alignment = _build_retrain_alignment_report(
+        endpoint_metrics=endpoint_metrics,
+        scratch_baseline_metrics=scratch_baseline_metrics,
+        mia_results=mia_results,
+    )
+
     if args.step1_only:
-        if args.run_mia and "baseline" in mia_selected_stages and not args.mia_baseline_ckpt:
-            msg = "baseline stage requested in --mia-stages but --mia-baseline-ckpt was not provided"
+        if args.run_mia and "baseline" in mia_selected_stages and baseline_victim is None:
+            msg = "baseline stage requested in --mia-stages but no baseline ckpt available (set --mia-baseline-ckpt or enable scratch baseline)"
             mia_results["errors"].append(msg)
             print(f"[MIA:baseline] ERROR: {msg}")
         step1_summary = {
@@ -1445,6 +1569,7 @@ def main() -> None:
                 "ckpt": str(scratch_baseline_ckpt) if scratch_baseline_ckpt is not None else None,
                 "metrics": scratch_baseline_metrics,
             },
+            "retrain_alignment": retrain_alignment,
             "mia": mia_results,
             "step1_only": True,
         }
@@ -1667,8 +1792,8 @@ def main() -> None:
             or result["retain_loss_barrier"] <= args.max_loss_barrier
         )
 
-    if args.run_mia and "baseline" in mia_selected_stages and not args.mia_baseline_ckpt:
-        msg = "baseline stage requested in --mia-stages but --mia-baseline-ckpt was not provided"
+    if args.run_mia and "baseline" in mia_selected_stages and baseline_victim is None:
+        msg = "baseline stage requested in --mia-stages but no baseline ckpt available (set --mia-baseline-ckpt or enable scratch baseline)"
         mia_results["errors"].append(msg)
         print(f"[MIA:baseline] ERROR: {msg}")
 
@@ -1736,6 +1861,7 @@ def main() -> None:
             "ckpt": str(scratch_baseline_ckpt) if scratch_baseline_ckpt is not None else None,
             "metrics": scratch_baseline_metrics,
         },
+        "retrain_alignment": retrain_alignment,
         "swa_merge": {
             "enabled": bool(args.swa_merge),
             "source": args.swa_source,
