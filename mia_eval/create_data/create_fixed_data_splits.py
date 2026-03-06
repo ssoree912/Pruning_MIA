@@ -63,6 +63,15 @@ def _get_labels(ds):
     raise AttributeError("Dataset has no targets/labels attribute")
 
 
+def _mix_seed(base_seed: int, role_seed: int, salt: int = 0) -> int:
+    """Deterministically mix the global split seed with a victim/shadow seed."""
+    a = int(base_seed) & 0xFFFFFFFF
+    b = int(role_seed) & 0xFFFFFFFF
+    c = int(salt) & 0xFFFFFFFF
+    mixed = (a * 0x9E3779B1 + b * 0x85EBCA77 + c * 0xC2B2AE3D) & 0xFFFFFFFF
+    return int(mixed)
+
+
 def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44,45,46,47,48,49,50], 
                       save_dir="mia_data_splits",
                       train_frac_member=0.9,   # fraction of train used as members
@@ -97,7 +106,7 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
         v_tr, v_te = train_test_split(
             total_indices,
             train_size=1.0 - test_frac_nonmember,
-            random_state=victim_seed,
+            random_state=_mix_seed(seed, victim_seed, salt=11),
             stratify=labels[total_indices]
         )
         victim_train_indices = v_tr.tolist()
@@ -110,7 +119,7 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
             s_tr, s_te = train_test_split(
                 pool,
                 train_size=1.0 - test_frac_nonmember,
-                random_state=shadow_seed,
+                random_state=_mix_seed(seed, shadow_seed, salt=21),
                 stratify=labels[pool]
             )
             if disjoint_shadows:
@@ -135,13 +144,13 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
         v_tr, _ = train_test_split(
             train_indices_all,
             train_size=train_frac_member,
-            random_state=victim_seed,
+            random_state=_mix_seed(seed, victim_seed, salt=101),
             stratify=train_labels[train_indices_all - train_offset]
         )
         v_te, _ = train_test_split(
             test_indices_all,
             train_size=test_frac_nonmember,
-            random_state=victim_seed,
+            random_state=_mix_seed(seed, victim_seed, salt=102),
             stratify=test_labels[test_indices_all - test_offset]
         )
         victim_train_indices = v_tr.tolist()
@@ -166,13 +175,13 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
             s_tr, _ = train_test_split(
                 pool_tr,
                 train_size=train_frac_member,
-                random_state=shadow_seed,
+                random_state=_mix_seed(seed, shadow_seed, salt=201),
                 stratify=train_labels[pool_tr - train_offset]
             )
             s_te, _ = train_test_split(
                 pool_te,
                 train_size=test_frac_nonmember,
-                random_state=shadow_seed,
+                random_state=_mix_seed(seed, shadow_seed, salt=202),
                 stratify=test_labels[pool_te - test_offset]
             )
             if disjoint_shadows:
@@ -187,6 +196,7 @@ def create_data_splits(dataset_name, seed=7, victim_seed=42, shadow_seeds=[43,44
     data_splits = {
         'dataset_name': dataset_name,
         'seed': seed,
+        'seed_note': 'split randomness mixes global seed with victim/shadow seed',
         'victim_seed': victim_seed,
         'shadow_seeds': shadow_seeds,
         'total_size': len(total_dataset),

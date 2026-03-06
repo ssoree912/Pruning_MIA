@@ -78,6 +78,14 @@ parser.add_argument('--shadow_ckpt_paths', nargs='+', required=True, type=str,
                     help='Direct shadow checkpoint paths (same order as --shadow_seeds).')
 parser.add_argument('--shadow_config_paths', nargs='*', default=None, type=str,
                     help='Optional direct shadow config.json paths aligned with --shadow_ckpt_paths.')
+parser.add_argument('--victim_dense_ckpt_path', default=None, type=str,
+                    help='Optional dense baseline victim checkpoint. Used when --original.')
+parser.add_argument('--victim_dense_config_path', default=None, type=str,
+                    help='Optional dense baseline victim config.json path. Used with --victim_dense_ckpt_path.')
+parser.add_argument('--shadow_dense_ckpt_paths', nargs='*', default=None, type=str,
+                    help='Optional dense baseline shadow checkpoint paths aligned with --shadow_seeds. Used when --original.')
+parser.add_argument('--shadow_dense_config_paths', nargs='*', default=None, type=str,
+                    help='Optional dense baseline shadow config.json paths aligned with --shadow_dense_ckpt_paths.')
 parser.add_argument('--failfast_min_acc', default=0.12, type=float,
                     help='Fail-fast threshold on 1-2 batch probe accuracy (fraction). Set <=0 to disable.')
 parser.add_argument('--failfast_batches', default=2, type=int,
@@ -185,6 +193,38 @@ def _validate_optional_path_list(name: str, paths, expected_len: int) -> None:
         )
 
 
+def _resolve_dense_ckpt_path(dataset_name: str, seed: int, target_model_path: str = None, explicit_dense_path: str = None):
+    if explicit_dense_path:
+        dense_path = os.path.abspath(os.path.expanduser(explicit_dense_path))
+        if os.path.exists(dense_path):
+            return dense_path
+        raise FileNotFoundError(f"Dense checkpoint not found: {dense_path}")
+
+    candidates = []
+    if target_model_path:
+        target_path = Path(os.path.abspath(os.path.expanduser(target_model_path)))
+        try:
+            parts = target_path.parts
+            if 'runs' in parts:
+                runs_idx = parts.index('runs')
+                base = Path(*parts[:runs_idx + 1])
+                candidates.append(base / 'dense' / dataset_name / f'seed{seed}' / target_path.name)
+                candidates.append(base / 'dense' / dataset_name / f'seed{seed}' / 'best_model.pth')
+        except Exception:
+            pass
+    candidates.append(REPO_ROOT / 'runs' / 'dense' / dataset_name / f'seed{seed}' / 'best_model.pth')
+
+    seen = set()
+    for candidate in candidates:
+        candidate = Path(candidate).expanduser().resolve()
+        if str(candidate) in seen:
+            continue
+        seen.add(str(candidate))
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def main(args):
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -199,6 +239,8 @@ def main(args):
 
     _validate_optional_path_list("shadow_ckpt_paths", args.shadow_ckpt_paths, len(args.shadow_seeds))
     _validate_optional_path_list("shadow_config_paths", args.shadow_config_paths, len(args.shadow_seeds))
+    _validate_optional_path_list("shadow_dense_ckpt_paths", args.shadow_dense_ckpt_paths, len(args.shadow_seeds))
+    _validate_optional_path_list("shadow_dense_config_paths", args.shadow_dense_config_paths, len(args.shadow_seeds))
 
     # Result location
     if args.result_file:
@@ -206,9 +248,11 @@ def main(args):
         result_dir = str(Path(result_file).parent)
         os.makedirs(result_dir, exist_ok=True)
     else:
-        result_dir = str(REPO_ROOT / 'mia_results' / 'direct')
+        default_subdir = 'direct_original' if attack_original else 'direct'
+        result_dir = str(REPO_ROOT / 'mia_results' / default_subdir)
         os.makedirs(result_dir, exist_ok=True)
-        result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}.json"
+        suffix = '_original' if attack_original else ''
+        result_file = f"{result_dir}/{args.dataset_name}_victim{args.victim_seed}{suffix}.json"
     os.makedirs(REPO_ROOT / 'log' / f'{args.dataset_name}', exist_ok=True)
 
     # Load data splits from fixed split file.
@@ -216,7 +260,7 @@ def main(args):
     data_split_path = str(REPO_ROOT / 'mia_data_splits' / f"{args.dataset_name}_seed{args.seed}_victim{args.victim_seed}.pkl")
     if not os.path.exists(data_split_path):
         print(f"❌ Data split file not found: {data_split_path}")
-        print("Please run: python mia_eval/create_data/create_fixed_data_splits.py --dataset {args.dataset_name} --victim_seed {args.victim_seed}")
+        print(f"Please run: python mia_eval/create_data/create_fixed_data_splits.py --dataset {args.dataset_name} --victim_seed {args.victim_seed}")
         raise FileNotFoundError(f"Data split file not found: {data_split_path}")
     with open(data_split_path, 'rb') as f:
         data_splits = pickle.load(f)
@@ -300,15 +344,37 @@ def main(args):
     )
     victim_ckpt_used = getattr(victim_model, "loaded_model_path", None)
     victim_cfg_used = getattr(victim_model, "loaded_config_path", None)
+    victim_dense_ckpt_used = None
+    victim_dense_cfg_used = None
     _model_sanity_print(victim_model.model, f"victim(seed={args.victim_seed})")
 
-    # Direct-ckpt mode does not infer separate dense baselines automatically.
     if attack_original:
-        print("[WARN] --original requested, but direct-ckpt mode has no auto dense-loader; using victim checkpoint for both paths.")
-        victim_dense_model = victim_model
+        victim_dense_path = _resolve_dense_ckpt_path(
+            dataset_name=args.dataset_name,
+            seed=args.victim_seed,
+            target_model_path=args.victim_ckpt_path,
+            explicit_dense_path=args.victim_dense_ckpt_path,
+        )
+        if victim_dense_path is None:
+            print("[WARN] Could not auto-resolve dense victim checkpoint; falling back to target checkpoint.")
+            victim_dense_model = victim_model
+            victim_dense_cfg = victim_cfg
+        else:
+            print(f"Loading victim dense baseline (seed {args.victim_seed}) from {victim_dense_path}...")
+            victim_dense_model, victim_dense_cfg = load_model_from_ckpt_path(
+                model_path=victim_dense_path,
+                device=device,
+                forward_mode='standard',
+                num_cls=args.num_cls,
+                explicit_config_path=args.victim_dense_config_path,
+            )
+            victim_dense_ckpt_used = getattr(victim_dense_model, "loaded_model_path", None)
+            victim_dense_cfg_used = getattr(victim_dense_model, "loaded_config_path", None)
+            _model_sanity_print(victim_dense_model.model, f"victim_dense(seed={args.victim_seed})")
     else:
         print("[INFO] --original is off; using victim checkpoint as target path.")
         victim_dense_model = victim_model
+        victim_dense_cfg = victim_cfg
     # Auto-tune type_value if needed to maximize accuracy on a small sample
     def _sample_accuracy(model, loader, tv=None, max_batches=2):
         model.model.eval()
@@ -460,8 +526,11 @@ def main(args):
     shadow_train_loader_list = []
     shadow_test_loader_list = []
     shadow_cfg_map = {}
+    shadow_dense_cfg_map = {}
     shadow_ckpt_used_map = {}
     shadow_config_used_map = {}
+    shadow_dense_ckpt_used_map = {}
+    shadow_dense_config_used_map = {}
     
     total_shadows = len(args.shadow_seeds)
     for i, shadow_seed in enumerate(args.shadow_seeds):
@@ -479,14 +548,37 @@ def main(args):
             num_cls=args.num_cls,
             explicit_config_path=s_cfg_override,
         )
-        # Direct-ckpt mode does not infer separate dense baselines automatically.
         if attack_original:
-            shadow_dense_model = shadow_model
+            s_dense_override = args.shadow_dense_ckpt_paths[i] if args.shadow_dense_ckpt_paths is not None else None
+            s_dense_cfg_override = args.shadow_dense_config_paths[i] if args.shadow_dense_config_paths is not None else None
+            shadow_dense_path = _resolve_dense_ckpt_path(
+                dataset_name=args.dataset_name,
+                seed=shadow_seed,
+                target_model_path=s_ckpt,
+                explicit_dense_path=s_dense_override,
+            )
+            if shadow_dense_path is None:
+                print(f"[WARN] Could not auto-resolve dense shadow checkpoint for seed {shadow_seed}; falling back to target checkpoint.")
+                shadow_dense_model = shadow_model
+                shadow_dense_cfg = s_cfg
+            else:
+                print(f"[{i+1}/{total_shadows}] Loading shadow dense baseline (seed {shadow_seed}) from {shadow_dense_path}...")
+                shadow_dense_model, shadow_dense_cfg = load_model_from_ckpt_path(
+                    model_path=shadow_dense_path,
+                    device=device,
+                    forward_mode='standard',
+                    num_cls=args.num_cls,
+                    explicit_config_path=s_dense_cfg_override,
+                )
         else:
             shadow_dense_model = shadow_model
+            shadow_dense_cfg = s_cfg
         shadow_cfg_map[str(shadow_seed)] = s_cfg
+        shadow_dense_cfg_map[str(shadow_seed)] = shadow_dense_cfg
         shadow_ckpt_used_map[str(shadow_seed)] = getattr(shadow_model, "loaded_model_path", None)
         shadow_config_used_map[str(shadow_seed)] = getattr(shadow_model, "loaded_config_path", None)
+        shadow_dense_ckpt_used_map[str(shadow_seed)] = getattr(shadow_dense_model, "loaded_model_path", None)
+        shadow_dense_config_used_map[str(shadow_seed)] = getattr(shadow_dense_model, "loaded_config_path", None)
 
         # Validate shadow config vs victim to guard against misfoldered runs
         s_meta = _extract_training_meta(s_cfg)
@@ -558,6 +650,9 @@ def main(args):
             _basic_stats(shadow_model, shadow_train_loader, f'shadow {shadow_seed} members (train)')
             _basic_stats(shadow_model, shadow_test_loader,  f'shadow {shadow_seed} non-members (test)')
 
+    if not shadow_model_list:
+        raise RuntimeError("No usable shadow models were loaded; aborting MIA evaluation.")
+
     print("Start Membership Inference Attacks")
     
     # Prepare optional scores directory
@@ -576,103 +671,26 @@ def main(args):
         save_scores_dir=scores_dir
     )
 
-    attacks = args.attacks.split(',')
+    attacks = [a.strip() for a in args.attacks.split(',') if a.strip()]
     results = {}
     
     if "samia" in attacks:
-        samia_metrics = attacker.nn_attack("nn_sens_cls", model_name="transformer")
+        samia_metrics = attacker.nn_attack("nn_sens_cls", model_name="mia_fc")
+        samia_metrics.setdefault("implementation", "nn_sens_cls_mlp")
         results['samia'] = samia_metrics
         print(f"SAMIA: Acc={samia_metrics['accuracy']:.3f}, AUC={samia_metrics['auc']:.3f}, BalAcc={samia_metrics['balanced_accuracy']:.3f}, Adv={samia_metrics['advantage']:.3f}")
     
     if "threshold" in attacks:
-        conf, xent, mentr, top1_conf = attacker.threshold_attack()
-        results['confidence'] = conf
-        results['entropy'] = xent
-        results['modified_entropy'] = mentr
-        results['top1_conf'] = top1_conf
-        
-        print(f"Confidence attack accuracy: {conf:.3f}")
-        print(f"Entropy attack accuracy: {xent:.3f}")
-        print(f"Modified entropy attack accuracy: {mentr:.3f}")
-        print(f"Top1 confidence attack accuracy: {top1_conf:.3f}")
-        
-        # Extended metrics (inline): AUROC, Balanced Accuracy, Advantage using Youden threshold,
-        # and TPR@X%FPR for requested X values
-        try:
-            from sklearn.metrics import roc_auc_score, balanced_accuracy_score, precision_recall_fscore_support, average_precision_score
-            import numpy as _np
-            vin = attacker.victim_in_predicts.max(dim=1)[0].detach().cpu().numpy()
-            vout = attacker.victim_out_predicts.max(dim=1)[0].detach().cpu().numpy()
-            y_true = _np.concatenate([_np.ones_like(vin), _np.zeros_like(vout)])
-            y_score = _np.concatenate([vin, vout])
-            auroc = float(roc_auc_score(y_true, y_score)) if len(_np.unique(y_true)) > 1 else 0.0
-            vals = _np.unique(y_score)
-            best_adv, best_thr = -1.0, 0.5
-            for thr in vals:
-                y_pred = (y_score >= thr).astype(int)
-                tp = ((y_pred == 1) & (y_true == 1)).sum(); fn = ((y_pred == 0) & (y_true == 1)).sum()
-                tn = ((y_pred == 0) & (y_true == 0)).sum(); fp = ((y_pred == 1) & (y_true == 0)).sum()
-                tpr = tp / (tp + fn + 1e-8); fpr = fp / (fp + tn + 1e-8)
-                adv = tpr - fpr
-                if adv > best_adv:
-                    best_adv, best_thr = adv, thr
-            y_pred = (y_score >= best_thr).astype(int)
-            bal_acc = float(balanced_accuracy_score(y_true, y_pred))
-            # PR/F1 at chosen threshold
-            try:
-                prec, rec, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='binary', zero_division=0)
-            except Exception:
-                prec = rec = f1 = 0.0
-            # AP (area under PR curve)
-            try:
-                ap = float(average_precision_score(y_true, y_score)) if len(_np.unique(y_true)) > 1 else 0.0
-            except Exception:
-                ap = 0.0
-            # TPR@X%FPR via quantiles of non-member scores
-            non_member = y_score[y_true == 0]
-            member = y_score[y_true == 1]
-            tpr_levels = {}
-            try:
-                want_fprs = [float(s.strip()) for s in (args.tpr_fprs or '').split(',') if s.strip()]
-            except Exception:
-                want_fprs = [1.0]
-            if non_member.size > 0 and member.size > 0:
-                for fpr_pct in want_fprs:
-                    q = max(0.0, min(1.0, 1.0 - (fpr_pct/100.0)))
-                    tau = _np.quantile(non_member, q)
-                    tpr_val = float((member >= tau).mean())
-                    key = f"{fpr_pct:g}"
-                    tpr_levels[key] = tpr_val
-            # Back-compat single 1%% metric if requested
-            tpr_at_1fpr = tpr_levels.get('1', None)
-            ce = {
-                'auroc': auroc,
-                'balanced_accuracy': bal_acc,
-                'advantage': float(best_adv),
-                'threshold': float(best_thr),
-                'precision': float(prec),
-                'recall': float(rec),
-                'f1': float(f1),
-                'ap': ap,
-                'tpr_at_fprs': tpr_levels,
-                **({'tpr_at_1fpr': tpr_at_1fpr} if tpr_at_1fpr is not None else {})
-            }
-            results['confidence_extended'] = ce
-            results['threshold_strategy'] = 'youden'
-            tprs_msg = ", ".join([f"TPR@{k}%FPR={v:.4f}" for k, v in sorted(tpr_levels.items(), key=lambda x: float(x[0]))]) if tpr_levels else ""
-            print(f"\n📊 Confidence extended metrics: AUROC={auroc:.4f}, BalAcc={bal_acc:.4f}, Adv={best_adv:.4f}, Thr={best_thr:.4f}{(' | ' + tprs_msg) if tprs_msg else ''}")
-            # Optional: save per-sample arrays for threshold confidence
-            if scores_dir:
-                try:
-                    import numpy as _np
-                    outp = Path(scores_dir) / "threshold_confidence.npz"
-                    _np.savez(outp, labels=y_true, scores=y_score)
-                    # Track path for convenience
-                    results.setdefault('raw_scores', {})['threshold_confidence'] = str(outp)
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"Could not compute extended metrics inline: {e}")
+        threshold_results = attacker.threshold_attack(strategy=args.threshold_strategy)
+        results['threshold_attacks'] = threshold_results
+        for metric_name, metric_res in threshold_results.items():
+            results[metric_name] = metric_res.get('accuracy')
+            print(
+                f"{metric_name}: Acc={metric_res['accuracy']:.3f}, "
+                f"AUC={metric_res['auc']:.3f}, "
+                f"BalAcc={metric_res['balanced_accuracy']:.3f}, "
+                f"Adv={metric_res['advantage']:.3f}"
+            )
     
     if "nn" in attacks:
         nn_metrics = attacker.nn_attack("nn")
@@ -714,11 +732,17 @@ def main(args):
                 'loader_paths': {
                     'victim_ckpt_path': victim_ckpt_used,
                     'victim_config_path': victim_cfg_used,
+                    'victim_dense_ckpt_path': victim_dense_ckpt_used,
+                    'victim_dense_config_path': victim_dense_cfg_used,
                     'shadow_ckpt_paths': shadow_ckpt_used_map,
                     'shadow_config_paths': shadow_config_used_map,
+                    'shadow_dense_ckpt_paths': shadow_dense_ckpt_used_map,
+                    'shadow_dense_config_paths': shadow_dense_config_used_map,
                 },
                 'victim_config': victim_cfg,
-                'shadow_configs': shadow_cfg_map
+                'victim_dense_config': victim_dense_cfg if attack_original else None,
+                'shadow_configs': shadow_cfg_map,
+                'shadow_dense_configs': shadow_dense_cfg_map
             },
             'data_splits_info': {
                 'victim_members': victim_members_count,

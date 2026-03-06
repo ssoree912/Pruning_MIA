@@ -213,6 +213,8 @@ class MiaAttack:
             'advantage': float(tpr - fpr),
             'tpr_at_1fpr': tpr_suite.get('1', None),
             'tpr_at_fprs': tpr_suite,
+            'attack_features': mia_type,
+            'attack_model': model_name,
         }
         # Optional: save per-sample arrays
         if self.save_scores_dir is not None:
@@ -298,6 +300,8 @@ class MiaAttack:
             'nonmember_std': std_out,
             'tpr_at_1fpr': tpr_suite.get('1', None),
             'tpr_at_fprs': tpr_suite,
+            'implementation': 'global_gaussian_true_logp',
+            'per_example_reference_models': False,
         }
         # Optional: save per-sample arrays
         if self.save_scores_dir is not None:
@@ -310,18 +314,33 @@ class MiaAttack:
                 pass
         return result
 
-    def threshold_attack(self):
+    def threshold_attack(self, strategy="max_accuracy"):
         victim_in_predicts = self.victim_in_predicts.detach().cpu().numpy()
         victim_out_predicts = self.victim_out_predicts.detach().cpu().numpy()
 
         attack_in_predicts = self.attack_in_predicts.detach().cpu().numpy()
         attack_out_predicts = self.attack_out_predicts.detach().cpu().numpy()
-        attacker = ThresholdAttacker((attack_in_predicts, self.attack_in_targets.detach().cpu().numpy()),
-                                 (attack_out_predicts, self.attack_out_targets.detach().cpu().numpy()),
-                                 (victim_in_predicts, self.victim_in_targets.detach().cpu().numpy()),
-                                 (victim_out_predicts, self.victim_out_targets.detach().cpu().numpy()),
-                                 self.num_cls)
-        confidence, entropy, modified_entropy = attacker._mem_inf_benchmarks()
-        top1_conf, _, _ = attacker._mem_inf_benchmarks_non_cls()
-        return confidence * 100., entropy * 100., modified_entropy * 100., \
-               top1_conf * 100.
+        attacker = ThresholdAttacker(
+            (attack_in_predicts, self.attack_in_targets.detach().cpu().numpy()),
+            (attack_out_predicts, self.attack_out_targets.detach().cpu().numpy()),
+            (victim_in_predicts, self.victim_in_targets.detach().cpu().numpy()),
+            (victim_out_predicts, self.victim_out_targets.detach().cpu().numpy()),
+            self.num_cls,
+            threshold_strategy=strategy,
+            tpr_fprs=self.tpr_fprs,
+        )
+
+        results = {}
+        metric_order = ('confidence', 'entropy', 'modified_entropy', 'top1_conf')
+        for metric_name in metric_order:
+            metrics, y_true, y_score = attacker.evaluate(metric_name, strategy=strategy)
+            results[metric_name] = metrics
+            if self.save_scores_dir is not None:
+                try:
+                    self.save_scores_dir.mkdir(parents=True, exist_ok=True)
+                    out = self.save_scores_dir / f"threshold_{metric_name}.npz"
+                    np.savez(out, labels=y_true, scores=y_score)
+                    results[metric_name]['scores_file'] = str(out)
+                except Exception:
+                    pass
+        return results
