@@ -142,14 +142,17 @@ def simplex_state_dict(
         if not torch.is_tensor(value):
             out[key] = value
             continue
+        def _get_tensor(st: Dict[str, torch.Tensor]) -> torch.Tensor:
+            # Some vertices may only carry trainable params; fall back to ref tensor.
+            return st[key] if key in st else value
         if value.dtype.is_floating_point:
             acc = torch.zeros_like(value, dtype=torch.float32)
             for st, lam in zip(vertices, lambdas):
-                acc += float(lam) * st[key].to(dtype=torch.float32)
+                acc += float(lam) * _get_tensor(st).to(dtype=torch.float32)
             out[key] = acc.to(dtype=value.dtype).detach().cpu().clone()
         else:
             pick = int(torch.argmax(lambdas).item())
-            out[key] = vertices[pick][key].detach().cpu().clone()
+            out[key] = _get_tensor(vertices[pick]).detach().cpu().clone()
     return out
 
 
@@ -436,8 +439,18 @@ def train_simplex_vertex(
                 f"loss={row['loss']:.6f} retain={row['retain_loss']:.6f} forget={row['forget_loss']:.6f}"
             )
 
-    final_vertex_state = {k: p.detach().cpu().clone() for k, p in vertex_params.items()}
-    swa_vertex_state = tail.average() if tail is not None else None
+    # Persist a full state dict so downstream simplex sampling can access BN buffers.
+    final_vertex_state = {k: v.detach().cpu().clone() for k, v in init_vertex_state.items()}
+    for k, p in vertex_params.items():
+        final_vertex_state[k] = p.detach().cpu().clone()
+
+    swa_vertex_state = None
+    if tail is not None:
+        swa_params = tail.average()
+        if swa_params is not None:
+            swa_vertex_state = {k: v.detach().cpu().clone() for k, v in init_vertex_state.items()}
+            for k, p in swa_params.items():
+                swa_vertex_state[k] = p.detach().cpu().clone()
     return SimplexTrainResult(
         final_vertex_state=final_vertex_state,
         swa_vertex_state=swa_vertex_state,
