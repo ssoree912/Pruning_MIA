@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${REPO_ROOT}"
+
 # Pairwise connectivity pipeline for DF1 unlearning endpoints.
 # Phase order:
 #   1) raw_linear
@@ -68,7 +72,7 @@ else
   echo "Scratch retrain checkpoint not found, proceeding without RT reference: $SCRATCH_RETRAIN_CKPT"
 fi
 
-python connectivity/run_connectivity_experiment.py \
+python -m connectivity.run_connectivity_experiment \
   --dense-ckpt "$DENSE_CKPT" \
   --endpoint-a "$ENDPOINT_A" \
   --endpoint-b "$ENDPOINT_B" \
