@@ -42,6 +42,7 @@ GRAD_CLIP="${GRAD_CLIP:-1.0}"
 
 LAMBDAS="${LAMBDAS:-21}"
 BN_BATCHES="${BN_BATCHES:-200}"
+BN_RECALC="${BN_RECALC:-1}"  # 1: recalibrate BN, 0: keep checkpoint BN stats
 PERM_MAX_ITER="${PERM_MAX_ITER:-100}"
 SEED="${SEED:-42}"
 
@@ -72,6 +73,11 @@ else
   echo "Scratch retrain checkpoint not found, proceeding without RT reference: $SCRATCH_RETRAIN_CKPT"
 fi
 
+BN_RECALC_ARG=()
+if [[ "${BN_RECALC}" == "0" ]]; then
+  BN_RECALC_ARG=(--no-bn-recalc)
+fi
+
 python -m connectivity.run_connectivity_experiment \
   --dense-ckpt "$DENSE_CKPT" \
   --endpoint-a "$ENDPOINT_A" \
@@ -96,6 +102,7 @@ python -m connectivity.run_connectivity_experiment \
   --forget-val-budget "$FORGET_VAL_BUDGET" \
   --lambdas "$LAMBDAS" \
   --bn-batches "$BN_BATCHES" \
+  "${BN_RECALC_ARG[@]}" \
   --perm-max-iter "$PERM_MAX_ITER" \
   --seed "$SEED" \
   --bezier-steps "$BEZIER_STEPS" \

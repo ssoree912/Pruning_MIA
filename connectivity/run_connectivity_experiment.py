@@ -806,6 +806,8 @@ def main() -> None:
         "retain_weight": args.retain_weight,
         "grad_clip": args.grad_clip,
         "forget_val_budget": args.forget_val_budget,
+        "bn_recalc": bool(args.bn_recalc),
+        "bn_batches": int(args.bn_batches),
         "endpoint_metrics": endpoint_metrics,
         "rt_reference": rt_reference,
         "raw_linear": {
