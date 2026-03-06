@@ -1,7 +1,8 @@
-# PyTorch ecosystem (CUDA 11.8)
-torch==2.1.0
-torchvision==0.16.0
-torchaudio==2.1.0
+# PyTorch ecosystem
+# 2.1.0 is unavailable on the current proxy index; use 2.2.x family.
+torch>=2.2.0,<2.3
+torchvision>=0.17.0,<0.18
+torchaudio>=2.2.0,<2.3
 
 # Core scientific computing
 numpy==1.24.4
