@@ -28,9 +28,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import models  # noqa: E402
 from unlearning.utils import (
     build_forget_retain_indices,
+    composite_unlearning_score,
     make_subset_loader,
     resolve_df_spec,
     set_seed,
+    split_indices_train_val,
     train_unlearning_endpoint_ascent,
 )
 
@@ -170,6 +172,8 @@ def _get_dataset_targets(dataset: Any) -> List[int]:
 def train_scratch_retrain_baseline(
     spec: ModelSpec,
     retain_train_loader: DataLoader,
+    retain_val_loader: DataLoader,
+    forget_val_loader: DataLoader,
     retain_eval_loader: DataLoader,
     forget_eval_loader: DataLoader,
     test_loader: DataLoader,
@@ -180,9 +184,13 @@ def train_scratch_retrain_baseline(
     weight_decay: float,
     nesterov: bool,
     seed: int,
+    ckpt_select: str = "retain_val_acc",
+    forget_budget_acc: float = 0.01,
 ) -> Dict[str, Any]:
     if epochs <= 0:
         raise ValueError("baseline epochs must be > 0")
+    if ckpt_select not in {"retain_val_acc", "composite"}:
+        raise ValueError(f"Unsupported scratch baseline ckpt_select: {ckpt_select}")
 
     set_seed(seed)
     model, _ = build_dense_model(spec)
@@ -197,7 +205,7 @@ def train_scratch_retrain_baseline(
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(epochs, 1))
 
-    best_test_acc = float("-inf")
+    best_score = float("-inf")
     best_epoch = -1
     best_state: Optional[Dict[str, torch.Tensor]] = None
     best_metrics: Dict[str, float] = {}
@@ -220,50 +228,93 @@ def train_scratch_retrain_baseline(
             running_loss += float(loss.item()) * bsz
         scheduler.step()
 
+        retain_val_stats = evaluate(model, retain_val_loader, device)
+        forget_val_stats = evaluate(model, forget_val_loader, device)
         retain_stats = evaluate(model, retain_eval_loader, device)
         forget_stats = evaluate(model, forget_eval_loader, device)
         test_stats = evaluate(model, test_loader, device)
+
+        if ckpt_select == "retain_val_acc":
+            selection_score = float(retain_val_stats["acc"])
+        else:
+            selection_score = composite_unlearning_score(
+                retain_val_acc=float(retain_val_stats["acc"]),
+                forget_val_acc=float(forget_val_stats["acc"]),
+                full_val_acc=None,
+                forget_budget_acc=float(forget_budget_acc),
+                rt_ref=None,
+            )
+
         row = {
             "epoch": int(epoch),
             "train_retain_loss": running_loss / max(seen, 1),
+            "retain_val_loss": float(retain_val_stats["loss"]),
+            "retain_val_acc": float(retain_val_stats["acc"]),
+            "forget_val_loss": float(forget_val_stats["loss"]),
+            "forget_val_acc": float(forget_val_stats["acc"]),
             "retain_loss": float(retain_stats["loss"]),
             "retain_acc": float(retain_stats["acc"]),
             "forget_loss": float(forget_stats["loss"]),
             "forget_acc": float(forget_stats["acc"]),
             "test_loss": float(test_stats["loss"]),
             "test_acc": float(test_stats["acc"]),
+            "selection_score": float(selection_score),
             "lr": optimizer.param_groups[0]["lr"],
         }
         history.append(row)
         print(
             f"[scratch-retrain] epoch {epoch + 1:03d}/{epochs:03d} "
-            f"retain_acc={row['retain_acc']:.4f} forget_acc={row['forget_acc']:.4f} test_acc={row['test_acc']:.4f}"
+            f"retain_val_acc={row['retain_val_acc']:.4f} forget_val_acc={row['forget_val_acc']:.4f} "
+            f"retain_acc={row['retain_acc']:.4f} forget_acc={row['forget_acc']:.4f} "
+            f"test_acc={row['test_acc']:.4f} score={row['selection_score']:.6f}"
         )
-        if row["test_acc"] > best_test_acc:
-            best_test_acc = row["test_acc"]
+        if row["selection_score"] > best_score:
+            best_score = row["selection_score"]
             best_epoch = epoch
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             best_metrics = {
+                "retain_val_loss": row["retain_val_loss"],
+                "retain_val_acc": row["retain_val_acc"],
+                "forget_val_loss": row["forget_val_loss"],
+                "forget_val_acc": row["forget_val_acc"],
                 "retain_loss": row["retain_loss"],
                 "retain_acc": row["retain_acc"],
                 "forget_loss": row["forget_loss"],
                 "forget_acc": row["forget_acc"],
                 "test_loss": row["test_loss"],
                 "test_acc": row["test_acc"],
+                "selection_score": row["selection_score"],
             }
 
     if best_state is None:
         best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        retain_val_stats = evaluate(model, retain_val_loader, device)
+        forget_val_stats = evaluate(model, forget_val_loader, device)
         retain_stats = evaluate(model, retain_eval_loader, device)
         forget_stats = evaluate(model, forget_eval_loader, device)
         test_stats = evaluate(model, test_loader, device)
+        if ckpt_select == "retain_val_acc":
+            best_score = float(retain_val_stats["acc"])
+        else:
+            best_score = composite_unlearning_score(
+                retain_val_acc=float(retain_val_stats["acc"]),
+                forget_val_acc=float(forget_val_stats["acc"]),
+                full_val_acc=None,
+                forget_budget_acc=float(forget_budget_acc),
+                rt_ref=None,
+            )
         best_metrics = {
+            "retain_val_loss": float(retain_val_stats["loss"]),
+            "retain_val_acc": float(retain_val_stats["acc"]),
+            "forget_val_loss": float(forget_val_stats["loss"]),
+            "forget_val_acc": float(forget_val_stats["acc"]),
             "retain_loss": float(retain_stats["loss"]),
             "retain_acc": float(retain_stats["acc"]),
             "forget_loss": float(forget_stats["loss"]),
             "forget_acc": float(forget_stats["acc"]),
             "test_loss": float(test_stats["loss"]),
             "test_acc": float(test_stats["acc"]),
+            "selection_score": float(best_score),
         }
 
     return {
@@ -278,9 +329,10 @@ def train_scratch_retrain_baseline(
             "weight_decay": float(weight_decay),
             "nesterov": bool(nesterov),
             "seed": int(seed),
+            "ckpt_select": ckpt_select,
+            "forget_budget_acc": float(forget_budget_acc),
         },
     }
-
 
 @torch.no_grad()
 def reset_bn_stats(model: nn.Module) -> None:
@@ -368,33 +420,82 @@ def average_state_dicts(states: List[Dict[str, torch.Tensor]]) -> Dict[str, torc
     return out
 
 
-def build_swa_state_from_curve(
+def swa_from_checkpoints(
+    spec: ModelSpec,
+    ckpt_paths: List[Path],
+    bn_loader: DataLoader,
+    device: torch.device,
+    bn_recalc_on: bool,
+    bn_batches: int,
+) -> Dict[str, torch.Tensor]:
+    if not ckpt_paths:
+        raise ValueError("ckpt_paths must not be empty")
+    states = [load_checkpoint(p)[1] for p in ckpt_paths]
+    swa_state = average_state_dicts(states)
+    return recalibrate_state_bn(
+        spec=spec,
+        state=swa_state,
+        bn_loader=bn_loader,
+        device=device,
+        bn_recalc_on=bn_recalc_on,
+        bn_batches=bn_batches,
+    )
+
+
+def greedy_soup(
+    candidates: List[Dict[str, Any]],
+    eval_state_fn,
+) -> Tuple[Dict[str, torch.Tensor], List[str], float]:
+    if not candidates:
+        raise ValueError("candidates must not be empty")
+    ordered = sorted(candidates, key=lambda x: float(x["val_score"]), reverse=True)
+    chosen = [ordered[0]]
+    soup_state = ordered[0]["state"]
+    best_score = float(ordered[0]["val_score"])
+    for cand in ordered[1:]:
+        trial_state = average_state_dicts([c["state"] for c in chosen] + [cand["state"]])
+        trial_score = float(eval_state_fn(trial_state))
+        if trial_score >= best_score:
+            chosen.append(cand)
+            soup_state = trial_state
+            best_score = trial_score
+    return soup_state, [str(c["name"]) for c in chosen], float(best_score)
+
+
+def make_linear_state_fn(
     s0: Dict[str, torch.Tensor],
     s1: Dict[str, torch.Tensor],
-    curve: List[Dict[str, float]],
-    topk: int,
-    metric: str,
-    t_min: float,
-    t_max: float,
     subspace_mask: Optional[Dict[str, torch.Tensor]] = None,
-) -> Tuple[Dict[str, torch.Tensor], List[Dict[str, float]]]:
-    if metric not in {"test_acc", "retain_acc", "retain_loss"}:
-        raise ValueError(f"Unsupported SWA metric: {metric}")
-    points = [p for p in curve if float(p["t"]) >= t_min and float(p["t"]) <= t_max]
-    if not points:
-        points = list(curve)
-    if not points:
-        raise ValueError("curve is empty")
+):
+    return lambda t: interpolate_state(s0, s1, float(t), subspace_mask=subspace_mask)
 
-    reverse = metric in {"test_acc", "retain_acc"}
-    points = sorted(points, key=lambda p: float(p[metric]), reverse=reverse)
-    k = len(points) if topk <= 0 else min(topk, len(points))
-    selected = points[:k]
-    selected_states = [
-        interpolate_state(s0, s1, float(p["t"]), subspace_mask=subspace_mask) for p in selected
-    ]
-    swa_state = average_state_dicts(selected_states)
-    return swa_state, selected
+
+def bezier_state(
+    s0: Dict[str, torch.Tensor],
+    sc: Dict[str, torch.Tensor],
+    s1: Dict[str, torch.Tensor],
+    t: float,
+) -> Dict[str, torch.Tensor]:
+    out: Dict[str, torch.Tensor] = {}
+    for k, v0 in s0.items():
+        if k not in s1:
+            out[k] = v0
+            continue
+        v1 = s1[k]
+        vc = sc[k] if k in sc else v0
+        if torch.is_tensor(v0) and torch.is_tensor(v1) and v0.dtype.is_floating_point:
+            out[k] = ((1.0 - t) ** 2) * v0 + 2.0 * t * (1.0 - t) * vc + (t ** 2) * v1
+        else:
+            out[k] = v0 if t < 0.5 else v1
+    return out
+
+
+def make_bezier_state_fn(
+    s0: Dict[str, torch.Tensor],
+    sc: Dict[str, torch.Tensor],
+    s1: Dict[str, torch.Tensor],
+):
+    return lambda t: bezier_state(s0, sc, s1, float(t))
 
 
 def recalibrate_state_bn(
@@ -497,6 +598,109 @@ def build_saliency_mask(
     return mask
 
 
+def evaluate_connector(
+    spec: ModelSpec,
+    state_fn,
+    retain_val_loader: Optional[DataLoader],
+    forget_val_loader: Optional[DataLoader],
+    retain_eval_loader: DataLoader,
+    forget_eval_loader: DataLoader,
+    test_loader: DataLoader,
+    bn_loader: DataLoader,
+    device: torch.device,
+    lambdas: List[float],
+    bn_recalc_on: bool,
+    bn_batches: int,
+    retain_test_loader: Optional[DataLoader] = None,
+    forget_test_loader: Optional[DataLoader] = None,
+    normalized_full_scale: Optional[float] = None,
+) -> Dict[str, Any]:
+    model, _ = build_dense_model(spec)
+    model = model.to(device)
+
+    curve: List[Dict[str, Any]] = []
+    for i, t in enumerate(lambdas, start=1):
+        s_t = state_fn(float(t))
+        model.load_state_dict(s_t, strict=True)
+        if bn_recalc_on:
+            bn_recalibrate(model, bn_loader, device=device, max_batches=bn_batches)
+
+        point: Dict[str, Any] = {"t": float(t)}
+        if retain_val_loader is not None and forget_val_loader is not None:
+            retain_val = evaluate(model, retain_val_loader, device)
+            forget_val = evaluate(model, forget_val_loader, device)
+            point["retain_val_loss"] = float(retain_val["loss"])
+            point["retain_val_acc"] = float(retain_val["acc"])
+            point["forget_val_loss"] = float(forget_val["loss"])
+            point["forget_val_acc"] = float(forget_val["acc"])
+
+        retain_stats = evaluate(model, retain_eval_loader, device)
+        forget_stats = evaluate(model, forget_eval_loader, device)
+        test_stats = evaluate(model, test_loader, device)
+        point.update(
+            {
+                "retain_loss": float(retain_stats["loss"]),
+                "retain_acc": float(retain_stats["acc"]),
+                "full_val_loss": float(retain_stats["loss"]),
+                "full_val_acc": float(retain_stats["acc"]),
+                "forget_loss": float(forget_stats["loss"]),
+                "forget_acc": float(forget_stats["acc"]),
+                "test_loss": float(test_stats["loss"]),
+                "test_acc": float(test_stats["acc"]),
+            }
+        )
+        if retain_test_loader is not None:
+            retain_test_stats = evaluate(model, retain_test_loader, device)
+            point["retain_test_loss"] = float(retain_test_stats["loss"])
+            point["retain_test_acc"] = float(retain_test_stats["acc"])
+        if forget_test_loader is not None:
+            forget_test_stats = evaluate(model, forget_test_loader, device)
+            point["forget_test_loss"] = float(forget_test_stats["loss"])
+            point["forget_test_acc"] = float(forget_test_stats["acc"])
+        if normalized_full_scale is not None and normalized_full_scale > 0.0:
+            point["normalized_full_scale"] = float(normalized_full_scale)
+            point["normalized_full_test_acc"] = float(point["test_acc"] / normalized_full_scale)
+            point["normalized_full"] = point["normalized_full_test_acc"]
+        curve.append(point)
+
+        msg = (
+            f"[interp {i:03d}/{len(lambdas):03d}] t={float(t):.3f} "
+            f"retain_acc={point['retain_acc']:.4f} forget_acc={point['forget_acc']:.4f} test_acc={point['test_acc']:.4f}"
+        )
+        if "retain_val_acc" in point and "forget_val_acc" in point:
+            msg += f" retain_val_acc={point['retain_val_acc']:.4f} forget_val_acc={point['forget_val_acc']:.4f}"
+        print(msg)
+
+    if not curve:
+        raise RuntimeError("evaluate_connector produced empty curve")
+
+    barrier_key = "retain_val_loss" if "retain_val_loss" in curve[0] else "retain_loss"
+    drop_key = "retain_val_acc" if "retain_val_acc" in curve[0] else "retain_acc"
+
+    l0 = float(curve[0][barrier_key])
+    l1 = float(curve[-1][barrier_key])
+    lmax = max(float(p[barrier_key]) for p in curve)
+    barrier = lmax - max(l0, l1)
+
+    acc_ref = max(float(curve[0][drop_key]), float(curve[-1][drop_key]))
+    min_acc = min(float(p[drop_key]) for p in curve)
+    acc_drop_pp = (acc_ref - min_acc) * 100.0
+
+    return {
+        "curve": curve,
+        "barrier_metric": barrier_key,
+        "drop_metric": drop_key,
+        "retain_loss_endpoint0": float(l0),
+        "retain_loss_endpoint1": float(l1),
+        "retain_loss_max": float(lmax),
+        "retain_loss_barrier": float(barrier),
+        "retain_acc_drop_pp": float(acc_drop_pp),
+        "best_by_test_acc": max(curve, key=lambda x: float(x["test_acc"])),
+        "best_by_retain_acc": max(curve, key=lambda x: float(x.get(drop_key, x["retain_acc"]))),
+        "best_by_retain_loss": min(curve, key=lambda x: float(x.get(barrier_key, x["retain_loss"]))),
+    }
+
+
 def run_connectivity(
     spec: ModelSpec,
     s0: Dict[str, torch.Tensor],
@@ -513,72 +717,27 @@ def run_connectivity(
     retain_test_loader: Optional[DataLoader] = None,
     forget_test_loader: Optional[DataLoader] = None,
     normalized_full_scale: Optional[float] = None,
+    retain_val_loader: Optional[DataLoader] = None,
+    forget_val_loader: Optional[DataLoader] = None,
 ) -> Dict[str, Any]:
-    model, _ = build_dense_model(spec)
-    model = model.to(device)
-
-    curve = []
-    for i, t in enumerate(lambdas, start=1):
-        s_t = interpolate_state(s0, s1, t, subspace_mask=subspace_mask)
-        model.load_state_dict(s_t, strict=True)
-        if bn_recalc_on:
-            bn_recalibrate(model, bn_loader, device=device, max_batches=bn_batches)
-        retain_stats = evaluate(model, retain_eval_loader, device)
-        forget_stats = evaluate(model, forget_eval_loader, device)
-        test_stats = evaluate(model, test_loader, device)
-        point = {
-            "t": float(t),
-            "retain_loss": float(retain_stats["loss"]),
-            "retain_acc": float(retain_stats["acc"]),
-            "forget_loss": float(forget_stats["loss"]),
-            "forget_acc": float(forget_stats["acc"]),
-            "test_loss": float(test_stats["loss"]),
-            "test_acc": float(test_stats["acc"]),
-        }
-        if retain_test_loader is not None:
-            retain_test_stats = evaluate(model, retain_test_loader, device)
-            point["retain_test_loss"] = float(retain_test_stats["loss"])
-            point["retain_test_acc"] = float(retain_test_stats["acc"])
-        if forget_test_loader is not None:
-            forget_test_stats = evaluate(model, forget_test_loader, device)
-            point["forget_test_loss"] = float(forget_test_stats["loss"])
-            point["forget_test_acc"] = float(forget_test_stats["acc"])
-        if normalized_full_scale is not None and normalized_full_scale > 0.0:
-            point["normalized_full_scale"] = float(normalized_full_scale)
-            point["normalized_full_test_acc"] = float(point["test_acc"] / normalized_full_scale)
-            point["normalized_full"] = point["normalized_full_test_acc"]
-        curve.append(point)
-        log_msg = (
-            f"[interp {i:03d}/{len(lambdas):03d}] t={t:.3f} "
-            f"retain_loss={point['retain_loss']:.4f} retain_acc={point['retain_acc']:.4f} "
-            f"forget_acc={point['forget_acc']:.4f} test_acc={point['test_acc']:.4f}"
-        )
-        if "retain_test_acc" in point:
-            log_msg += f" retain_test_acc={point['retain_test_acc']:.4f}"
-        if "forget_test_acc" in point:
-            log_msg += f" forget_test_acc={point['forget_test_acc']:.4f}"
-        print(log_msg)
-
-    l0 = curve[0]["retain_loss"]
-    l1 = curve[-1]["retain_loss"]
-    lmax = max(p["retain_loss"] for p in curve)
-    barrier = lmax - max(l0, l1)
-
-    acc_ref = max(curve[0]["retain_acc"], curve[-1]["retain_acc"])
-    min_acc = min(p["retain_acc"] for p in curve)
-    acc_drop_pp = (acc_ref - min_acc) * 100.0
-
-    return {
-        "curve": curve,
-        "retain_loss_endpoint0": float(l0),
-        "retain_loss_endpoint1": float(l1),
-        "retain_loss_max": float(lmax),
-        "retain_loss_barrier": float(barrier),
-        "retain_acc_drop_pp": float(acc_drop_pp),
-        "best_by_test_acc": max(curve, key=lambda x: float(x["test_acc"])),
-        "best_by_retain_acc": max(curve, key=lambda x: float(x["retain_acc"])),
-        "best_by_retain_loss": min(curve, key=lambda x: float(x["retain_loss"])),
-    }
+    state_fn = make_linear_state_fn(s0, s1, subspace_mask=subspace_mask)
+    return evaluate_connector(
+        spec=spec,
+        state_fn=state_fn,
+        retain_val_loader=retain_val_loader,
+        forget_val_loader=forget_val_loader,
+        retain_eval_loader=retain_eval_loader,
+        forget_eval_loader=forget_eval_loader,
+        test_loader=test_loader,
+        bn_loader=bn_loader,
+        device=device,
+        lambdas=lambdas,
+        bn_recalc_on=bn_recalc_on,
+        bn_batches=bn_batches,
+        retain_test_loader=retain_test_loader,
+        forget_test_loader=forget_test_loader,
+        normalized_full_scale=normalized_full_scale,
+    )
 
 
 def evaluate_endpoint_state(
@@ -790,14 +949,22 @@ def _extract_mia_metrics(payload: Dict[str, Any]) -> Dict[str, float]:
     if not isinstance(res, dict):
         return out
 
+    thr_block = None
+    threshold_attacks = res.get("threshold_attacks", {})
+    if isinstance(threshold_attacks, dict):
+        thr_block = threshold_attacks.get("confidence")
     conf_ext = res.get("confidence_extended", {})
-    if isinstance(conf_ext, dict):
-        if "auroc" in conf_ext:
-            out["threshold_auroc"] = float(conf_ext["auroc"])
-        if "advantage" in conf_ext:
-            out["threshold_advantage"] = float(conf_ext["advantage"])
-        if "tpr_at_1fpr" in conf_ext and conf_ext["tpr_at_1fpr"] is not None:
-            out["threshold_tpr_at_1fpr"] = float(conf_ext["tpr_at_1fpr"])
+    if thr_block is None and isinstance(conf_ext, dict):
+        thr_block = conf_ext
+    if isinstance(thr_block, dict):
+        if "auc" in thr_block:
+            out["threshold_auroc"] = float(thr_block["auc"])
+        elif "auroc" in thr_block:
+            out["threshold_auroc"] = float(thr_block["auroc"])
+        if "advantage" in thr_block:
+            out["threshold_advantage"] = float(thr_block["advantage"])
+        if "tpr_at_1fpr" in thr_block and thr_block["tpr_at_1fpr"] is not None:
+            out["threshold_tpr_at_1fpr"] = float(thr_block["tpr_at_1fpr"])
 
     for attack in ("lira", "nn", "nn_top3", "nn_cls", "samia"):
         a = res.get(attack, {})
@@ -870,12 +1037,43 @@ def _build_retrain_alignment_report(
     }
 
 
-def _choose_curve_point(curve: List[Dict[str, float]], metric: str) -> Dict[str, float]:
-    if metric in {"test_acc", "retain_acc"}:
-        return max(curve, key=lambda x: float(x[metric]))
-    if metric in {"retain_loss", "test_loss"}:
-        return min(curve, key=lambda x: float(x[metric]))
-    raise ValueError(f"Unsupported mia curve metric: {metric}")
+def _choose_curve_point(
+    curve: List[Dict[str, float]],
+    *,
+    selector: str = "composite",
+    forget_budget_acc: float = 0.01,
+    rt_reference: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    if not curve:
+        raise ValueError("curve is empty")
+
+    feasible = [p for p in curve if float(p.get("forget_val_acc", 1.0)) <= float(forget_budget_acc)]
+    if not feasible:
+        curve_sorted = sorted(curve, key=lambda x: float(x.get("forget_val_acc", 1.0)))
+        feasible = curve_sorted[: max(1, len(curve_sorted) // 5)]
+
+    def _score(p: Dict[str, float]) -> float:
+        if selector == "retain_val_acc":
+            return float(p.get("retain_val_acc", p.get("retain_acc", 0.0)))
+        if selector == "retain_acc":
+            return float(p.get("retain_acc", 0.0))
+        if selector == "test_acc":
+            return float(p.get("test_acc", 0.0))
+        if selector == "retain_loss":
+            return -float(p.get("retain_loss", float("inf")))
+        if selector == "test_loss":
+            return -float(p.get("test_loss", float("inf")))
+        if selector == "composite":
+            return composite_unlearning_score(
+                retain_val_acc=float(p.get("retain_val_acc", p.get("retain_acc", 0.0))),
+                forget_val_acc=float(p.get("forget_val_acc", p.get("forget_acc", 1.0))),
+                full_val_acc=None,
+                forget_budget_acc=float(forget_budget_acc),
+                rt_ref=rt_reference,
+            )
+        raise ValueError(f"Unsupported selector: {selector}")
+
+    return max(feasible, key=_score)
 
 
 def _save_state_dict_checkpoint(state: Dict[str, torch.Tensor], out_path: Path, stage: str) -> None:
@@ -906,6 +1104,7 @@ def main() -> None:
     parser.add_argument("--seed-a", type=int, default=43, help="Unlearning seed A")
     parser.add_argument("--seed-b", type=int, default=44, help="Unlearning seed B")
     parser.add_argument("--split-seed", type=int, default=7, help="Df/Dr split seed")
+    parser.add_argument("--val-ratio", type=float, default=0.1, help="Validation ratio split from Df/Dr train indices")
 
     parser.add_argument("--df-mode", type=str, default="profile", choices=["profile", "class", "random"])
     parser.add_argument("--df-profile", type=str, default="df1", choices=["df1", "df2", "df3"])
@@ -928,6 +1127,18 @@ def main() -> None:
     )
     parser.add_argument("--retain-weight", type=float, default=1.0, help="Dr descent weight")
     parser.add_argument("--grad-clip", type=float, default=1.0, help="Gradient clipping norm (<=0 disables)")
+    parser.add_argument(
+        "--forget-val-budget",
+        type=float,
+        default=0.01,
+        help="Maximum allowed forget_val_acc for checkpoint/curve selection",
+    )
+    parser.add_argument(
+        "--save-tail-k",
+        type=int,
+        default=0,
+        help="Keep last K per-epoch checkpoints in run_dir/tail_seed* (0 disables)",
+    )
     parser.add_argument("--retrain-epochs", type=int, default=0, help="Retain-only retrain epochs after unlearning")
     parser.add_argument("--retrain-lr", type=float, default=None, help="Retain retrain LR (default: unlearn-lr)")
     parser.add_argument(
@@ -959,8 +1170,8 @@ def main() -> None:
     parser.add_argument(
         "--ckpt-select",
         type=str,
-        default="retain_acc",
-        choices=["retain_acc", "test_acc"],
+        default="composite",
+        choices=["composite", "retain_val_acc", "retain_acc", "test_acc"],
         help="Best checkpoint selection metric for endpoint model",
     )
     parser.add_argument(
@@ -992,8 +1203,8 @@ def main() -> None:
     parser.add_argument(
         "--mia-select-metric",
         type=str,
-        default="test_acc",
-        choices=["test_acc", "retain_acc", "retain_loss", "test_loss"],
+        default="composite",
+        choices=["composite", "retain_val_acc", "retain_acc", "test_acc", "retain_loss", "test_loss"],
         help="Curve metric for selecting step2/step3 checkpoint used in MIA",
     )
     parser.add_argument("--mia-device", type=int, default=-1, help="GPU id for MIA (-1 uses --gpu)")
@@ -1055,9 +1266,9 @@ def main() -> None:
     parser.add_argument(
         "--swa-select-metric",
         type=str,
-        default="test_acc",
-        choices=["test_acc", "retain_acc", "retain_loss"],
-        help="Metric used to select top-k points for SWA",
+        default="composite",
+        choices=["composite", "retain_val_acc", "retain_acc", "test_acc", "retain_loss", "test_loss"],
+        help="Metric used to rank top-k connectivity candidates before greedy soup",
     )
     parser.add_argument("--swa-t-min", type=float, default=0.0, help="Min interpolation t for SWA candidate points")
     parser.add_argument("--swa-t-max", type=float, default=1.0, help="Max interpolation t for SWA candidate points")
@@ -1074,8 +1285,12 @@ def main() -> None:
         raise ValueError("seed-a and seed-b must be different")
     if args.mask_topk <= 0.0 or args.mask_topk > 1.0:
         raise ValueError("--mask-topk must be in (0,1]")
+    if args.val_ratio <= 0.0 or args.val_ratio >= 0.5:
+        raise ValueError("--val-ratio must be in (0,0.5)")
     if args.forget_alpha <= 0.0:
         raise ValueError("--forget-alpha must be > 0")
+    if args.forget_val_budget < 0.0 or args.forget_val_budget > 1.0:
+        raise ValueError("--forget-val-budget must be in [0,1]")
     if args.unlearn_steps < 0:
         raise ValueError("--unlearn-steps must be >= 0")
     if args.retrain_epochs < 0:
@@ -1134,7 +1349,21 @@ def main() -> None:
             f"Invalid Df/Dr split: forget={len(forget_idx)}, retain={len(retain_idx)}. "
             "Adjust df spec."
         )
-    print(f"Df size={len(forget_idx)} | Dr size={len(retain_idx)}")
+    forget_train_idx, forget_val_idx = split_indices_train_val(
+        forget_idx, args.val_ratio, args.split_seed + 11
+    )
+    retain_train_idx, retain_val_idx = split_indices_train_val(
+        retain_idx, args.val_ratio, args.split_seed + 17
+    )
+    if len(forget_train_idx) == 0 or len(retain_train_idx) == 0:
+        raise RuntimeError(
+            f"Invalid train split after val holdout: forget_train={len(forget_train_idx)}, "
+            f"retain_train={len(retain_train_idx)}"
+        )
+    print(
+        f"Df size={len(forget_idx)} (train={len(forget_train_idx)}, val={len(forget_val_idx)}) | "
+        f"Dr size={len(retain_idx)} (train={len(retain_train_idx)}, val={len(retain_val_idx)})"
+    )
 
     with open(run_dir / "split_info.json", "w") as f:
         json.dump(
@@ -1143,22 +1372,33 @@ def main() -> None:
                 "split_seed": args.split_seed,
                 "forget_size": len(forget_idx),
                 "retain_size": len(retain_idx),
+                "val_ratio": float(args.val_ratio),
+                "forget_train_size": len(forget_train_idx),
+                "forget_val_size": len(forget_val_idx),
+                "retain_train_size": len(retain_train_idx),
+                "retain_val_size": len(retain_val_idx),
             },
             f,
             indent=2,
         )
 
     retain_train_loader_a = make_subset_loader(
-        train_aug, retain_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_a
+        train_aug, retain_train_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_a
     )
     retain_train_loader_b = make_subset_loader(
-        train_aug, retain_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_b
+        train_aug, retain_train_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_b
     )
     forget_train_loader_a = make_subset_loader(
-        train_aug, forget_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_a + 100
+        train_aug, forget_train_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_a + 100
     )
     forget_train_loader_b = make_subset_loader(
-        train_aug, forget_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_b + 100
+        train_aug, forget_train_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.seed_b + 100
+    )
+    retain_val_loader = make_subset_loader(
+        train_eval, retain_val_idx, spec.batch_size, spec.workers, shuffle=False, seed=0
+    )
+    forget_val_loader = make_subset_loader(
+        train_eval, forget_val_idx, spec.batch_size, spec.workers, shuffle=False, seed=0
     )
     retain_eval_loader = make_subset_loader(
         train_eval, retain_idx, spec.batch_size, spec.workers, shuffle=False, seed=0
@@ -1174,7 +1414,7 @@ def main() -> None:
         pin_memory=True,
     )
     bn_loader = make_subset_loader(
-        train_eval, retain_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.split_seed + 1000
+        train_eval, retain_train_idx, spec.batch_size, spec.workers, shuffle=True, seed=args.split_seed + 1000
     )
 
     retain_test_loader: Optional[DataLoader] = None
@@ -1206,12 +1446,14 @@ def main() -> None:
     ckpt_b = run_dir / f"unlearn_seed{args.seed_b}.pth"
     scratch_baseline_metrics: Optional[Dict[str, Any]] = None
     scratch_baseline_ckpt: Optional[Path] = None
+    scratch_baseline_state: Optional[Dict[str, torch.Tensor]] = None
 
     if args.scratch_retrain_ckpt:
         scratch_baseline_ckpt = Path(args.scratch_retrain_ckpt)
         if not scratch_baseline_ckpt.exists():
             raise FileNotFoundError(f"scratch retrain checkpoint not found: {scratch_baseline_ckpt}")
         _, scratch_state = load_checkpoint(scratch_baseline_ckpt)
+        scratch_baseline_state = scratch_state
         scratch_baseline_metrics = evaluate_endpoint_state(
             spec=spec,
             state=scratch_state,
@@ -1232,6 +1474,7 @@ def main() -> None:
         scratch_baseline_ckpt = run_dir / f"scratch_retrain_seed{args.scratch_retrain_seed}.pth"
         if args.skip_existing and scratch_baseline_ckpt.exists():
             _, scratch_state = load_checkpoint(scratch_baseline_ckpt)
+            scratch_baseline_state = scratch_state
             scratch_baseline_metrics = evaluate_endpoint_state(
                 spec=spec,
                 state=scratch_state,
@@ -1247,7 +1490,7 @@ def main() -> None:
         else:
             scratch_retain_train_loader = make_subset_loader(
                 train_aug,
-                retain_idx,
+                retain_train_idx,
                 spec.batch_size,
                 spec.workers,
                 shuffle=True,
@@ -1256,6 +1499,8 @@ def main() -> None:
             scratch_payload = train_scratch_retrain_baseline(
                 spec=spec,
                 retain_train_loader=scratch_retain_train_loader,
+                retain_val_loader=retain_val_loader,
+                forget_val_loader=forget_val_loader,
                 retain_eval_loader=retain_eval_loader,
                 forget_eval_loader=forget_eval_loader,
                 test_loader=test_loader,
@@ -1266,11 +1511,14 @@ def main() -> None:
                 weight_decay=args.scratch_retrain_weight_decay,
                 nesterov=args.scratch_retrain_nesterov,
                 seed=args.scratch_retrain_seed,
+                ckpt_select="composite",
+                forget_budget_acc=args.forget_val_budget,
             )
             torch.save(scratch_payload, str(scratch_baseline_ckpt))
+            scratch_baseline_state = _strip_module_prefix(scratch_payload["state_dict"])
             scratch_baseline_metrics = evaluate_endpoint_state(
                 spec=spec,
-                state=scratch_payload["state_dict"],
+                state=scratch_baseline_state,
                 retain_eval_loader=retain_eval_loader,
                 forget_eval_loader=forget_eval_loader,
                 test_loader=test_loader,
@@ -1285,6 +1533,17 @@ def main() -> None:
                 f"retain_acc={scratch_baseline_metrics['retain_acc']:.4f}"
             )
 
+    rt_reference: Optional[Dict[str, float]] = None
+    if scratch_baseline_state is not None:
+        rt_model, _ = build_dense_model(spec)
+        rt_model = rt_model.to(device)
+        rt_model.load_state_dict(scratch_baseline_state, strict=True)
+        rt_model.eval()
+        rt_retain_val = evaluate(rt_model, retain_val_loader, device)
+        rt_reference = {
+            "retain_val_acc": float(rt_retain_val["acc"]),
+        }
+
     if args.skip_existing and ckpt_a.exists():
         ep_a, s_a = load_checkpoint(ckpt_a)
         print(f"Reusing endpoint A: {ckpt_a}")
@@ -1296,6 +1555,8 @@ def main() -> None:
             seed=args.seed_a,
             retain_train_loader=retain_train_loader_a,
             forget_train_loader=forget_train_loader_a,
+            retain_val_loader=retain_val_loader,
+            forget_val_loader=forget_val_loader,
             retain_eval_loader=retain_eval_loader,
             forget_eval_loader=forget_eval_loader,
             test_loader=test_loader,
@@ -1318,6 +1579,10 @@ def main() -> None:
             retrain_nesterov=args.retrain_nesterov,
             ckpt_select=args.ckpt_select,
             unlearn_steps=args.unlearn_steps,
+            forget_budget_acc=args.forget_val_budget,
+            rt_reference=rt_reference,
+            save_tail_k=args.save_tail_k,
+            tail_dir=run_dir / f"tail_seed{args.seed_a}",
             model_config={
                 "dataset": spec.dataset,
                 "arch": spec.arch,
@@ -1340,6 +1605,8 @@ def main() -> None:
             seed=args.seed_b,
             retain_train_loader=retain_train_loader_b,
             forget_train_loader=forget_train_loader_b,
+            retain_val_loader=retain_val_loader,
+            forget_val_loader=forget_val_loader,
             retain_eval_loader=retain_eval_loader,
             forget_eval_loader=forget_eval_loader,
             test_loader=test_loader,
@@ -1362,6 +1629,10 @@ def main() -> None:
             retrain_nesterov=args.retrain_nesterov,
             ckpt_select=args.ckpt_select,
             unlearn_steps=args.unlearn_steps,
+            forget_budget_acc=args.forget_val_budget,
+            rt_reference=rt_reference,
+            save_tail_k=args.save_tail_k,
+            tail_dir=run_dir / f"tail_seed{args.seed_b}",
             model_config={
                 "dataset": spec.dataset,
                 "arch": spec.arch,
@@ -1592,6 +1863,8 @@ def main() -> None:
         spec=spec,
         s0=s_a,
         s1=s_b,
+        retain_val_loader=retain_val_loader,
+        forget_val_loader=forget_val_loader,
         retain_eval_loader=retain_eval_loader,
         forget_eval_loader=forget_eval_loader,
         test_loader=test_loader,
@@ -1612,7 +1885,12 @@ def main() -> None:
         f"retain_acc_drop_pp={step2['retain_acc_drop_pp']:.4f}"
     )
     if args.run_mia and "step2" in mia_selected_stages:
-        best_p2 = _choose_curve_point(step2["curve"], metric=args.mia_select_metric)
+        best_p2 = _choose_curve_point(
+            step2["curve"],
+            selector=args.mia_select_metric,
+            forget_budget_acc=args.forget_val_budget,
+            rt_reference=rt_reference,
+        )
         t2 = float(best_p2["t"])
         t2_shadow = float(max(0.0, min(1.0, 1.0 - t2)))
         state_p2_v = interpolate_state(s_a, s_b, t2, subspace_mask=None)
@@ -1659,6 +1937,8 @@ def main() -> None:
         spec=spec,
         s0=s_a,
         s1=s_b,
+        retain_val_loader=retain_val_loader,
+        forget_val_loader=forget_val_loader,
         retain_eval_loader=retain_eval_loader,
         forget_eval_loader=forget_eval_loader,
         test_loader=test_loader,
@@ -1679,7 +1959,12 @@ def main() -> None:
         f"retain_acc_drop_pp={step3['retain_acc_drop_pp']:.4f}"
     )
     if args.run_mia and "step3" in mia_selected_stages:
-        best_p3 = _choose_curve_point(step3["curve"], metric=args.mia_select_metric)
+        best_p3 = _choose_curve_point(
+            step3["curve"],
+            selector=args.mia_select_metric,
+            forget_budget_acc=args.forget_val_budget,
+            rt_reference=rt_reference,
+        )
         t3 = float(best_p3["t"])
         t3_shadow = float(max(0.0, min(1.0, 1.0 - t3)))
         state_p3_v = interpolate_state(s_a, s_b, t3, subspace_mask=mask)
@@ -1709,9 +1994,64 @@ def main() -> None:
     swa_results: List[Dict[str, Any]] = []
     if args.swa_merge:
         print("\n" + "=" * 80)
-        print("SWA Merge From Connectivity Path")
+        print("SWA/Soup Merge")
         print("=" * 80)
 
+        # Real SWA from endpoint local training trajectories (tail checkpoints).
+        for seed_label, endpoint_payload in [(f"seed{args.seed_a}", ep_a), (f"seed{args.seed_b}", ep_b)]:
+            tail_paths = []
+            if isinstance(endpoint_payload, dict):
+                tail_paths = [Path(p) for p in endpoint_payload.get("tail_checkpoints", []) if Path(p).exists()]
+            if len(tail_paths) < 2:
+                continue
+            try:
+                tail_swa_state = swa_from_checkpoints(
+                    spec=spec,
+                    ckpt_paths=tail_paths,
+                    bn_loader=bn_loader,
+                    device=device,
+                    bn_recalc_on=args.bn_recalc,
+                    bn_batches=args.bn_batches,
+                )
+                tail_swa_metrics = evaluate_endpoint_state(
+                    spec=spec,
+                    state=tail_swa_state,
+                    retain_eval_loader=retain_eval_loader,
+                    forget_eval_loader=forget_eval_loader,
+                    test_loader=test_loader,
+                    device=device,
+                    retain_test_loader=retain_test_loader,
+                    forget_test_loader=forget_test_loader,
+                    normalized_full_scale=normalized_full_scale,
+                )
+                ckpt_path = run_dir / f"{seed_label}_tail_swa.pth"
+                torch.save(
+                    {
+                        "state_dict": tail_swa_state,
+                        "source": "tail_swa",
+                        "seed": seed_label,
+                        "tail_checkpoints": [str(p) for p in tail_paths],
+                    },
+                    str(ckpt_path),
+                )
+                swa_results.append(
+                    {
+                        "source": "tail_swa",
+                        "seed": seed_label,
+                        "tail_checkpoints": [str(p) for p in tail_paths],
+                        "ckpt": str(ckpt_path),
+                        "metrics": tail_swa_metrics,
+                    }
+                )
+                print(
+                    f"[tail-swa:{seed_label}] test_acc={tail_swa_metrics['test_acc']:.4f} "
+                    f"retain_acc={tail_swa_metrics['retain_acc']:.4f} forget_acc={tail_swa_metrics['forget_acc']:.4f} "
+                    f"(k={len(tail_paths)})"
+                )
+            except Exception as e:
+                print(f"[tail-swa:{seed_label}] skipped: {e}")
+
+        # Soup over connectivity points (validated by val composite score).
         sources: List[Tuple[str, Dict[str, Any], Optional[Dict[str, torch.Tensor]]]] = []
         if args.swa_source in {"step2", "both"}:
             sources.append(("step2", step2, None))
@@ -1719,27 +2059,80 @@ def main() -> None:
             sources.append(("step3", step3, mask))
 
         for src_name, src_result, src_mask in sources:
-            swa_state_raw, selected_points = build_swa_state_from_curve(
-                s0=s_a,
-                s1=s_b,
-                curve=src_result["curve"],
-                topk=args.swa_topk,
-                metric=args.swa_select_metric,
-                t_min=args.swa_t_min,
-                t_max=args.swa_t_max,
-                subspace_mask=src_mask,
-            )
-            swa_state = recalibrate_state_bn(
+            points = [p for p in src_result["curve"] if args.swa_t_min <= float(p["t"]) <= args.swa_t_max]
+            if not points:
+                points = list(src_result["curve"])
+            if not points:
+                continue
+
+            def _rank_key(p: Dict[str, Any]) -> float:
+                if args.swa_select_metric in {"retain_loss", "test_loss"}:
+                    return -float(p.get(args.swa_select_metric, float("inf")))
+                if args.swa_select_metric == "retain_val_acc":
+                    return float(p.get("retain_val_acc", p.get("retain_acc", 0.0)))
+                if args.swa_select_metric == "composite":
+                    return composite_unlearning_score(
+                        retain_val_acc=float(p.get("retain_val_acc", p.get("retain_acc", 0.0))),
+                        forget_val_acc=float(p.get("forget_val_acc", p.get("forget_acc", 1.0))),
+                        full_val_acc=None,
+                        forget_budget_acc=float(args.forget_val_budget),
+                        rt_ref=rt_reference,
+                    )
+                return float(p.get(args.swa_select_metric, p.get("retain_acc", 0.0)))
+
+            points = sorted(points, key=_rank_key, reverse=True)
+            k = len(points) if args.swa_topk <= 0 else min(args.swa_topk, len(points))
+            points = points[:k]
+
+            candidates: List[Dict[str, Any]] = []
+            for p in points:
+                t = float(p["t"])
+                state = interpolate_state(s_a, s_b, t, subspace_mask=src_mask)
+                candidates.append(
+                    {
+                        "name": f"t{t:.4f}",
+                        "state": state,
+                        "val_score": composite_unlearning_score(
+                            retain_val_acc=float(p.get("retain_val_acc", p.get("retain_acc", 0.0))),
+                            forget_val_acc=float(p.get("forget_val_acc", p.get("forget_acc", 1.0))),
+                            full_val_acc=float(p.get("retain_acc", 0.0)),
+                            forget_budget_acc=float(args.forget_val_budget),
+                            rt_ref=rt_reference,
+                        ),
+                    }
+                )
+
+            soup_eval_model, _ = build_dense_model(spec)
+            soup_eval_model = soup_eval_model.to(device)
+
+            def _eval_state_fn(state: Dict[str, torch.Tensor]) -> float:
+                soup_eval_model.load_state_dict(state, strict=True)
+                if args.bn_recalc:
+                    bn_recalibrate(soup_eval_model, bn_loader, device=device, max_batches=args.bn_batches)
+                rv_loader = retain_val_loader if retain_val_loader is not None else retain_eval_loader
+                fv_loader = forget_val_loader if forget_val_loader is not None else forget_eval_loader
+                retain_val_stats = evaluate(soup_eval_model, rv_loader, device)
+                forget_val_stats = evaluate(soup_eval_model, fv_loader, device)
+                return composite_unlearning_score(
+                    retain_val_acc=float(retain_val_stats["acc"]),
+                    forget_val_acc=float(forget_val_stats["acc"]),
+                    full_val_acc=None,
+                    forget_budget_acc=float(args.forget_val_budget),
+                    rt_ref=rt_reference,
+                )
+
+            soup_state_raw, selected_names, soup_val_score = greedy_soup(candidates, eval_state_fn=_eval_state_fn)
+            soup_state = recalibrate_state_bn(
                 spec=spec,
-                state=swa_state_raw,
+                state=soup_state_raw,
                 bn_loader=bn_loader,
                 device=device,
                 bn_recalc_on=args.bn_recalc,
                 bn_batches=args.bn_batches,
             )
-            swa_metrics = evaluate_endpoint_state(
+            soup_metrics = evaluate_endpoint_state(
                 spec=spec,
-                state=swa_state,
+                state=soup_state,
                 retain_eval_loader=retain_eval_loader,
                 forget_eval_loader=forget_eval_loader,
                 test_loader=test_loader,
@@ -1748,12 +2141,13 @@ def main() -> None:
                 forget_test_loader=forget_test_loader,
                 normalized_full_scale=normalized_full_scale,
             )
-            ckpt_path = run_dir / f"{src_name}_swa_merge.pth"
+            ckpt_path = run_dir / f"{src_name}_soup_merge.pth"
             torch.save(
                 {
-                    "state_dict": swa_state,
+                    "state_dict": soup_state,
                     "source": src_name,
-                    "selected_points": selected_points,
+                    "selected_candidates": selected_names,
+                    "soup_val_score": float(soup_val_score),
                     "select_metric": args.swa_select_metric,
                     "swa_topk": args.swa_topk,
                     "t_min": args.swa_t_min,
@@ -1765,19 +2159,21 @@ def main() -> None:
             )
             result_row = {
                 "source": src_name,
+                "method": "greedy_soup",
                 "select_metric": args.swa_select_metric,
                 "topk": args.swa_topk,
                 "t_min": args.swa_t_min,
                 "t_max": args.swa_t_max,
-                "selected_points": selected_points,
+                "selected_candidates": selected_names,
+                "soup_val_score": float(soup_val_score),
                 "ckpt": str(ckpt_path),
-                "metrics": swa_metrics,
+                "metrics": soup_metrics,
             }
             swa_results.append(result_row)
             print(
-                f"[swa:{src_name}] test_acc={swa_metrics['test_acc']:.4f} "
-                f"retain_acc={swa_metrics['retain_acc']:.4f} forget_acc={swa_metrics['forget_acc']:.4f} "
-                f"(points={len(selected_points)})"
+                f"[soup:{src_name}] test_acc={soup_metrics['test_acc']:.4f} "
+                f"retain_acc={soup_metrics['retain_acc']:.4f} forget_acc={soup_metrics['forget_acc']:.4f} "
+                f"(cands={len(selected_names)})"
             )
             mia_stage_name = f"swa_{src_name}"
             if args.run_mia and mia_stage_name in mia_selected_stages:
@@ -1832,6 +2228,7 @@ def main() -> None:
             "forget_alpha": args.forget_alpha,
             "grad_clip": args.grad_clip,
             "ckpt_select": args.ckpt_select,
+            "forget_val_budget": args.forget_val_budget,
         },
         "training_schedule": {
             "unlearn_epochs": args.unlearn_epochs,
@@ -1847,6 +2244,8 @@ def main() -> None:
                 args.retrain_weight_decay if args.retrain_weight_decay is not None else args.weight_decay
             ),
             "retrain_nesterov": args.retrain_nesterov if args.retrain_nesterov is not None else args.nesterov,
+            "val_ratio": args.val_ratio,
+            "save_tail_k": args.save_tail_k,
         },
         "endpoints": {
             "seed_a": args.seed_a,
@@ -1864,6 +2263,7 @@ def main() -> None:
         "retrain_alignment": retrain_alignment,
         "swa_merge": {
             "enabled": bool(args.swa_merge),
+            "methods": ["tail_swa", "greedy_soup"],
             "source": args.swa_source,
             "select_metric": args.swa_select_metric,
             "topk": args.swa_topk,

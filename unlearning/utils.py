@@ -107,6 +107,50 @@ def build_forget_retain_indices(
     raise ValueError(f"Unknown df type: {df_spec['type']}")
 
 
+def split_indices_train_val(indices: List[int], val_ratio: float, seed: int) -> Tuple[List[int], List[int]]:
+    if not (0.0 < float(val_ratio) < 0.5):
+        raise ValueError("val_ratio must be in (0, 0.5)")
+    perm = list(indices)
+    if not perm:
+        return [], []
+    g = random.Random(int(seed))
+    g.shuffle(perm)
+    n_val = max(1, int(round(len(perm) * float(val_ratio))))
+    if len(perm) > 1:
+        n_val = min(n_val, len(perm) - 1)
+    else:
+        n_val = 0
+    val_idx = sorted(perm[:n_val])
+    train_idx = sorted(perm[n_val:])
+    return train_idx, val_idx
+
+
+def composite_unlearning_score(
+    *,
+    retain_val_acc: float,
+    forget_val_acc: float,
+    full_val_acc: Optional[float] = None,
+    forget_budget_acc: float = 0.01,
+    rt_ref: Optional[Dict[str, float]] = None,
+    w_full: float = 0.5,
+    w_rt: float = 1.0,
+) -> float:
+    if float(forget_val_acc) > float(forget_budget_acc):
+        return float("-inf")
+
+    score = float(retain_val_acc)
+    if full_val_acc is not None:
+        score += float(w_full) * float(full_val_acc)
+
+    if rt_ref is not None:
+        if "retain_val_acc" in rt_ref:
+            score -= float(w_rt) * abs(float(retain_val_acc) - float(rt_ref["retain_val_acc"]))
+        if full_val_acc is not None and "full_val_acc" in rt_ref:
+            score -= 0.5 * float(w_rt) * abs(float(full_val_acc) - float(rt_ref["full_val_acc"]))
+
+    return float(score)
+
+
 def make_subset_loader(
     dataset: Any,
     indices: List[int],
@@ -164,6 +208,8 @@ def train_unlearning_endpoint_ascent(
     seed: int,
     retain_train_loader: DataLoader,
     forget_train_loader: DataLoader,
+    retain_val_loader: DataLoader,
+    forget_val_loader: DataLoader,
     retain_eval_loader: DataLoader,
     forget_eval_loader: DataLoader,
     test_loader: DataLoader,
@@ -184,9 +230,13 @@ def train_unlearning_endpoint_ascent(
     retrain_momentum: Optional[float] = None,
     retrain_weight_decay: Optional[float] = None,
     retrain_nesterov: Optional[bool] = None,
-    ckpt_select: str = "retain_acc",
+    ckpt_select: str = "composite",
     unlearn_steps: int = 0,
     forget_objective: str = "ce_ascent",
+    forget_budget_acc: float = 0.01,
+    rt_reference: Optional[Dict[str, float]] = None,
+    save_tail_k: int = 0,
+    tail_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     if forget_alpha <= 0:
         raise ValueError("forget_alpha must be > 0 for ascent-based unlearning")
@@ -194,7 +244,9 @@ def train_unlearning_endpoint_ascent(
         raise ValueError("retrain_epochs must be >= 0")
     if unlearn_steps < 0:
         raise ValueError("unlearn_steps must be >= 0")
-    if ckpt_select not in {"retain_acc", "test_acc"}:
+    if save_tail_k < 0:
+        raise ValueError("save_tail_k must be >= 0")
+    if ckpt_select not in {"composite", "retain_val_acc", "retain_acc", "test_acc"}:
         raise ValueError(f"Unsupported ckpt_select: {ckpt_select}")
     if forget_objective not in {"ce_ascent", "kl_uniform", "entropy"}:
         raise ValueError(f"Unsupported forget_objective: {forget_objective}")
@@ -234,16 +286,34 @@ def train_unlearning_endpoint_ascent(
     history: List[Dict[str, Any]] = []
     unlearn_history: List[Dict[str, Any]] = []
     retrain_history: List[Dict[str, Any]] = []
+    tail_ckpt_paths: List[str] = []
+
+    def _save_tail_checkpoint(row: Dict[str, Any]) -> None:
+        nonlocal tail_ckpt_paths
+        if save_tail_k <= 0 or tail_dir is None:
+            return
+        tail_dir.mkdir(parents=True, exist_ok=True)
+        ckpt_name = f"{row['stage']}_global{int(row['global_epoch']):04d}.pth"
+        ckpt_path = tail_dir / ckpt_name
+        torch.save(
+            {"state_dict": {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}},
+            str(ckpt_path),
+        )
+        tail_ckpt_paths.append(str(ckpt_path))
+        while len(tail_ckpt_paths) > save_tail_k:
+            drop = Path(tail_ckpt_paths.pop(0))
+            if drop.exists():
+                drop.unlink()
 
     def _update_best(
         stage_name: str,
         stage_epoch: int,
         global_epoch: int,
         metrics: Dict[str, float],
+        score: float,
     ) -> None:
         nonlocal best_score, best_state, best_stage, best_epoch, best_global_epoch, best_metrics
-        score = float(metrics[ckpt_select])
-        if score > best_score:
+        if float(score) > best_score:
             best_score = score
             best_stage = stage_name
             best_epoch = stage_epoch
@@ -255,8 +325,35 @@ def train_unlearning_endpoint_ascent(
                 "forget_acc": float(metrics["forget_acc"]),
                 "test_loss": float(metrics["test_loss"]),
                 "test_acc": float(metrics["test_acc"]),
+                "retain_val_loss": float(metrics["retain_val_loss"]),
+                "retain_val_acc": float(metrics["retain_val_acc"]),
+                "forget_val_loss": float(metrics["forget_val_loss"]),
+                "forget_val_acc": float(metrics["forget_val_acc"]),
+                "selection_score": float(score),
             }
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+    def _selection_score(
+        retain_stats: Dict[str, float],
+        forget_stats: Dict[str, float],
+        retain_val_stats: Dict[str, float],
+        forget_val_stats: Dict[str, float],
+        test_stats: Dict[str, float],
+    ) -> float:
+        if ckpt_select == "retain_acc":
+            return float(retain_stats["acc"])
+        if ckpt_select == "test_acc":
+            return float(test_stats["acc"])
+        if ckpt_select == "retain_val_acc":
+            return float(retain_val_stats["acc"])
+        return composite_unlearning_score(
+            retain_val_acc=float(retain_val_stats["acc"]),
+            forget_val_acc=float(forget_val_stats["acc"]),
+            # Keep checkpoint selection strictly validation-only.
+            full_val_acc=None,
+            forget_budget_acc=float(forget_budget_acc),
+            rt_ref=rt_reference,
+        )
 
     unlearn_steps_ran = 0
     for epoch in range(max(epochs, 0)):
@@ -317,7 +414,16 @@ def train_unlearning_endpoint_ascent(
 
         retain_stats = evaluate_fn(model, retain_eval_loader, device)
         forget_stats = evaluate_fn(model, forget_eval_loader, device)
+        retain_val_stats = evaluate_fn(model, retain_val_loader, device)
+        forget_val_stats = evaluate_fn(model, forget_val_loader, device)
         test_stats = evaluate_fn(model, test_loader, device)
+        selection_score = _selection_score(
+            retain_stats=retain_stats,
+            forget_stats=forget_stats,
+            retain_val_stats=retain_val_stats,
+            forget_val_stats=forget_val_stats,
+            test_stats=test_stats,
+        )
         train_retain = running_retain / max(seen_r, 1)
         train_forget = running_forget / max(seen_f, 1)
         if forget_objective == "ce_ascent":
@@ -342,6 +448,11 @@ def train_unlearning_endpoint_ascent(
             "forget_acc": forget_stats["acc"],
             "test_loss": test_stats["loss"],
             "test_acc": test_stats["acc"],
+            "retain_val_loss": retain_val_stats["loss"],
+            "retain_val_acc": retain_val_stats["acc"],
+            "forget_val_loss": forget_val_stats["loss"],
+            "forget_val_acc": forget_val_stats["acc"],
+            "selection_score": float(selection_score),
             "lr": optimizer.param_groups[0]["lr"],
         }
         history.append(row)
@@ -350,7 +461,9 @@ def train_unlearning_endpoint_ascent(
             f"[seed={seed}][unlearn] epoch {epoch + 1:03d}/{epochs:03d} "
             f"train_total={train_total:.4f} retain_loss={retain_stats['loss']:.4f} "
             f"forget_loss={forget_stats['loss']:.4f} retain_acc={retain_stats['acc']:.4f} "
-            f"forget_acc={forget_stats['acc']:.4f} test_acc={test_stats['acc']:.4f}"
+            f"forget_acc={forget_stats['acc']:.4f} retain_val_acc={retain_val_stats['acc']:.4f} "
+            f"forget_val_acc={forget_val_stats['acc']:.4f} test_acc={test_stats['acc']:.4f} "
+            f"score={selection_score:.6f}"
         )
         _update_best(
             stage_name="unlearn",
@@ -363,8 +476,14 @@ def train_unlearning_endpoint_ascent(
                 "forget_acc": forget_stats["acc"],
                 "test_loss": test_stats["loss"],
                 "test_acc": test_stats["acc"],
+                "retain_val_loss": retain_val_stats["loss"],
+                "retain_val_acc": retain_val_stats["acc"],
+                "forget_val_loss": forget_val_stats["loss"],
+                "forget_val_acc": forget_val_stats["acc"],
             },
+            score=selection_score,
         )
+        _save_tail_checkpoint(row)
         if unlearn_steps > 0 and unlearn_steps_ran >= unlearn_steps:
             break
 
@@ -406,7 +525,16 @@ def train_unlearning_endpoint_ascent(
 
             retain_stats = evaluate_fn(model, retain_eval_loader, device)
             forget_stats = evaluate_fn(model, forget_eval_loader, device)
+            retain_val_stats = evaluate_fn(model, retain_val_loader, device)
+            forget_val_stats = evaluate_fn(model, forget_val_loader, device)
             test_stats = evaluate_fn(model, test_loader, device)
+            selection_score = _selection_score(
+                retain_stats=retain_stats,
+                forget_stats=forget_stats,
+                retain_val_stats=retain_val_stats,
+                forget_val_stats=forget_val_stats,
+                test_stats=test_stats,
+            )
             train_retain = running_retain / max(seen_r, 1)
 
             row = {
@@ -426,6 +554,11 @@ def train_unlearning_endpoint_ascent(
                 "forget_acc": forget_stats["acc"],
                 "test_loss": test_stats["loss"],
                 "test_acc": test_stats["acc"],
+                "retain_val_loss": retain_val_stats["loss"],
+                "retain_val_acc": retain_val_stats["acc"],
+                "forget_val_loss": forget_val_stats["loss"],
+                "forget_val_acc": forget_val_stats["acc"],
+                "selection_score": float(selection_score),
                 "lr": retrain_optimizer.param_groups[0]["lr"],
             }
             history.append(row)
@@ -434,7 +567,9 @@ def train_unlearning_endpoint_ascent(
                 f"[seed={seed}][retrain] epoch {epoch + 1:03d}/{retrain_epochs:03d} "
                 f"train_retain={train_retain:.4f} retain_loss={retain_stats['loss']:.4f} "
                 f"forget_loss={forget_stats['loss']:.4f} retain_acc={retain_stats['acc']:.4f} "
-                f"forget_acc={forget_stats['acc']:.4f} test_acc={test_stats['acc']:.4f}"
+                f"forget_acc={forget_stats['acc']:.4f} retain_val_acc={retain_val_stats['acc']:.4f} "
+                f"forget_val_acc={forget_val_stats['acc']:.4f} test_acc={test_stats['acc']:.4f} "
+                f"score={selection_score:.6f}"
             )
             _update_best(
                 stage_name="retrain",
@@ -447,17 +582,32 @@ def train_unlearning_endpoint_ascent(
                     "forget_acc": forget_stats["acc"],
                     "test_loss": test_stats["loss"],
                     "test_acc": test_stats["acc"],
+                    "retain_val_loss": retain_val_stats["loss"],
+                    "retain_val_acc": retain_val_stats["acc"],
+                    "forget_val_loss": forget_val_stats["loss"],
+                    "forget_val_acc": forget_val_stats["acc"],
                 },
+                score=selection_score,
             )
+            _save_tail_checkpoint(row)
 
     if best_state is None:
         best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         retain_stats = evaluate_fn(model, retain_eval_loader, device)
         forget_stats = evaluate_fn(model, forget_eval_loader, device)
+        retain_val_stats = evaluate_fn(model, retain_val_loader, device)
+        forget_val_stats = evaluate_fn(model, forget_val_loader, device)
         test_stats = evaluate_fn(model, test_loader, device)
         best_stage = "init"
         best_epoch = -1
         best_global_epoch = -1
+        best_score = _selection_score(
+            retain_stats=retain_stats,
+            forget_stats=forget_stats,
+            retain_val_stats=retain_val_stats,
+            forget_val_stats=forget_val_stats,
+            test_stats=test_stats,
+        )
         best_metrics = {
             "retain_loss": float(retain_stats["loss"]),
             "retain_acc": float(retain_stats["acc"]),
@@ -465,6 +615,11 @@ def train_unlearning_endpoint_ascent(
             "forget_acc": float(forget_stats["acc"]),
             "test_loss": float(test_stats["loss"]),
             "test_acc": float(test_stats["acc"]),
+            "retain_val_loss": float(retain_val_stats["loss"]),
+            "retain_val_acc": float(retain_val_stats["acc"]),
+            "forget_val_loss": float(forget_val_stats["loss"]),
+            "forget_val_acc": float(forget_val_stats["acc"]),
+            "selection_score": float(best_score),
         }
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -486,6 +641,7 @@ def train_unlearning_endpoint_ascent(
             "forget_alpha": forget_alpha,
             "grad_clip": grad_clip,
             "ckpt_select": ckpt_select,
+            "forget_budget_acc": float(forget_budget_acc),
             "retrain_enabled": bool(retrain_epochs > 0),
         },
         "training_schedule": {
@@ -502,6 +658,7 @@ def train_unlearning_endpoint_ascent(
             "retrain_weight_decay": float(retrain_weight_decay),
             "retrain_nesterov": bool(retrain_nesterov),
         },
+        "tail_checkpoints": tail_ckpt_paths,
         "config": model_config,
     }
     torch.save(payload, str(out_path))

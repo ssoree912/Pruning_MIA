@@ -17,6 +17,9 @@ SEED_B="${SEED_B:-44}"
 GPU="${GPU:-0}"
 BASE_OUT_DIR="${BASE_OUT_DIR:-./runs/unlearning_df1_grid_tradeoff}"
 UNLEARN_LR="${UNLEARN_LR:-0.01}"
+VAL_RATIO="${VAL_RATIO:-0.1}"
+FORGET_VAL_BUDGET="${FORGET_VAL_BUDGET:-0.01}"
+SAVE_TAIL_K="${SAVE_TAIL_K:-5}"
 DRY_RUN="${DRY_RUN:-0}"
 SKIP_EXISTING="${SKIP_EXISTING:-0}"
 
@@ -83,7 +86,10 @@ for row in "${EXPERIMENTS[@]}"; do
     --forget-objective "${FORGET_OBJECTIVE}"
     --retrain-epochs "${RETRAIN_EPOCHS}"
     --retrain-lr "${RETRAIN_LR}"
-    --ckpt-select retain_acc
+    --ckpt-select composite
+    --val-ratio "${VAL_RATIO}"
+    --forget-val-budget "${FORGET_VAL_BUDGET}"
+    --save-tail-k "${SAVE_TAIL_K}"
     --step1-only
     --no-swa-merge
     --out-dir "${OUT_DIR}"

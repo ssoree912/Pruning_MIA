@@ -9,13 +9,14 @@ set -euo pipefail
 #
 # 수행 내용:
 # 1) MIA split 준비
-# 2) unlearn(42/43) 체크포인트 + unlearn MIA
-# 3) retrain(Dr-only, 42/43) 체크포인트 + retrain MIA
-# 4) dense baseline MIA(옵션) + 비교 JSON 생성
+# 2) scratch retrain baseline(seed42, seed43) 준비
+# 3) unlearn(42/43) 체크포인트를 scratch baseline(seed42) reference와 함께 생성
+# 4) unlearn / retrain / dense MIA 실행
+# 5) 비교 JSON 생성
 #
 # Usage:
 #   bash scripts/experiment/run_df1_seed42_compare.sh
-#   RUN_DENSE_MIA=1 FORCE_SPLIT=1 GPU=0 bash scripts/experiment/run_df1_seed42_compare.sh
+#   RUN_DENSE_MIA=1 GPU=0 bash scripts/experiment/run_df1_seed42_compare.sh
 
 DENSE_CKPT="${DENSE_CKPT:-runs/dense/cifar10/seed42/best_model.pth}"
 DENSE_VICTIM_CONFIG="${DENSE_VICTIM_CONFIG:-runs/dense/cifar10/seed42/config.json}"
@@ -48,6 +49,9 @@ UNLEARN_STEPS="${UNLEARN_STEPS:-100}"
 UNLEARN_LR="${UNLEARN_LR:-0.01}"
 RETRAIN_EPOCHS="${RETRAIN_EPOCHS:-50}"
 RETRAIN_LR="${RETRAIN_LR:-0.1}"
+VAL_RATIO="${VAL_RATIO:-0.1}"
+FORGET_VAL_BUDGET="${FORGET_VAL_BUDGET:-0.01}"
+SAVE_TAIL_K="${SAVE_TAIL_K:-5}"
 
 SCRATCH_EPOCHS="${SCRATCH_EPOCHS:-200}"
 SCRATCH_LR="${SCRATCH_LR:-0.1}"
@@ -60,8 +64,8 @@ MIA_TPR_FPRS="${MIA_TPR_FPRS:-0.1,1,5}"
 
 RUN_DENSE_MIA="${RUN_DENSE_MIA:-1}"           # 1: run dense MIA
 FORCE_SPLIT="${FORCE_SPLIT:-0}"               # 1: recreate split file
-SKIP_TRAIN_IF_EXISTS="${SKIP_TRAIN_IF_EXISTS:-1}"  # 1: skip checkpoint training when targets exist
-SKIP_MIA_IF_EXISTS="${SKIP_MIA_IF_EXISTS:-1}"      # 1: skip MIA rerun when result json exists
+SKIP_TRAIN_IF_EXISTS="${SKIP_TRAIN_IF_EXISTS:-0}"  # 0 by default to avoid stale selection logic reuse
+SKIP_MIA_IF_EXISTS="${SKIP_MIA_IF_EXISTS:-0}"      # 0 by default to rebuild MIA after code changes
 
 if [[ ! -f "${DENSE_CKPT}" ]]; then
   echo "Dense ckpt not found: ${DENSE_CKPT}"
@@ -93,8 +97,6 @@ SPLIT_FILE="mia_data_splits/${DATASET}_seed${SPLIT_SEED}_victim${SEED_A}.pkl"
 
 UNLEARN_A_U="${RUN_DIR_UNLEARN}/unlearn_seed${SEED_A}.pth"
 UNLEARN_B_U="${RUN_DIR_UNLEARN}/unlearn_seed${SEED_B}.pth"
-UNLEARN_A_R="${RUN_DIR_RETRAIN}/unlearn_seed${SEED_A}.pth"
-UNLEARN_B_R="${RUN_DIR_RETRAIN}/unlearn_seed${SEED_B}.pth"
 SCRATCH_A_R="${RUN_DIR_RETRAIN}/scratch_retrain_seed${SEED_A}.pth"
 SCRATCH_B_R="${RUN_DIR_RETRAIN}/scratch_retrain_seed${SEED_B}.pth"
 
@@ -119,7 +121,10 @@ COMMON_TRAIN_ARGS=(
   --forget-objective "${FORGET_OBJECTIVE}"
   --retrain-epochs "${RETRAIN_EPOCHS}"
   --retrain-lr "${RETRAIN_LR}"
-  --ckpt-select retain_acc
+  --ckpt-select composite
+  --val-ratio "${VAL_RATIO}"
+  --forget-val-budget "${FORGET_VAL_BUDGET}"
+  --save-tail-k "${SAVE_TAIL_K}"
   --batch-size "${BATCH_SIZE}"
   --workers "${WORKERS}"
   --datapath "${DATAPATH}"
@@ -132,16 +137,23 @@ run_train() {
   local out_dir="$1"
   shift
   local cmd=(python train.py "${COMMON_TRAIN_ARGS[@]}" --out-dir "${out_dir}")
-  if [[ "${SKIP_TRAIN_IF_EXISTS}" == "1" ]]; then
-    cmd+=(--skip-existing)
-  fi
   if [[ "$#" -gt 0 ]]; then
     cmd+=("$@")
   fi
   "${cmd[@]}"
 }
 
-echo "== [1/9] Create fixed MIA split (victim=${SEED_A}, shadow=${SEED_B}) =="
+run_existing_workspace() {
+  local out_dir="$1"
+  shift
+  local cmd=(python train.py "${COMMON_TRAIN_ARGS[@]}" --out-dir "${out_dir}" --skip-existing)
+  if [[ "$#" -gt 0 ]]; then
+    cmd+=("$@")
+  fi
+  "${cmd[@]}"
+}
+
+echo "== [1/8] Create fixed MIA split (victim=${SEED_A}, shadow=${SEED_B}) =="
 if [[ "${FORCE_SPLIT}" == "1" || ! -f "${SPLIT_FILE}" ]]; then
   python mia_eval/create_data/create_fixed_data_splits.py \
     --dataset "${DATASET}" \
@@ -152,49 +164,7 @@ else
   echo "Split exists, skip: ${SPLIT_FILE}"
 fi
 
-echo "== [2/9] Train/prepare unlearn checkpoints in ${OUT_UNLEARN} =="
-if [[ "${SKIP_TRAIN_IF_EXISTS}" == "1" && -f "${UNLEARN_A_U}" && -f "${UNLEARN_B_U}" ]]; then
-  echo "Unlearn checkpoints exist, skip training:"
-  echo "  ${UNLEARN_A_U}"
-  echo "  ${UNLEARN_B_U}"
-else
-  run_train "${OUT_UNLEARN}"
-fi
-if [[ ! -f "${UNLEARN_A_U}" || ! -f "${UNLEARN_B_U}" ]]; then
-  echo "Missing unlearn checkpoints in ${RUN_DIR_UNLEARN}"
-  exit 1
-fi
-
-echo "== [3/9] Run MIA(unlearn) in ${OUT_UNLEARN} =="
-if [[ "${SKIP_MIA_IF_EXISTS}" == "1" && -f "${MIA_UNLEARN_JSON}" ]]; then
-  echo "MIA(unlearn) exists, skip: ${MIA_UNLEARN_JSON}"
-else
-  run_train "${OUT_UNLEARN}" \
-    --run-mia \
-    --mia-stages unlearn \
-    --mia-victim-seed "${SEED_A}" \
-    --mia-shadow-seeds "${SEED_B}" \
-    --mia-split-seed "${SPLIT_SEED}" \
-    --mia-attacks "${MIA_ATTACKS}" \
-    --mia-forward-mode "${MIA_FORWARD_MODE}" \
-    --mia-tpr-fprs "${MIA_TPR_FPRS}" \
-    --mia-save-scores
-fi
-if [[ ! -f "${MIA_UNLEARN_JSON}" ]]; then
-  echo "Missing MIA result: ${MIA_UNLEARN_JSON}"
-  exit 1
-fi
-
-echo "== [4/9] Prepare retrain workspace (copy unlearn endpoints) =="
-mkdir -p "${RUN_DIR_RETRAIN}"
-if [[ ! -f "${UNLEARN_A_R}" && -f "${UNLEARN_A_U}" ]]; then
-  cp "${UNLEARN_A_U}" "${UNLEARN_A_R}"
-fi
-if [[ ! -f "${UNLEARN_B_R}" && -f "${UNLEARN_B_U}" ]]; then
-  cp "${UNLEARN_B_U}" "${UNLEARN_B_R}"
-fi
-
-echo "== [5/9] Train/prepare scratch retrain victim(seed=${SEED_A}) in ${OUT_RETRAIN} =="
+echo "== [2/8] Train/prepare scratch retrain victim(seed=${SEED_A}) in ${OUT_RETRAIN} =="
 if [[ "${SKIP_TRAIN_IF_EXISTS}" == "1" && -f "${SCRATCH_A_R}" ]]; then
   echo "Scratch victim exists, skip: ${SCRATCH_A_R}"
 else
@@ -214,11 +184,11 @@ if [[ -f "${RUN_DIR_RETRAIN}/summary.json" ]]; then
   cp "${RUN_DIR_RETRAIN}/summary.json" "${RUN_DIR_RETRAIN}/summary_seed${SEED_A}.json"
 fi
 
-echo "== [6/9] Train/prepare scratch retrain shadow(seed=${SEED_B}) in ${OUT_RETRAIN} =="
+echo "== [3/8] Train/prepare scratch retrain shadow(seed=${SEED_B}) in ${OUT_RETRAIN} =="
 if [[ "${SKIP_TRAIN_IF_EXISTS}" == "1" && -f "${SCRATCH_B_R}" ]]; then
   echo "Scratch shadow exists, skip: ${SCRATCH_B_R}"
 else
-  run_train "${OUT_RETRAIN}" \
+  run_existing_workspace "${OUT_RETRAIN}" \
     --train-scratch-retrain-baseline \
     --scratch-retrain-epochs "${SCRATCH_EPOCHS}" \
     --scratch-retrain-lr "${SCRATCH_LR}" \
@@ -231,11 +201,47 @@ if [[ ! -f "${SCRATCH_B_R}" ]]; then
   exit 1
 fi
 
-echo "== [7/9] Run MIA(retrain baseline) in ${OUT_RETRAIN} =="
+echo "== [4/8] Train/prepare unlearn checkpoints in ${OUT_UNLEARN} =="
+if [[ "${SKIP_TRAIN_IF_EXISTS}" == "1" && -f "${UNLEARN_A_U}" && -f "${UNLEARN_B_U}" ]]; then
+  echo "Unlearn checkpoints exist, skip training:"
+  echo "  ${UNLEARN_A_U}"
+  echo "  ${UNLEARN_B_U}"
+else
+  run_train "${OUT_UNLEARN}" \
+    --scratch-retrain-ckpt "${SCRATCH_A_R}"
+fi
+if [[ ! -f "${UNLEARN_A_U}" || ! -f "${UNLEARN_B_U}" ]]; then
+  echo "Missing unlearn checkpoints in ${RUN_DIR_UNLEARN}"
+  exit 1
+fi
+
+echo "== [5/8] Run MIA(unlearn) in ${OUT_UNLEARN} =="
+if [[ "${SKIP_MIA_IF_EXISTS}" == "1" && -f "${MIA_UNLEARN_JSON}" ]]; then
+  echo "MIA(unlearn) exists, skip: ${MIA_UNLEARN_JSON}"
+else
+  run_existing_workspace "${OUT_UNLEARN}" \
+    --scratch-retrain-ckpt "${SCRATCH_A_R}" \
+    --run-mia \
+    --mia-stages unlearn \
+    --mia-victim-seed "${SEED_A}" \
+    --mia-shadow-seeds "${SEED_B}" \
+    --mia-split-seed "${SPLIT_SEED}" \
+    --mia-attacks "${MIA_ATTACKS}" \
+    --mia-forward-mode "${MIA_FORWARD_MODE}" \
+    --mia-tpr-fprs "${MIA_TPR_FPRS}" \
+    --mia-save-scores
+fi
+if [[ ! -f "${MIA_UNLEARN_JSON}" ]]; then
+  echo "Missing MIA result: ${MIA_UNLEARN_JSON}"
+  exit 1
+fi
+
+echo "== [6/8] Run MIA(retrain baseline) in ${OUT_RETRAIN} =="
 if [[ "${SKIP_MIA_IF_EXISTS}" == "1" && -f "${MIA_RETRAIN_JSON}" ]]; then
   echo "MIA(retrain) exists, skip: ${MIA_RETRAIN_JSON}"
 else
-  run_train "${OUT_RETRAIN}" \
+  run_existing_workspace "${OUT_RETRAIN}" \
+    --scratch-retrain-ckpt "${SCRATCH_A_R}" \
     --run-mia \
     --mia-stages baseline \
     --mia-victim-seed "${SEED_A}" \
@@ -245,7 +251,6 @@ else
     --mia-forward-mode "${MIA_FORWARD_MODE}" \
     --mia-tpr-fprs "${MIA_TPR_FPRS}" \
     --mia-save-scores \
-    --scratch-retrain-ckpt "${SCRATCH_A_R}" \
     --mia-baseline-ckpt "${SCRATCH_A_R}" \
     --mia-baseline-shadow-ckpts "${SCRATCH_B_R}"
   mkdir -p "${MIA_DIR_RETRAIN}"
@@ -258,7 +263,7 @@ if [[ ! -f "${MIA_RETRAIN_JSON}" ]]; then
   exit 1
 fi
 
-echo "== [8/9] Run MIA(dense baseline) =="
+echo "== [7/8] Run MIA(dense baseline) =="
 mkdir -p "${COMPARE_DIR}"
 if [[ "${RUN_DENSE_MIA}" == "1" ]]; then
   if [[ "${SKIP_MIA_IF_EXISTS}" == "1" && -f "${MIA_DENSE_JSON}" ]]; then
@@ -284,8 +289,8 @@ else
   echo "RUN_DENSE_MIA=0, skip dense baseline MIA."
 fi
 
-echo "== [9/9] Build comparison report JSON =="
-python - "${RUN_DIR_UNLEARN}" "${RUN_DIR_RETRAIN}" "${COMPARE_DIR}" "${SEED_A}" <<'PY'
+echo "== [8/8] Build comparison report JSON =="
+python - "${RUN_DIR_UNLEARN}" "${RUN_DIR_RETRAIN}" "${COMPARE_DIR}" "${SEED_A}" <<'PY_REPORT'
 import json
 import sys
 from pathlib import Path
@@ -320,15 +325,19 @@ def as_float(x):
 
 def mia_metrics(payload: dict):
     results = payload.get("results", {}) if isinstance(payload, dict) else {}
-    conf = results.get("confidence_extended", {}) if isinstance(results.get("confidence_extended", {}), dict) else {}
+    threshold_attacks = results.get("threshold_attacks", {}) if isinstance(results.get("threshold_attacks", {}), dict) else {}
+    if isinstance(threshold_attacks.get("confidence"), dict):
+        thr = threshold_attacks["confidence"]
+    else:
+        thr = results.get("confidence_extended", {}) if isinstance(results.get("confidence_extended", {}), dict) else {}
     lira = results.get("lira", {}) if isinstance(results.get("lira", {}), dict) else {}
     nn = results.get("nn", {}) if isinstance(results.get("nn", {}), dict) else {}
     samia = results.get("samia", {}) if isinstance(results.get("samia", {}), dict) else {}
     return {
         "victim_test_acc": as_float(payload.get("victim_test_acc")),
-        "threshold_auroc": as_float(conf.get("auroc")),
-        "threshold_advantage": as_float(conf.get("advantage")),
-        "threshold_tpr_at_1fpr": as_float(conf.get("tpr_at_1fpr")),
+        "threshold_auroc": as_float(thr.get("auc") if "auc" in thr else thr.get("auroc")),
+        "threshold_advantage": as_float(thr.get("advantage")),
+        "threshold_tpr_at_1fpr": as_float(thr.get("tpr_at_1fpr")),
         "lira_auc": as_float(lira.get("auc")),
         "lira_advantage": as_float(lira.get("advantage")),
         "lira_tpr_at_1fpr": as_float(lira.get("tpr_at_1fpr")),
@@ -417,7 +426,7 @@ print("[report] key metrics:")
 print(f"  unlearn threshold_auroc={unlearn_mia.get('threshold_auroc')}")
 print(f"  retrain threshold_auroc={retrain_mia.get('threshold_auroc')}")
 print(f"  dense threshold_auroc={dense_mia.get('threshold_auroc')}")
-PY
+PY_REPORT
 
 echo "Done."
 echo "Unlearn dir      : ${RUN_DIR_UNLEARN}"
