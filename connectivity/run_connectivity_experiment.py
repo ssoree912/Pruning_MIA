@@ -25,7 +25,6 @@ from train import (  # type: ignore
 )
 from unlearning.utils import (  # type: ignore
     build_forget_retain_indices,
-    composite_unlearning_score,
     make_subset_loader,
     resolve_df_spec,
     split_indices_train_val,
@@ -135,17 +134,33 @@ def build_rt_reference(
     return {"retain_val_acc": float(metrics.get("retain_val_acc", 0.0))}
 
 
-def point_composite_score(
+def point_rank_key(
     point: Dict[str, float],
     forget_budget_acc: float,
     rt_reference: Optional[Dict[str, float]],
-) -> float:
-    return composite_unlearning_score(
-        retain_val_acc=float(point.get("retain_val_acc", point.get("retain_acc", 0.0))),
-        forget_val_acc=float(point.get("forget_val_acc", point.get("forget_acc", 1.0))),
-        full_val_acc=None,
-        forget_budget_acc=float(forget_budget_acc),
-        rt_ref=rt_reference,
+) -> Tuple[int, int, float, float, float, float]:
+    f_acc = float(point.get("forget_val_acc", point.get("forget_acc", 1.0)))
+    r_acc = float(point.get("retain_val_acc", point.get("retain_acc", 0.0)))
+    r_loss = float(point.get("retain_val_loss", point.get("retain_loss", 1e9)))
+    f_loss = float(point.get("forget_val_loss", point.get("forget_loss", 1e9)))
+
+    feasible = 1 if f_acc <= float(forget_budget_acc) else 0
+
+    rt_floor_ok = 1
+    rt_gap = 0.0
+    if rt_reference is not None and "retain_val_acc" in rt_reference:
+        rt_ref = float(rt_reference["retain_val_acc"])
+        rt_gap = abs(r_acc - rt_ref)
+        # RT is used as a floor, not as a target to lock all points to one score.
+        rt_floor_ok = 1 if r_acc >= (rt_ref - 1e-4) else 0
+
+    return (
+        int(feasible),
+        int(rt_floor_ok),
+        float(r_acc),
+        -float(r_loss),
+        -float(f_loss),
+        -float(rt_gap),
     )
 
 
@@ -192,13 +207,16 @@ def evaluate_curve(
                 normalized_full_scale=normalized_full_scale,
             )
         )
-        point["composite"] = float(point_composite_score(point, forget_budget_acc, rt_reference))
+        rank_key = point_rank_key(point, forget_budget_acc, rt_reference)
+        point["selector_key"] = [float(x) for x in rank_key]
+        # Legacy scalar kept for backward compatibility with older analysis scripts.
+        point["composite"] = float(point.get("retain_val_acc", point.get("retain_acc", 0.0)))
         curve.append(point)
         print(
             f"[curve {idx:03d}/{len(lambdas):03d}] t={t:.3f} "
             f"retain_val_acc={point.get('retain_val_acc', 0.0):.4f} "
             f"forget_val_acc={point.get('forget_val_acc', 0.0):.4f} "
-            f"test_acc={point.get('test_acc', 0.0):.4f} composite={point['composite']:.6f}"
+            f"test_acc={point.get('test_acc', 0.0):.4f} key={point['selector_key']}"
         )
 
     barrier_key = "retain_val_loss"
@@ -212,9 +230,8 @@ def evaluate_curve(
     acc_drop_pp = (acc_ref - acc_min) * 100.0
 
     feasible = [p for p in curve if float(p.get("forget_val_acc", 1.0)) <= float(forget_budget_acc)]
-    if not feasible:
-        feasible = sorted(curve, key=lambda p: float(p.get("forget_val_acc", 1.0)))[: max(1, len(curve) // 5)]
-    best_by_composite = max(feasible, key=lambda p: float(p["composite"]))
+    pool = feasible if feasible else curve
+    best_by_selector = max(pool, key=lambda p: point_rank_key(p, forget_budget_acc, rt_reference))
 
     return {
         "curve": curve,
@@ -223,7 +240,10 @@ def evaluate_curve(
         "retain_val_loss_max": lmax,
         "retain_val_loss_barrier": barrier,
         "retain_val_acc_drop_pp": acc_drop_pp,
-        "best_by_composite": best_by_composite,
+        "selector": "lexicographic(feasible,rt_floor_ok,retain_val_acc,-retain_val_loss,-forget_val_loss,-rt_gap)",
+        "best_by_selector": best_by_selector,
+        # Backward compatibility alias.
+        "best_by_composite": best_by_selector,
         "best_by_test_acc": max(curve, key=lambda p: float(p.get("test_acc", 0.0))),
     }
 
@@ -263,7 +283,23 @@ def greedy_soup(
 ) -> Tuple[Dict[str, torch.Tensor], List[str], float, Dict[str, float]]:
     if not candidates:
         raise ValueError("candidates must not be empty")
-    ordered = sorted(candidates, key=lambda c: float(c["val_score"]), reverse=True)
+
+    def _candidate_rank_key(cand: Dict[str, Any]) -> Tuple[int, int, float, float, float, float]:
+        if "rank_key" in cand:
+            rk = cand["rank_key"]
+            if isinstance(rk, (list, tuple)) and len(rk) == 6:
+                return (
+                    int(rk[0]),
+                    int(rk[1]),
+                    float(rk[2]),
+                    float(rk[3]),
+                    float(rk[4]),
+                    float(rk[5]),
+                )
+        metrics = cand.get("metrics", {})
+        return point_rank_key(metrics, forget_budget_acc, rt_reference)
+
+    ordered = sorted(candidates, key=_candidate_rank_key, reverse=True)
     chosen = [ordered[0]]
     soup_state = ordered[0]["state"]
     soup_metrics = evaluate_state(
@@ -282,7 +318,7 @@ def greedy_soup(
         forget_test_loader=forget_test_loader,
         normalized_full_scale=normalized_full_scale,
     )
-    best_score = float(point_composite_score(soup_metrics, forget_budget_acc, rt_reference))
+    best_key = point_rank_key(soup_metrics, forget_budget_acc, rt_reference)
 
     for cand in ordered[1:]:
         trial_state = average_state_dicts([c["state"] for c in chosen] + [cand["state"]])
@@ -302,13 +338,17 @@ def greedy_soup(
             forget_test_loader=forget_test_loader,
             normalized_full_scale=normalized_full_scale,
         )
-        trial_score = float(point_composite_score(trial_metrics, forget_budget_acc, rt_reference))
-        if trial_score >= best_score:
+        trial_key = point_rank_key(trial_metrics, forget_budget_acc, rt_reference)
+        # Strict improvement only: avoid saturating soup with ties.
+        if trial_key > best_key:
             chosen.append(cand)
             soup_state = trial_state
             soup_metrics = trial_metrics
-            best_score = trial_score
-    return soup_state, [str(c["name"]) for c in chosen], best_score, soup_metrics
+            best_key = trial_key
+    soup_metrics = dict(soup_metrics)
+    soup_metrics["selector_key"] = [float(x) for x in best_key]
+    best_legacy_score = float(soup_metrics.get("retain_val_acc", soup_metrics.get("retain_acc", 0.0)))
+    return soup_state, [str(c["name"]) for c in chosen], best_legacy_score, soup_metrics
 
 
 @torch.no_grad()
@@ -550,7 +590,7 @@ def main() -> None:
             indent=2,
         )
 
-    best_perm_linear_t = float(perm_linear["best_by_composite"]["t"])
+    best_perm_linear_t = float(perm_linear["best_by_selector"]["t"])
     best_perm_linear_state = linear_state_dict(state_a, state_b_perm, best_perm_linear_t)
     save_checkpoint_with_state(
         best_perm_linear_state,
@@ -558,7 +598,7 @@ def main() -> None:
         {
             "stage": "perm_linear_best",
             "best_t": best_perm_linear_t,
-            "composite": float(perm_linear["best_by_composite"]["composite"]),
+            "composite": float(perm_linear["best_by_selector"]["composite"]),
         },
     )
 
@@ -616,12 +656,12 @@ def main() -> None:
     with open(run_dir / "bezier_curve.json", "w") as f:
         json.dump({"history": bezier_train.history, **bezier_curve}, f, indent=2)
 
-    best_bezier_t = float(bezier_curve["best_by_composite"]["t"])
+    best_bezier_t = float(bezier_curve["best_by_selector"]["t"])
     best_bezier_state = bezier_state_dict(state_a, bezier_train.final_control_state, state_b_perm, best_bezier_t)
     save_checkpoint_with_state(
         best_bezier_state,
         run_dir / "bezier_best.pth",
-        {"stage": "bezier_best", "best_t": best_bezier_t, "composite": float(bezier_curve["best_by_composite"]["composite"])},
+        {"stage": "bezier_best", "best_t": best_bezier_t, "composite": float(bezier_curve["best_by_selector"]["composite"])},
     )
 
     bezier_swa_curve = None
@@ -647,12 +687,12 @@ def main() -> None:
         )
         with open(run_dir / "bezier_swa_curve.json", "w") as f:
             json.dump({"history": bezier_train.history, **bezier_swa_curve}, f, indent=2)
-        best_bezier_swa_t = float(bezier_swa_curve["best_by_composite"]["t"])
+        best_bezier_swa_t = float(bezier_swa_curve["best_by_selector"]["t"])
         best_bezier_swa_state = bezier_state_dict(state_a, bezier_train.swa_control_state, state_b_perm, best_bezier_swa_t)
         save_checkpoint_with_state(
             best_bezier_swa_state,
             run_dir / "bezier_swa_best.pth",
-            {"stage": "bezier_swa_best", "best_t": best_bezier_swa_t, "composite": float(bezier_swa_curve["best_by_composite"]["composite"])},
+            {"stage": "bezier_swa_best", "best_t": best_bezier_swa_t, "composite": float(bezier_swa_curve["best_by_selector"]["composite"])},
         )
 
     # 4) Simplex training anchored at A and aligned B, initialized from best Bezier state.
@@ -710,22 +750,36 @@ def main() -> None:
             forget_test_loader=forget_test_loader,
             normalized_full_scale=normalized_full_scale,
         )
-        score = float(point_composite_score(metrics, args.forget_val_budget, rt_reference))
+        rank_key = point_rank_key(metrics, args.forget_val_budget, rt_reference)
         row = {
             "name": f"simplex_{idx:03d}",
             "lambdas": [float(x) for x in lamb.tolist()],
             **metrics,
-            "composite": score,
+            "selector_key": [float(x) for x in rank_key],
+            # Legacy scalar for backward compatibility in reports.
+            "composite": float(metrics.get("retain_val_acc", metrics.get("retain_acc", 0.0))),
         }
         simplex_samples.append(row)
-        simplex_candidates.append({"name": row["name"], "state": state, "val_score": score})
+        simplex_candidates.append(
+            {
+                "name": row["name"],
+                "state": state,
+                "metrics": metrics,
+                "rank_key": rank_key,
+            }
+        )
 
-    simplex_best = max(simplex_samples, key=lambda x: float(x["composite"]))
+    simplex_best = max(simplex_samples, key=lambda x: point_rank_key(x, args.forget_val_budget, rt_reference))
     simplex_best_state = simplex_candidates[[c["name"] for c in simplex_candidates].index(simplex_best["name"])] ["state"]
     save_checkpoint_with_state(
         simplex_best_state,
         run_dir / "simplex_best.pth",
-        {"stage": "simplex_best", "lambdas": simplex_best["lambdas"], "composite": float(simplex_best["composite"])},
+        {
+            "stage": "simplex_best",
+            "lambdas": simplex_best["lambdas"],
+            "composite": float(simplex_best["composite"]),
+            "selector_key": simplex_best["selector_key"],
+        },
     )
 
     simplex_soup_state, simplex_soup_names, simplex_soup_score, simplex_soup_metrics = greedy_soup(
@@ -749,7 +803,12 @@ def main() -> None:
     save_checkpoint_with_state(
         simplex_soup_state,
         run_dir / "simplex_soup_best.pth",
-        {"stage": "simplex_soup_best", "selected_candidates": simplex_soup_names, "composite": float(simplex_soup_score)},
+        {
+            "stage": "simplex_soup_best",
+            "selected_candidates": simplex_soup_names,
+            "composite": float(simplex_soup_score),
+            "selector_key": simplex_soup_metrics.get("selector_key"),
+        },
     )
 
     simplex_swa_samples = None
@@ -775,21 +834,30 @@ def main() -> None:
                 forget_test_loader=forget_test_loader,
                 normalized_full_scale=normalized_full_scale,
             )
-            score = float(point_composite_score(metrics, args.forget_val_budget, rt_reference))
+            rank_key = point_rank_key(metrics, args.forget_val_budget, rt_reference)
             simplex_swa_samples.append(
                 {
                     "name": f"simplex_swa_{idx:03d}",
                     "lambdas": [float(x) for x in lamb.tolist()],
                     **metrics,
-                    "composite": score,
+                    "selector_key": [float(x) for x in rank_key],
+                    "composite": float(metrics.get("retain_val_acc", metrics.get("retain_acc", 0.0))),
                 }
             )
-        simplex_swa_best = max(simplex_swa_samples, key=lambda x: float(x["composite"]))
+        simplex_swa_best = max(
+            simplex_swa_samples,
+            key=lambda x: point_rank_key(x, args.forget_val_budget, rt_reference),
+        )
         best_state = simplex_state_dict(vertices_swa, torch.tensor(simplex_swa_best["lambdas"], dtype=torch.float32))
         save_checkpoint_with_state(
             best_state,
             run_dir / "simplex_swa_best.pth",
-            {"stage": "simplex_swa_best", "lambdas": simplex_swa_best["lambdas"], "composite": float(simplex_swa_best["composite"])},
+            {
+                "stage": "simplex_swa_best",
+                "lambdas": simplex_swa_best["lambdas"],
+                "composite": float(simplex_swa_best["composite"]),
+                "selector_key": simplex_swa_best["selector_key"],
+            },
         )
 
     summary = {
@@ -811,13 +879,17 @@ def main() -> None:
         "endpoint_metrics": endpoint_metrics,
         "rt_reference": rt_reference,
         "raw_linear": {
+            "selector": raw_linear.get("selector"),
             "retain_val_loss_barrier": raw_linear["retain_val_loss_barrier"],
             "retain_val_acc_drop_pp": raw_linear["retain_val_acc_drop_pp"],
+            "best_by_selector": raw_linear["best_by_selector"],
             "best_by_composite": raw_linear["best_by_composite"],
         },
         "perm_linear": {
+            "selector": perm_linear.get("selector"),
             "retain_val_loss_barrier": perm_linear["retain_val_loss_barrier"],
             "retain_val_acc_drop_pp": perm_linear["retain_val_acc_drop_pp"],
+            "best_by_selector": perm_linear["best_by_selector"],
             "best_by_composite": perm_linear["best_by_composite"],
             "rebasin": {
                 "iterations": rebasin.iterations,
@@ -827,12 +899,16 @@ def main() -> None:
             },
         },
         "bezier": {
+            "selector": bezier_curve.get("selector"),
             "history_len": len(bezier_train.history),
+            "best_by_selector": bezier_curve["best_by_selector"],
             "best_by_composite": bezier_curve["best_by_composite"],
         },
         "bezier_swa": {
             "enabled": bezier_swa_curve is not None,
             "history_len": len(bezier_train.history),
+            "selector": bezier_swa_curve.get("selector") if bezier_swa_curve is not None else None,
+            "best_by_selector": bezier_swa_curve["best_by_selector"] if bezier_swa_curve is not None else None,
             "best_by_composite": bezier_swa_curve["best_by_composite"] if bezier_swa_curve is not None else None,
         },
         "simplex": {
@@ -862,9 +938,9 @@ def main() -> None:
     print("CONNECTIVITY DONE")
     print("=" * 80)
     print(f"summary: {run_dir / 'summary.json'}")
-    print(f"raw_linear best composite t: {raw_linear['best_by_composite']['t']:.4f}")
-    print(f"perm_linear best composite t: {perm_linear['best_by_composite']['t']:.4f}")
-    print(f"bezier best composite t: {bezier_curve['best_by_composite']['t']:.4f}")
+    print(f"raw_linear best selector t: {raw_linear['best_by_selector']['t']:.4f}")
+    print(f"perm_linear best selector t: {perm_linear['best_by_selector']['t']:.4f}")
+    print(f"bezier best selector t: {bezier_curve['best_by_selector']['t']:.4f}")
     print(f"simplex best composite: {simplex_best['composite']:.6f}")
 
 
