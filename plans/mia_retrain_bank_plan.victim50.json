@@ -1,0 +1,57 @@
+{
+  "dataset_name": "cifar10",
+  "base_config_path": "runs/dense/cifar10/seed42/config.json",
+  "split_seed": 7,
+  "device": 0,
+  "attacks": "threshold,lira,nn,samia",
+  "forward_mode": "standard",
+  "tpr_fprs": "0.1,1,5",
+  "save_scores": true,
+  "victim": {
+    "name": "scratch_retrain_50",
+    "pipeline": "scratch_retrain",
+    "model_id": 50,
+    "source_seeds": [
+      50
+    ],
+    "ckpt_path": "runs/unlearning_df1/retrain/cifar10/df1/seed50_seed51/scratch_retrain_seed50.pth"
+  },
+  "shadows": [
+    {
+      "name": "scratch_retrain_42",
+      "pipeline": "scratch_retrain",
+      "model_id": 42,
+      "source_seeds": [
+        42
+      ],
+      "ckpt_path": "runs/unlearning_df1/retrain/cifar10/df1/seed42_seed43/scratch_retrain_seed42.pth"
+    },
+    {
+      "name": "scratch_retrain_44",
+      "pipeline": "scratch_retrain",
+      "model_id": 44,
+      "source_seeds": [
+        44
+      ],
+      "ckpt_path": "runs/unlearning_df1/retrain/cifar10/df1/seed44_seed45/scratch_retrain_seed44.pth"
+    },
+    {
+      "name": "scratch_retrain_46",
+      "pipeline": "scratch_retrain",
+      "model_id": 46,
+      "source_seeds": [
+        46
+      ],
+      "ckpt_path": "runs/unlearning_df1/retrain/cifar10/df1/seed46_seed47/scratch_retrain_seed46.pth"
+    },
+    {
+      "name": "scratch_retrain_48",
+      "pipeline": "scratch_retrain",
+      "model_id": 48,
+      "source_seeds": [
+        48
+      ],
+      "ckpt_path": "runs/unlearning_df1/retrain/cifar10/df1/seed48_seed49/scratch_retrain_seed48.pth"
+    }
+  ]
+}

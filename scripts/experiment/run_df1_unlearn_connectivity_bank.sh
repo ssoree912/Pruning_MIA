@@ -288,11 +288,14 @@ for raw_pair in "${PAIRS[@]}"; do
       if [[ "${DRY_RUN}" == "1" ]]; then
         run_cmd cp -f "${src_ckpt}" "${dst_ckpt}"
       else
-        if [[ ! -f "${src_ckpt}" ]]; then
-          echo "Scratch retrain ckpt missing after generation: ${src_ckpt}" >&2
+        if [[ -f "${src_ckpt}" ]]; then
+          cp -f "${src_ckpt}" "${dst_ckpt}"
+        elif [[ -f "${dst_ckpt}" ]]; then
+          echo "    * reuse existing retrain ckpt: ${dst_ckpt}"
+        else
+          echo "Scratch retrain ckpt missing: src=${src_ckpt}, dst=${dst_ckpt}" >&2
           exit 1
         fi
-        cp -f "${src_ckpt}" "${dst_ckpt}"
       fi
     done
 
