@@ -1,0 +1,62 @@
+{
+  "dataset_name": "cifar10",
+  "base_config_path": "runs/dense/cifar10/seed42/config.json",
+  "split_seed": 7,
+  "device": 0,
+  "attacks": "threshold,lira,nn,samia",
+  "forward_mode": "standard",
+  "tpr_fprs": "0.1,1,5",
+  "save_scores": true,
+  "victim": {
+    "name": "simplex_soup_48_49",
+    "pipeline": "merge_simplex_soup",
+    "model_id": 48,
+    "source_seeds": [
+      48,
+      49
+    ],
+    "ckpt_path": "runs/unlearning_connectivity_phase15_final/cifar10/df1/unlearn_seed48__unlearn_seed49/simplex_soup_best.pth"
+  },
+  "shadows": [
+    {
+      "name": "simplex_soup_42_43",
+      "pipeline": "merge_simplex_soup",
+      "model_id": 42,
+      "source_seeds": [
+        42,
+        43
+      ],
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/cifar10/df1/unlearn_seed42__unlearn_seed43/simplex_soup_best.pth"
+    },
+    {
+      "name": "simplex_soup_44_45",
+      "pipeline": "merge_simplex_soup",
+      "model_id": 44,
+      "source_seeds": [
+        44,
+        45
+      ],
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/cifar10/df1/unlearn_seed44__unlearn_seed45/simplex_soup_best.pth"
+    },
+    {
+      "name": "simplex_soup_46_47",
+      "pipeline": "merge_simplex_soup",
+      "model_id": 46,
+      "source_seeds": [
+        46,
+        47
+      ],
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/cifar10/df1/unlearn_seed46__unlearn_seed47/simplex_soup_best.pth"
+    },
+    {
+      "name": "simplex_soup_50_51",
+      "pipeline": "merge_simplex_soup",
+      "model_id": 50,
+      "source_seeds": [
+        50,
+        51
+      ],
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/cifar10/df1/unlearn_seed50__unlearn_seed51/simplex_soup_best.pth"
+    }
+  ]
+}

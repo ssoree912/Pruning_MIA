@@ -1,0 +1,57 @@
+{
+  "dataset_name": "cifar10",
+  "base_config_path": "runs/dense/cifar10/seed42/config.json",
+  "split_seed": 7,
+  "device": 0,
+  "attacks": "threshold,lira,nn,samia",
+  "forward_mode": "standard",
+  "tpr_fprs": "0.1,1,5",
+  "save_scores": true,
+  "victim": {
+    "name": "raw_unlearn_48",
+    "pipeline": "raw_unlearn",
+    "model_id": 48,
+    "source_seeds": [
+      48
+    ],
+    "ckpt_path": "runs/unlearning_df1/unlearn/cifar10/df1/seed48_seed49/unlearn_seed48.pth"
+  },
+  "shadows": [
+    {
+      "name": "raw_unlearn_42",
+      "pipeline": "raw_unlearn",
+      "model_id": 42,
+      "source_seeds": [
+        42
+      ],
+      "ckpt_path": "runs/unlearning_df1/unlearn/cifar10/df1/seed42_seed43/unlearn_seed42.pth"
+    },
+    {
+      "name": "raw_unlearn_44",
+      "pipeline": "raw_unlearn",
+      "model_id": 44,
+      "source_seeds": [
+        44
+      ],
+      "ckpt_path": "runs/unlearning_df1/unlearn/cifar10/df1/seed44_seed45/unlearn_seed44.pth"
+    },
+    {
+      "name": "raw_unlearn_46",
+      "pipeline": "raw_unlearn",
+      "model_id": 46,
+      "source_seeds": [
+        46
+      ],
+      "ckpt_path": "runs/unlearning_df1/unlearn/cifar10/df1/seed46_seed47/unlearn_seed46.pth"
+    },
+    {
+      "name": "raw_unlearn_50",
+      "pipeline": "raw_unlearn",
+      "model_id": 50,
+      "source_seeds": [
+        50
+      ],
+      "ckpt_path": "runs/unlearning_df1/unlearn/cifar10/df1/seed50_seed51/unlearn_seed50.pth"
+    }
+  ]
+}
