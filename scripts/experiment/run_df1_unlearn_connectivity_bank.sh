@@ -21,6 +21,7 @@ DENSE_CKPT="${DENSE_CKPT:-runs/dense/cifar10/seed42/best_model.pth}"
 PAIR_LIST="${PAIR_LIST:-42:43,44:45,46:47,48:49,50:51}"
 
 OUT_UNLEARN="${OUT_UNLEARN:-runs/unlearning_df1/unlearn}"
+OUT_RETRAIN="${OUT_RETRAIN:-runs/unlearning_df1/retrain}"
 OUT_CONNECTIVITY="${OUT_CONNECTIVITY:-runs/unlearning_connectivity_phase15_final}"
 
 DATASET="${DATASET:-cifar10}"
@@ -133,6 +134,7 @@ echo "repo: ${REPO_ROOT}"
 echo "dense: ${DENSE_CKPT}"
 echo "pairs: ${PAIR_LIST}"
 echo "out_unlearn: ${OUT_UNLEARN}"
+echo "out_retrain: ${OUT_RETRAIN}"
 echo "out_connectivity: ${OUT_CONNECTIVITY}"
 echo "bn_recalc: ${BN_RECALC}"
 echo "skip_existing: ${SKIP_EXISTING}"
@@ -151,9 +153,14 @@ for raw_pair in "${PAIRS[@]}"; do
   pair_idx=$((pair_idx + 1))
 
   run_dir_unlearn="${OUT_UNLEARN}/${DATASET}/df1/seed${seed_a}_seed${seed_b}"
+  run_dir_retrain="${OUT_RETRAIN}/${DATASET}/df1/seed${seed_a}_seed${seed_b}"
   unlearn_a="${run_dir_unlearn}/unlearn_seed${seed_a}.pth"
   unlearn_b="${run_dir_unlearn}/unlearn_seed${seed_b}.pth"
-  scratch_a="${run_dir_unlearn}/scratch_retrain_seed${seed_a}.pth"
+  scratch_a_unlearn="${run_dir_unlearn}/scratch_retrain_seed${seed_a}.pth"
+  scratch_b_unlearn="${run_dir_unlearn}/scratch_retrain_seed${seed_b}.pth"
+  scratch_a_retrain="${run_dir_retrain}/scratch_retrain_seed${seed_a}.pth"
+  scratch_b_retrain="${run_dir_retrain}/scratch_retrain_seed${seed_b}.pth"
+  scratch_a_for_conn="${scratch_a_retrain}"
 
   conn_run_dir="${OUT_CONNECTIVITY}/${DATASET}/df1/unlearn_seed${seed_a}__unlearn_seed${seed_b}"
   conn_summary="${conn_run_dir}/summary.json"
@@ -164,11 +171,7 @@ for raw_pair in "${PAIRS[@]}"; do
 
   need_step1=1
   if [[ "${SKIP_EXISTING}" == "1" && -f "${unlearn_a}" && -f "${unlearn_b}" ]]; then
-    if [[ "${TRAIN_SCRATCH_RETRAIN_BASELINE}" == "1" && ! -f "${scratch_a}" ]]; then
-      need_step1=1
-    else
-      need_step1=0
-    fi
+    need_step1=0
   fi
 
   if [[ "${need_step1}" == "1" ]]; then
@@ -208,16 +211,6 @@ for raw_pair in "${PAIRS[@]}"; do
     if [[ "${SKIP_EXISTING}" == "1" ]]; then
       train_cmd+=(--skip-existing)
     fi
-    if [[ "${TRAIN_SCRATCH_RETRAIN_BASELINE}" == "1" ]]; then
-      train_cmd+=(
-        --train-scratch-retrain-baseline
-        --scratch-retrain-epochs "${SCRATCH_EPOCHS}"
-        --scratch-retrain-lr "${SCRATCH_LR}"
-        --scratch-retrain-momentum "${SCRATCH_MOMENTUM}"
-        --scratch-retrain-weight-decay "${SCRATCH_WEIGHT_DECAY}"
-        --scratch-retrain-seed "${seed_a}"
-      )
-    fi
     run_cmd "${train_cmd[@]}"
   else
     echo "  - Step1 skipped (existing endpoints found)"
@@ -231,10 +224,87 @@ for raw_pair in "${PAIRS[@]}"; do
       exit 1
     fi
 
-    if [[ "${TRAIN_SCRATCH_RETRAIN_BASELINE}" == "1" && ! -f "${scratch_a}" ]]; then
-      echo "TRAIN_SCRATCH_RETRAIN_BASELINE=1 but scratch ckpt missing: ${scratch_a}" >&2
-      exit 1
+  fi
+
+  if [[ "${TRAIN_SCRATCH_RETRAIN_BASELINE}" == "1" ]]; then
+    echo "  - Scratch retrain baselines (seed${seed_a}, seed${seed_b})"
+    run_cmd mkdir -p "${run_dir_retrain}"
+
+    for s in "${seed_a}" "${seed_b}"; do
+      src_ckpt="${run_dir_unlearn}/scratch_retrain_seed${s}.pth"
+      dst_ckpt="${run_dir_retrain}/scratch_retrain_seed${s}.pth"
+
+      need_scratch=1
+      if [[ "${SKIP_EXISTING}" == "1" && -f "${dst_ckpt}" ]]; then
+        need_scratch=0
+      elif [[ "${SKIP_EXISTING}" == "1" && -f "${src_ckpt}" ]]; then
+        need_scratch=0
+      fi
+
+      if [[ "${need_scratch}" == "1" ]]; then
+        scratch_cmd=(
+          python train.py
+          --dense-ckpt "${DENSE_CKPT}"
+          --out-dir "${OUT_UNLEARN}"
+          --dataset "${DATASET}"
+          --arch "${ARCH}"
+          --layers "${LAYERS}"
+          --seed-a "${seed_a}"
+          --seed-b "${seed_b}"
+          --split-seed "${SPLIT_SEED}"
+          --df-mode profile
+          --df-profile df1
+          --unlearn-epochs "${UNLEARN_EPOCHS}"
+          --unlearn-steps "${UNLEARN_STEPS}"
+          --unlearn-lr "${UNLEARN_LR}"
+          --forget-alpha "${FORGET_ALPHA}"
+          --forget-objective "${FORGET_OBJECTIVE}"
+          --retain-weight "${RETAIN_WEIGHT}"
+          --grad-clip "${GRAD_CLIP}"
+          --retrain-epochs "${RETRAIN_EPOCHS}"
+          --retrain-lr "${RETRAIN_LR}"
+          --ckpt-select "${CKPT_SELECT}"
+          --val-ratio "${VAL_RATIO}"
+          --forget-val-budget "${FORGET_VAL_BUDGET}"
+          --save-tail-k "${SAVE_TAIL_K}"
+          --batch-size "${BATCH_SIZE}"
+          --workers "${WORKERS}"
+          --datapath "${DATAPATH}"
+          --gpu "${GPU}"
+          --step1-only
+          --no-swa-merge
+          --skip-existing
+          --train-scratch-retrain-baseline
+          --scratch-retrain-epochs "${SCRATCH_EPOCHS}"
+          --scratch-retrain-lr "${SCRATCH_LR}"
+          --scratch-retrain-momentum "${SCRATCH_MOMENTUM}"
+          --scratch-retrain-weight-decay "${SCRATCH_WEIGHT_DECAY}"
+          --scratch-retrain-seed "${s}"
+        )
+        run_cmd "${scratch_cmd[@]}"
+      fi
+
+      # Keep retrain outputs separated even if scratch was generated under OUT_UNLEARN.
+      if [[ "${DRY_RUN}" == "1" ]]; then
+        run_cmd cp -f "${src_ckpt}" "${dst_ckpt}"
+      else
+        if [[ ! -f "${src_ckpt}" ]]; then
+          echo "Scratch retrain ckpt missing after generation: ${src_ckpt}" >&2
+          exit 1
+        fi
+        cp -f "${src_ckpt}" "${dst_ckpt}"
+      fi
+    done
+
+    if [[ "${DRY_RUN}" != "1" ]]; then
+      if [[ ! -f "${scratch_a_retrain}" || ! -f "${scratch_b_retrain}" ]]; then
+        echo "Missing retrain outputs in ${run_dir_retrain}" >&2
+        exit 1
+      fi
     fi
+  else
+    # Optional fallback: if a scratch baseline already exists in OUT_UNLEARN, use it.
+    scratch_a_for_conn="${scratch_a_unlearn}"
   fi
 
   need_conn=1
@@ -250,7 +320,7 @@ for raw_pair in "${PAIRS[@]}"; do
       DENSE_CKPT="${DENSE_CKPT}"
       ENDPOINT_A="${unlearn_a}"
       ENDPOINT_B="${unlearn_b}"
-      SCRATCH_RETRAIN_CKPT="${scratch_a}"
+      SCRATCH_RETRAIN_CKPT="${scratch_a_for_conn}"
       OUT_ROOT="${OUT_CONNECTIVITY}"
       DATASET="${DATASET}"
       ARCH="${ARCH}"
@@ -302,4 +372,5 @@ done
 echo
 echo "All done."
 echo "  unlearn root      : ${OUT_UNLEARN}"
+echo "  retrain root      : ${OUT_RETRAIN}"
 echo "  connectivity root : ${OUT_CONNECTIVITY}"
