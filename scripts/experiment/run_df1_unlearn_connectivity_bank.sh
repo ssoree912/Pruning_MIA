@@ -79,6 +79,7 @@ SIMPLEX_GRID_RESOLUTION="${SIMPLEX_GRID_RESOLUTION:-5}"
 
 SKIP_EXISTING="${SKIP_EXISTING:-1}"
 DRY_RUN="${DRY_RUN:-0}"
+TEST_ONLY="${TEST_ONLY:-0}"
 
 is_int() {
   [[ "$1" =~ ^[0-9]+$ ]]
@@ -139,6 +140,7 @@ echo "out_connectivity: ${OUT_CONNECTIVITY}"
 echo "bn_recalc: ${BN_RECALC}"
 echo "skip_existing: ${SKIP_EXISTING}"
 echo "dry_run: ${DRY_RUN}"
+echo "test_only: ${TEST_ONLY}"
 echo "================================================================"
 
 pair_idx=0
@@ -168,6 +170,154 @@ for raw_pair in "${PAIRS[@]}"; do
 
   echo
   echo "[${pair_idx}/${#PAIRS[@]}] pair seed${seed_a}_seed${seed_b}"
+
+  if [[ "${TEST_ONLY}" == "1" ]]; then
+    echo "  - TEST_ONLY mode: evaluate existing checkpoints and write summaries"
+
+    if [[ "${DRY_RUN}" != "1" ]]; then
+      if [[ ! -f "${unlearn_a}" || ! -f "${unlearn_b}" ]]; then
+        echo "Missing unlearn endpoints for TEST_ONLY pair seed${seed_a}_seed${seed_b}" >&2
+        echo "  expected: ${unlearn_a}" >&2
+        echo "  expected: ${unlearn_b}" >&2
+        exit 1
+      fi
+    fi
+
+    # Unlearn summary refresh (test/eval only; no retraining due --skip-existing + existing ckpts).
+    scratch_unlearn_for_summary=""
+    if [[ -f "${scratch_a_unlearn}" ]]; then
+      scratch_unlearn_for_summary="${scratch_a_unlearn}"
+    elif [[ -f "${scratch_b_unlearn}" ]]; then
+      scratch_unlearn_for_summary="${scratch_b_unlearn}"
+    fi
+    unlearn_summary_cmd=(
+      python train.py
+      --dense-ckpt "${DENSE_CKPT}"
+      --out-dir "${OUT_UNLEARN}"
+      --dataset "${DATASET}"
+      --arch "${ARCH}"
+      --layers "${LAYERS}"
+      --seed-a "${seed_a}"
+      --seed-b "${seed_b}"
+      --split-seed "${SPLIT_SEED}"
+      --df-mode profile
+      --df-profile df1
+      --unlearn-epochs "${UNLEARN_EPOCHS}"
+      --unlearn-steps "${UNLEARN_STEPS}"
+      --unlearn-lr "${UNLEARN_LR}"
+      --forget-alpha "${FORGET_ALPHA}"
+      --forget-objective "${FORGET_OBJECTIVE}"
+      --retain-weight "${RETAIN_WEIGHT}"
+      --grad-clip "${GRAD_CLIP}"
+      --retrain-epochs "${RETRAIN_EPOCHS}"
+      --retrain-lr "${RETRAIN_LR}"
+      --ckpt-select "${CKPT_SELECT}"
+      --val-ratio "${VAL_RATIO}"
+      --forget-val-budget "${FORGET_VAL_BUDGET}"
+      --save-tail-k "${SAVE_TAIL_K}"
+      --batch-size "${BATCH_SIZE}"
+      --workers "${WORKERS}"
+      --datapath "${DATAPATH}"
+      --gpu "${GPU}"
+      --step1-only
+      --no-swa-merge
+      --skip-existing
+    )
+    if [[ -n "${scratch_unlearn_for_summary}" ]]; then
+      unlearn_summary_cmd+=(--scratch-retrain-ckpt "${scratch_unlearn_for_summary}")
+    fi
+    run_cmd "${unlearn_summary_cmd[@]}"
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      run_cmd cp -f "${run_dir_unlearn}/summary.json" "${run_dir_unlearn}/summary_test_only.json"
+    elif [[ -f "${run_dir_unlearn}/summary.json" ]]; then
+      cp -f "${run_dir_unlearn}/summary.json" "${run_dir_unlearn}/summary_test_only.json"
+    fi
+
+    # Prepare retrain folder checkpoints and evaluate-only summaries.
+    run_cmd mkdir -p "${run_dir_retrain}"
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      run_cmd cp -f "${unlearn_a}" "${run_dir_retrain}/unlearn_seed${seed_a}.pth"
+      run_cmd cp -f "${unlearn_b}" "${run_dir_retrain}/unlearn_seed${seed_b}.pth"
+    else
+      cp -f "${unlearn_a}" "${run_dir_retrain}/unlearn_seed${seed_a}.pth"
+      cp -f "${unlearn_b}" "${run_dir_retrain}/unlearn_seed${seed_b}.pth"
+    fi
+
+    for s in "${seed_a}" "${seed_b}"; do
+      src_scratch="${run_dir_unlearn}/scratch_retrain_seed${s}.pth"
+      dst_scratch="${run_dir_retrain}/scratch_retrain_seed${s}.pth"
+      if [[ "${DRY_RUN}" == "1" ]]; then
+        run_cmd cp -f "${src_scratch}" "${dst_scratch}"
+      else
+        if [[ -f "${src_scratch}" ]]; then
+          cp -f "${src_scratch}" "${dst_scratch}"
+        fi
+        if [[ ! -f "${dst_scratch}" ]]; then
+          echo "Missing retrain scratch checkpoint for TEST_ONLY: ${dst_scratch}" >&2
+          exit 1
+        fi
+      fi
+
+      retrain_summary_cmd=(
+        python train.py
+        --dense-ckpt "${DENSE_CKPT}"
+        --out-dir "${OUT_RETRAIN}"
+        --dataset "${DATASET}"
+        --arch "${ARCH}"
+        --layers "${LAYERS}"
+        --seed-a "${seed_a}"
+        --seed-b "${seed_b}"
+        --split-seed "${SPLIT_SEED}"
+        --df-mode profile
+        --df-profile df1
+        --unlearn-epochs "${UNLEARN_EPOCHS}"
+        --unlearn-steps "${UNLEARN_STEPS}"
+        --unlearn-lr "${UNLEARN_LR}"
+        --forget-alpha "${FORGET_ALPHA}"
+        --forget-objective "${FORGET_OBJECTIVE}"
+        --retain-weight "${RETAIN_WEIGHT}"
+        --grad-clip "${GRAD_CLIP}"
+        --retrain-epochs "${RETRAIN_EPOCHS}"
+        --retrain-lr "${RETRAIN_LR}"
+        --ckpt-select "${CKPT_SELECT}"
+        --val-ratio "${VAL_RATIO}"
+        --forget-val-budget "${FORGET_VAL_BUDGET}"
+        --save-tail-k "${SAVE_TAIL_K}"
+        --batch-size "${BATCH_SIZE}"
+        --workers "${WORKERS}"
+        --datapath "${DATAPATH}"
+        --gpu "${GPU}"
+        --step1-only
+        --no-swa-merge
+        --skip-existing
+        --scratch-retrain-ckpt "${dst_scratch}"
+      )
+      run_cmd "${retrain_summary_cmd[@]}"
+
+      if [[ "${DRY_RUN}" == "1" ]]; then
+        run_cmd cp -f "${run_dir_retrain}/summary.json" "${run_dir_retrain}/summary_seed${s}.json"
+      else
+        if [[ -f "${run_dir_retrain}/summary.json" ]]; then
+          cp -f "${run_dir_retrain}/summary.json" "${run_dir_retrain}/summary_seed${s}.json"
+        else
+          echo "Retrain summary generation failed in TEST_ONLY: ${run_dir_retrain}/summary.json" >&2
+          exit 1
+        fi
+      fi
+    done
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      run_cmd cp -f "${run_dir_retrain}/summary_seed${seed_a}.json" "${run_dir_retrain}/summary.json"
+      run_cmd cp -f "${run_dir_retrain}/summary.json" "${run_dir_retrain}/summary_test_only.json"
+    else
+      cp -f "${run_dir_retrain}/summary_seed${seed_a}.json" "${run_dir_retrain}/summary.json"
+      cp -f "${run_dir_retrain}/summary.json" "${run_dir_retrain}/summary_test_only.json"
+    fi
+
+    echo "  - TEST_ONLY done: ${run_dir_unlearn}/summary_test_only.json"
+    echo "  - TEST_ONLY done: ${run_dir_retrain}/summary_test_only.json"
+    continue
+  fi
 
   need_step1=1
   if [[ "${SKIP_EXISTING}" == "1" && -f "${unlearn_a}" && -f "${unlearn_b}" ]]; then
@@ -302,6 +452,86 @@ for raw_pair in "${PAIRS[@]}"; do
     if [[ "${DRY_RUN}" != "1" ]]; then
       if [[ ! -f "${scratch_a_retrain}" || ! -f "${scratch_b_retrain}" ]]; then
         echo "Missing retrain outputs in ${run_dir_retrain}" >&2
+        exit 1
+      fi
+    fi
+
+    echo "  - Sync unlearn endpoints into retrain dir (for summary generation)"
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      run_cmd cp -f "${unlearn_a}" "${run_dir_retrain}/unlearn_seed${seed_a}.pth"
+      run_cmd cp -f "${unlearn_b}" "${run_dir_retrain}/unlearn_seed${seed_b}.pth"
+    else
+      cp -f "${unlearn_a}" "${run_dir_retrain}/unlearn_seed${seed_a}.pth"
+      cp -f "${unlearn_b}" "${run_dir_retrain}/unlearn_seed${seed_b}.pth"
+    fi
+
+    echo "  - Build retrain summaries (summary_seed*.json + summary.json)"
+    for s in "${seed_a}" "${seed_b}"; do
+      summary_seed="${run_dir_retrain}/summary_seed${s}.json"
+      need_summary=1
+      if [[ "${SKIP_EXISTING}" == "1" && -f "${summary_seed}" ]]; then
+        need_summary=0
+      fi
+
+      if [[ "${need_summary}" == "1" ]]; then
+        summary_cmd=(
+          python train.py
+          --dense-ckpt "${DENSE_CKPT}"
+          --out-dir "${OUT_RETRAIN}"
+          --dataset "${DATASET}"
+          --arch "${ARCH}"
+          --layers "${LAYERS}"
+          --seed-a "${seed_a}"
+          --seed-b "${seed_b}"
+          --split-seed "${SPLIT_SEED}"
+          --df-mode profile
+          --df-profile df1
+          --unlearn-epochs "${UNLEARN_EPOCHS}"
+          --unlearn-steps "${UNLEARN_STEPS}"
+          --unlearn-lr "${UNLEARN_LR}"
+          --forget-alpha "${FORGET_ALPHA}"
+          --forget-objective "${FORGET_OBJECTIVE}"
+          --retain-weight "${RETAIN_WEIGHT}"
+          --grad-clip "${GRAD_CLIP}"
+          --retrain-epochs "${RETRAIN_EPOCHS}"
+          --retrain-lr "${RETRAIN_LR}"
+          --ckpt-select "${CKPT_SELECT}"
+          --val-ratio "${VAL_RATIO}"
+          --forget-val-budget "${FORGET_VAL_BUDGET}"
+          --save-tail-k "${SAVE_TAIL_K}"
+          --batch-size "${BATCH_SIZE}"
+          --workers "${WORKERS}"
+          --datapath "${DATAPATH}"
+          --gpu "${GPU}"
+          --step1-only
+          --no-swa-merge
+          --skip-existing
+          --scratch-retrain-ckpt "${run_dir_retrain}/scratch_retrain_seed${s}.pth"
+        )
+        run_cmd "${summary_cmd[@]}"
+
+        if [[ "${DRY_RUN}" == "1" ]]; then
+          run_cmd cp -f "${run_dir_retrain}/summary.json" "${summary_seed}"
+        else
+          if [[ -f "${run_dir_retrain}/summary.json" ]]; then
+            cp -f "${run_dir_retrain}/summary.json" "${summary_seed}"
+          else
+            echo "Retrain summary generation failed: ${run_dir_retrain}/summary.json" >&2
+            exit 1
+          fi
+        fi
+      else
+        echo "    * reuse existing retrain summary: ${summary_seed}"
+      fi
+    done
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+      run_cmd cp -f "${run_dir_retrain}/summary_seed${seed_a}.json" "${run_dir_retrain}/summary.json"
+    else
+      if [[ -f "${run_dir_retrain}/summary_seed${seed_a}.json" ]]; then
+        cp -f "${run_dir_retrain}/summary_seed${seed_a}.json" "${run_dir_retrain}/summary.json"
+      elif [[ ! -f "${run_dir_retrain}/summary.json" ]]; then
+        echo "Missing retrain summary in ${run_dir_retrain}" >&2
         exit 1
       fi
     fi

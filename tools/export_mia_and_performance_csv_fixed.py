@@ -44,6 +44,32 @@ def _seed_group_from_values(source_seeds: Any = None, run_name: Optional[str] = 
     return "_".join(str(x) for x in uniq)
 
 
+def _first_seed_like(*values: Any) -> Optional[int]:
+    """
+    Return the first seed-like integer from strings such as:
+      - seed46_seed47
+      - unlearn_seed46__unlearn_seed47
+      - /path/.../scratch_retrain_seed50.pth
+    Avoid accidental matches like phase15.
+    """
+    for v in values:
+        if v is None:
+            continue
+        s = str(v)
+        matches = re.findall(r"seed(\d+)", s)
+        if matches:
+            return int(matches[0])
+    # Fallback for names like dense_50 / raw_unlearn_46 / retrain_48.
+    for v in values:
+        if v is None:
+            continue
+        s = str(v)
+        matches = re.findall(r"(?:^|[_-])(\d+)(?:$|[_-])", s)
+        if matches:
+            return int(matches[0])
+    return None
+
+
 def _seed_sort_key(seed_group: Any) -> Tuple[int, ...]:
     vals = [int(x) for x in re.findall(r"\d+", str(seed_group or ""))]
     if not vals:
@@ -63,20 +89,23 @@ def _method_order(method: Any) -> int:
         return 2
     if m.startswith("merge_"):
         merge_order = {
-            "merge_bezier": 3,
-            "merge_bezier_swa": 4,
-            "merge_simplex": 5,
-            "merge_simplex_soup": 6,
+            "merge_raw_linear": 3,
+            "merge_perm_linear": 4,
+            "merge_bezier": 5,
+            "merge_bezier_swa": 6,
+            "merge_simplex": 7,
+            "merge_simplex_soup": 8,
+            "merge_simplex_swa": 9,
         }
-        return merge_order.get(m, 7)
+        return merge_order.get(m, 20)
     order = {
-        "raw_linear_best": 10,
-        "perm_linear_best": 11,
-        "bezier_best": 12,
-        "bezier_swa_best": 13,
-        "simplex_best": 14,
-        "simplex_soup_best": 15,
-        "simplex_swa_best": 16,
+        "raw_linear_best": 30,
+        "perm_linear_best": 31,
+        "bezier_best": 32,
+        "bezier_swa_best": 33,
+        "simplex_best": 34,
+        "simplex_soup_best": 35,
+        "simplex_swa_best": 36,
     }
     return order.get(m, 100)
 
@@ -85,6 +114,7 @@ def _sort_mia_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(
         rows,
         key=lambda r: (
+            int(r.get("compare_seed")) if str(r.get("compare_seed", "")).isdigit() else 10**9,
             _seed_sort_key(r.get("seed_group")),
             str(r.get("run_name", "")),
             str(r.get("attack", "")),
@@ -96,6 +126,7 @@ def _sort_perf_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(
         rows,
         key=lambda r: (
+            int(r.get("compare_seed")) if str(r.get("compare_seed", "")).isdigit() else 10**9,
             _seed_sort_key(r.get("seed_group")),
             str(r.get("run_name", "")),
             str(r.get("source_type", "")),
@@ -147,7 +178,6 @@ def _is_aux_summary(path: Path) -> bool:
     if not canonical.exists():
         return False
     # canonical summary가 실제로 추출 가능한 metric을 담고 있을 때만 보조 파일을 skip.
-    # (일부 run은 summary.json이 불완전하고 summary_seedXX.json에만 값이 있음)
     try:
         payload = _load_json(canonical)
     except Exception:
@@ -215,10 +245,17 @@ def extract_mia_attack_rows(result_path: Path, payload: Dict[str, Any]) -> List[
     else:
         shadow_seeds_str = str(shadow_seeds) if shadow_seeds is not None else None
 
+    compare_seed = victim_meta.get("model_id")
+    if compare_seed is None:
+        compare_seed = victim_seed
+    if compare_seed is None:
+        compare_seed = _first_seed_like(result_path.parent.name)
+
     base = {
         "result_file": str(result_path),
         "run_name": result_path.parent.name,
         "seed_group": _seed_group_from_values(victim_meta.get("source_seeds"), result_path.parent.name),
+        "compare_seed": compare_seed,
         "dataset": payload.get("dataset_name", config.get("dataset_name")),
         "victim_seed": victim_seed,
         "shadow_seeds": shadow_seeds_str,
@@ -272,9 +309,23 @@ def _comparison_key_from_method(method: Any) -> Optional[str]:
         return "retrain"
     if m.startswith("unlearn_seed") or m == "unlearn_victim" or "raw_unlearn" in m:
         return "unlearn"
-    if m.startswith("merge_"):
-        return m
-    return None
+    method_map = {
+        "raw_linear_best": "merge_raw_linear",
+        "perm_linear_best": "merge_perm_linear",
+        "bezier_best": "merge_bezier",
+        "bezier_swa_best": "merge_bezier_swa",
+        "simplex_best": "merge_simplex",
+        "simplex_soup_best": "merge_simplex_soup",
+        "simplex_swa_best": "merge_simplex_swa",
+        "merge_raw_linear": "merge_raw_linear",
+        "merge_perm_linear": "merge_perm_linear",
+        "merge_bezier": "merge_bezier",
+        "merge_bezier_swa": "merge_bezier_swa",
+        "merge_simplex": "merge_simplex",
+        "merge_simplex_soup": "merge_simplex_soup",
+        "merge_simplex_swa": "merge_simplex_swa",
+    }
+    return method_map.get(m)
 
 
 def _json_cell(v: Any) -> Optional[str]:
@@ -293,6 +344,7 @@ def _perf_row(
     method: str,
     run_dir: Any,
     metrics: Dict[str, Any],
+    compare_seed: Optional[int] = None,
     selection_t: Optional[float] = None,
     selection_name: Optional[str] = None,
     selection_lambdas: Optional[str] = None,
@@ -304,6 +356,7 @@ def _perf_row(
         "source_type": source_type,
         "run_name": summary_path.parent.name,
         "seed_group": _seed_group_from_values(run_name=summary_path.parent.name),
+        "compare_seed": compare_seed,
         "run_dir": run_dir,
         "row_role": row_role,
         "comparison_group": comparison_group,
@@ -344,6 +397,12 @@ def _merge_metrics_from_connectivity_summary(
     if pipeline == "merge_bezier":
         block = payload.get("bezier", {}).get("best_by_selector")
         return block if isinstance(block, dict) else None
+    if pipeline == "merge_raw_linear":
+        block = payload.get("raw_linear", {}).get("best_by_selector")
+        return block if isinstance(block, dict) else None
+    if pipeline == "merge_perm_linear":
+        block = payload.get("perm_linear", {}).get("best_by_selector")
+        return block if isinstance(block, dict) else None
     return None
 
 
@@ -374,7 +433,6 @@ def _selection_meta_for_connectivity_method(
             meta["selected_candidates"] = _json_cell(selected)
             if len(selected) == 1:
                 meta["selection_name"] = str(selected[0])
-                # if soup picked one candidate, try to recover lambdas from best samples.
                 sb = payload.get("simplex", {}).get("best_sample", {})
                 if isinstance(sb, dict) and sb.get("name") == meta["selection_name"]:
                     meta["selection_lambdas"] = _json_cell(sb.get("lambdas"))
@@ -412,22 +470,22 @@ def _merge_selection_meta_from_connectivity_summary(
     except Exception:
         return empty
 
-    if pipeline == "merge_simplex_soup":
-        block = payload.get("simplex_soup", {}).get("metrics")
-        if isinstance(block, dict):
-            return _selection_meta_for_connectivity_method("simplex_soup_best", payload, block)
-    if pipeline == "merge_bezier_swa":
-        block = payload.get("bezier_swa", {}).get("best_by_selector")
-        if isinstance(block, dict):
-            return _selection_meta_for_connectivity_method("bezier_swa_best", payload, block)
-    if pipeline == "merge_simplex":
-        block = payload.get("simplex", {}).get("best_sample")
-        if isinstance(block, dict):
-            return _selection_meta_for_connectivity_method("simplex_best", payload, block)
-    if pipeline == "merge_bezier":
-        block = payload.get("bezier", {}).get("best_by_selector")
-        if isinstance(block, dict):
-            return _selection_meta_for_connectivity_method("bezier_best", payload, block)
+    method_map = {
+        "merge_raw_linear": ("raw_linear", "best_by_selector", "raw_linear_best"),
+        "merge_perm_linear": ("perm_linear", "best_by_selector", "perm_linear_best"),
+        "merge_bezier": ("bezier", "best_by_selector", "bezier_best"),
+        "merge_bezier_swa": ("bezier_swa", "best_by_selector", "bezier_swa_best"),
+        "merge_simplex": ("simplex", "best_sample", "simplex_best"),
+        "merge_simplex_soup": ("simplex_soup", "metrics", "simplex_soup_best"),
+        "merge_simplex_swa": ("simplex_swa", "best_sample", "simplex_swa_best"),
+    }
+    mapped = method_map.get(str(pipeline))
+    if mapped is None:
+        return empty
+    block_name, block_key, method_name = mapped
+    block = payload.get(block_name, {}).get(block_key)
+    if isinstance(block, dict):
+        return _selection_meta_for_connectivity_method(method_name, payload, block)
     return empty
 
 
@@ -444,6 +502,19 @@ def _nonmerge_metrics_from_train_summary(
         candidate_summaries.append(run_dir / f"summary_seed{int(model_id)}.json")
     candidate_summaries.append(run_dir / "summary.json")
 
+    def _metric_richness(m: Dict[str, Any]) -> int:
+        score = 0
+        if _as_float(m.get("test_acc")) is not None:
+            score += 1
+        if _as_float(m.get("retain_test_acc")) is not None:
+            score += 2
+        if _as_float(m.get("forget_test_acc")) is not None:
+            score += 2
+        return score
+
+    best_metrics: Optional[Dict[str, Any]] = None
+    best_score = -1
+
     for sp in candidate_summaries:
         if not sp.exists():
             continue
@@ -452,26 +523,30 @@ def _nonmerge_metrics_from_train_summary(
         except Exception:
             continue
 
-        # scratch retrain baseline metrics
         scratch = payload.get("scratch_retrain_baseline", {})
         if isinstance(scratch, dict):
             m = scratch.get("metrics")
             if isinstance(m, dict) and m:
-                return m
+                s = _metric_richness(m)
+                if s > best_score:
+                    best_metrics = m
+                    best_score = s
 
-        # endpoint metrics (raw unlearn victim)
         endpoints = payload.get("endpoints", {})
         if isinstance(endpoints, dict):
             endpoint_map = endpoints.get("metrics", {})
             if isinstance(endpoint_map, dict):
                 key = f"seed{int(model_id)}" if model_id is not None else None
                 if key and isinstance(endpoint_map.get(key), dict):
-                    return endpoint_map[key]
-    return None
+                    m2 = endpoint_map[key]
+                    s2 = _metric_richness(m2)
+                    if s2 > best_score:
+                        best_metrics = m2
+                        best_score = s2
+    return best_metrics
 
 
 def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    # run_mia_merge_bank.py always writes plan.expanded.json next to result.json
     plan_path = result_path.parent / "plan.expanded.json"
     plan = _load_json(plan_path) if plan_path.exists() else {}
     victim = plan.get("victim", {}) if isinstance(plan, dict) else {}
@@ -480,6 +555,7 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
     method = str(pipeline) if pipeline else "from_mia_result"
     run_dir = result_path.parent
     model_id = victim.get("model_id") if isinstance(victim, dict) else None
+    compare_seed = model_id or payload.get("victim_seed") or _first_seed_like(result_path.parent.name)
 
     test_acc = _to_ratio_acc(payload.get("victim_test_acc"))
     retain_test_acc = None
@@ -493,7 +569,6 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
         ckpt_path=ckpt_path,
     )
 
-    # For merged victims, try to recover richer metrics from connectivity summary.
     merged_metrics = _merge_metrics_from_connectivity_summary(
         pipeline=str(pipeline) if pipeline is not None else None,
         ckpt_path=ckpt_path,
@@ -503,7 +578,6 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
         retain_test_acc = _as_float(merged_metrics.get("retain_test_acc"))
         forget_test_acc = _as_float(merged_metrics.get("forget_test_acc"))
     else:
-        # For raw_unlearn / scratch_retrain, pull subset metrics from train summary.
         train_metrics = _nonmerge_metrics_from_train_summary(
             pipeline=str(pipeline) if pipeline is not None else None,
             ckpt_path=ckpt_path,
@@ -519,6 +593,7 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
         "source_type": "mia_result_perf",
         "run_name": result_path.parent.name,
         "seed_group": _seed_group_from_values(victim.get("source_seeds"), result_path.parent.name),
+        "compare_seed": compare_seed,
         "run_dir": str(run_dir),
         "row_role": _classify_performance_row(method)[0],
         "comparison_group": _classify_performance_row(method)[1],
@@ -533,18 +608,34 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
     }
 
 
+def _summary_compare_seed(summary_path: Path, payload: Dict[str, Any]) -> Optional[int]:
+    endpoints = payload.get("endpoints")
+    if isinstance(endpoints, dict) and endpoints.get("seed_a") is not None:
+        return int(endpoints.get("seed_a"))
+    if payload.get("endpoint_a") is not None:
+        seed = _first_seed_like(payload.get("endpoint_a"))
+        if seed is not None:
+            return seed
+    scratch = payload.get("scratch_retrain_baseline", {})
+    if isinstance(scratch, dict):
+        seed = _first_seed_like(scratch.get("ckpt"), summary_path.name, summary_path.parent.name)
+        if seed is not None:
+            return seed
+    return _first_seed_like(summary_path.name, summary_path.parent.name)
+
+
 def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     run_dir = payload.get("run_dir", str(summary_path.parent))
+    compare_seed = _summary_compare_seed(summary_path, payload)
 
-    # connectivity/run_connectivity_experiment.py summary
     endpoint_metrics = payload.get("endpoint_metrics")
     if isinstance(endpoint_metrics, dict):
         method_blocks: List[Tuple[str, Any]] = [
-            ("raw_linear_best", payload.get("raw_linear", {}).get("best_by_selector")),
-            ("perm_linear_best", payload.get("perm_linear", {}).get("best_by_selector")),
-            ("bezier_best", payload.get("bezier", {}).get("best_by_selector")),
-            ("bezier_swa_best", payload.get("bezier_swa", {}).get("best_by_selector")),
+            ("raw_linear_best", payload.get("raw_linear", {}).get("best_by_selector") or payload.get("raw_linear", {}).get("best_by_composite")),
+            ("perm_linear_best", payload.get("perm_linear", {}).get("best_by_selector") or payload.get("perm_linear", {}).get("best_by_composite")),
+            ("bezier_best", payload.get("bezier", {}).get("best_by_selector") or payload.get("bezier", {}).get("best_by_composite")),
+            ("bezier_swa_best", payload.get("bezier_swa", {}).get("best_by_selector") or payload.get("bezier_swa", {}).get("best_by_composite")),
             ("simplex_best", payload.get("simplex", {}).get("best_sample")),
             ("simplex_soup_best", payload.get("simplex_soup", {}).get("metrics")),
             ("simplex_swa_best", payload.get("simplex_swa", {}).get("best_sample")),
@@ -560,6 +651,7 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
                         method=method,
                         run_dir=run_dir,
                         metrics=block,
+                        compare_seed=compare_seed,
                         selection_t=sel_meta.get("selection_t"),
                         selection_name=sel_meta.get("selection_name"),
                         selection_lambdas=sel_meta.get("selection_lambdas"),
@@ -569,7 +661,6 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
         if rows:
             return rows
 
-    # train.py summary (step1/step2/step3)
     endpoints = payload.get("endpoints")
     if isinstance(endpoints, dict):
         norm_path = str(summary_path).replace("\\", "/")
@@ -582,10 +673,6 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
         endpoint_a_metrics = endpoint_map.get(key_a, {}) if isinstance(endpoint_map, dict) and key_a else {}
         scratch_metrics = payload.get("scratch_retrain_baseline", {}).get("metrics", {})
 
-        # Clean rule:
-        # - unlearn 디렉터리에서는 unlearn row만.
-        # - retrain 디렉터리에서는 scratch row만.
-        # - 기타 위치에서는 둘 다.
         emit_unlearn = (not in_retrain_dir) or in_unlearn_dir
         emit_retrain = (not in_unlearn_dir) or in_retrain_dir
 
@@ -597,6 +684,7 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
                     method=f"unlearn_seed{seed_a}" if seed_a is not None else "unlearn_victim",
                     run_dir=run_dir,
                     metrics=endpoint_a_metrics,
+                    compare_seed=int(seed_a) if seed_a is not None else compare_seed,
                 )
             )
         if emit_retrain and isinstance(scratch_metrics, dict) and scratch_metrics:
@@ -607,12 +695,12 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
                     method="scratch_retrain_baseline",
                     run_dir=run_dir,
                     metrics=scratch_metrics,
+                    compare_seed=int(seed_a) if seed_a is not None else compare_seed,
                 )
             )
         if rows:
             return rows
 
-    # retrain 요약 중 일부는 endpoints 없이 scratch_retrain_baseline만 있는 포맷.
     scratch = payload.get("scratch_retrain_baseline", {})
     if isinstance(scratch, dict):
         scratch_metrics = scratch.get("metrics")
@@ -624,6 +712,7 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
                     method="scratch_retrain_baseline",
                     run_dir=run_dir,
                     metrics=scratch_metrics,
+                    compare_seed=compare_seed,
                 )
             )
             return rows
@@ -631,37 +720,83 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
     return rows
 
 
+def _source_priority(source_type: Any) -> int:
+    return {
+        "mia_result_perf": 0,
+        "connectivity_summary": 1,
+        "unlearning_summary": 2,
+    }.get(str(source_type or ""), 99)
+
+
+def _maybe_replace_seed_row(row: Dict[str, Any], key: str, candidate: Dict[str, Any]) -> None:
+    cand_priority = _source_priority(candidate.get("source_type"))
+    prev_priority = row.get(f"{key}__priority")
+    cand_test_acc = _as_float(candidate.get("test_acc"))
+    prev_test_acc = _as_float(row.get(f"{key}_test_acc"))
+
+    should_replace = False
+    if prev_priority is None:
+        should_replace = True
+    elif cand_priority < int(prev_priority):
+        should_replace = True
+    elif cand_priority == int(prev_priority):
+        if prev_test_acc is None:
+            should_replace = True
+        elif cand_test_acc is not None and cand_test_acc > prev_test_acc:
+            should_replace = True
+
+    if not should_replace:
+        return
+
+    row[f"{key}__priority"] = cand_priority
+    row[f"{key}_run_name"] = candidate.get("run_name")
+    row[f"{key}_source_type"] = candidate.get("source_type")
+    row[f"{key}_method"] = candidate.get("method")
+    row[f"{key}_selection_t"] = candidate.get("selection_t")
+    row[f"{key}_selection_name"] = candidate.get("selection_name")
+    row[f"{key}_selection_lambdas"] = candidate.get("selection_lambdas")
+    row[f"{key}_selected_candidates"] = candidate.get("selected_candidates")
+    row[f"{key}_test_acc"] = candidate.get("test_acc")
+    row[f"{key}_retain_subset_test_acc"] = candidate.get("retain_subset_test_acc")
+    row[f"{key}_forget_subset_test_acc"] = candidate.get("forget_subset_test_acc")
+
+
 def _build_seed_compare_rows(perf_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Build one row per seed_group for actual MIA victims.
-    Columns are dynamically created per comparison key:
-      dense, retrain, unlearn, merge_*.
+    Build one row per compare_seed.
+    Goal: per victim seed, show dense / retrain / unlearn / merge-method performances.
+
+    Priority rule per cell:
+      mia_result_perf > connectivity_summary > unlearning_summary
+    Ties on same source_type keep the higher test_acc row.
     """
-    grouped: Dict[str, Dict[str, Any]] = {}
+    grouped: Dict[int, Dict[str, Any]] = {}
     for r in perf_rows:
-        if str(r.get("source_type", "")) != "mia_result_perf":
+        compare_seed = _first_seed_like(r.get("compare_seed"))
+        if compare_seed is None:
             continue
-        seed_group = str(r.get("seed_group") or "")
-        if seed_group == "":
-            seed_group = "_unknown"
         key = _comparison_key_from_method(r.get("method"))
         if key is None:
             continue
 
-        row = grouped.setdefault(seed_group, {"seed_group": seed_group})
-        test_acc = _as_float(r.get("test_acc"))
-        prev_test_acc = _as_float(row.get(f"{key}_test_acc"))
-        # If duplicate key exists for same seed, keep the better one.
-        if prev_test_acc is not None and test_acc is not None and prev_test_acc > test_acc:
-            continue
+        row = grouped.setdefault(compare_seed, {"compare_seed": compare_seed})
+        _maybe_replace_seed_row(row, key, r)
 
-        row[f"{key}_run_name"] = r.get("run_name")
-        row[f"{key}_method"] = r.get("method")
-        row[f"{key}_test_acc"] = r.get("test_acc")
-        row[f"{key}_retain_subset_test_acc"] = r.get("retain_subset_test_acc")
-        row[f"{key}_forget_subset_test_acc"] = r.get("forget_subset_test_acc")
+        seed_group = str(r.get("seed_group") or "")
+        if seed_group:
+            groups = set(filter(None, str(row.get("seed_groups", "")).split(";")))
+            groups.add(seed_group)
+            row["seed_groups"] = ";".join(sorted(groups, key=_seed_sort_key))
 
-    return sorted(grouped.values(), key=lambda rr: _seed_sort_key(rr.get("seed_group")))
+    out: List[Dict[str, Any]] = []
+    for compare_seed in sorted(grouped.keys()):
+        row = dict(grouped[compare_seed])
+        # drop private priority columns from output
+        for k in list(row.keys()):
+            if k.endswith("__priority"):
+                row.pop(k, None)
+        out.append(row)
+    return out
 
 
 def _write_csv(
@@ -721,7 +856,7 @@ def _dedup_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Export MIA result.json and performance summary.json into two CSV files."
+        description="Export MIA result.json and performance summary.json into CSV files."
     )
     parser.add_argument(
         "--mia-results",
@@ -795,7 +930,6 @@ def main() -> None:
                 }
             )
 
-    # Optional: append performance rows inferred from mia result.json.
     if args.include_mia_performance:
         for p in mia_files:
             try:
@@ -831,6 +965,7 @@ def main() -> None:
         preferred_cols=[
             "result_file",
             "run_name",
+            "compare_seed",
             "seed_group",
             "dataset",
             "victim_name",
@@ -859,6 +994,7 @@ def main() -> None:
             "summary_file",
             "source_type",
             "run_name",
+            "compare_seed",
             "seed_group",
             "run_dir",
             "row_role",
@@ -881,35 +1017,79 @@ def main() -> None:
         perf_seed_csv,
         perf_seed_rows,
         preferred_cols=[
-            "seed_group",
+            "compare_seed",
+            "seed_groups",
             "dense_run_name",
+            "dense_source_type",
+            "dense_method",
             "dense_test_acc",
             "dense_retain_subset_test_acc",
             "dense_forget_subset_test_acc",
             "retrain_run_name",
+            "retrain_source_type",
+            "retrain_method",
             "retrain_test_acc",
             "retrain_retain_subset_test_acc",
             "retrain_forget_subset_test_acc",
             "unlearn_run_name",
+            "unlearn_source_type",
+            "unlearn_method",
             "unlearn_test_acc",
             "unlearn_retain_subset_test_acc",
             "unlearn_forget_subset_test_acc",
+            "merge_raw_linear_run_name",
+            "merge_raw_linear_source_type",
+            "merge_raw_linear_method",
+            "merge_raw_linear_selection_t",
+            "merge_raw_linear_test_acc",
+            "merge_raw_linear_retain_subset_test_acc",
+            "merge_raw_linear_forget_subset_test_acc",
+            "merge_perm_linear_run_name",
+            "merge_perm_linear_source_type",
+            "merge_perm_linear_method",
+            "merge_perm_linear_selection_t",
+            "merge_perm_linear_test_acc",
+            "merge_perm_linear_retain_subset_test_acc",
+            "merge_perm_linear_forget_subset_test_acc",
             "merge_bezier_run_name",
+            "merge_bezier_source_type",
+            "merge_bezier_method",
+            "merge_bezier_selection_t",
             "merge_bezier_test_acc",
             "merge_bezier_retain_subset_test_acc",
             "merge_bezier_forget_subset_test_acc",
             "merge_bezier_swa_run_name",
+            "merge_bezier_swa_source_type",
+            "merge_bezier_swa_method",
+            "merge_bezier_swa_selection_t",
             "merge_bezier_swa_test_acc",
             "merge_bezier_swa_retain_subset_test_acc",
             "merge_bezier_swa_forget_subset_test_acc",
             "merge_simplex_run_name",
+            "merge_simplex_source_type",
+            "merge_simplex_method",
+            "merge_simplex_selection_name",
+            "merge_simplex_selection_lambdas",
             "merge_simplex_test_acc",
             "merge_simplex_retain_subset_test_acc",
             "merge_simplex_forget_subset_test_acc",
             "merge_simplex_soup_run_name",
+            "merge_simplex_soup_source_type",
+            "merge_simplex_soup_method",
+            "merge_simplex_soup_selection_name",
+            "merge_simplex_soup_selection_lambdas",
+            "merge_simplex_soup_selected_candidates",
             "merge_simplex_soup_test_acc",
             "merge_simplex_soup_retain_subset_test_acc",
             "merge_simplex_soup_forget_subset_test_acc",
+            "merge_simplex_swa_run_name",
+            "merge_simplex_swa_source_type",
+            "merge_simplex_swa_method",
+            "merge_simplex_swa_selection_name",
+            "merge_simplex_swa_selection_lambdas",
+            "merge_simplex_swa_test_acc",
+            "merge_simplex_swa_retain_subset_test_acc",
+            "merge_simplex_swa_forget_subset_test_acc",
         ],
         na_value=args.na_value,
     )
