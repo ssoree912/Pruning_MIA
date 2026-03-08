@@ -533,6 +533,11 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
     }
 
 
+def _should_skip_mia_performance_row(row: Dict[str, Any]) -> bool:
+    # connectivity summary already exports simplex_soup_best; skip duplicate MIA perf row.
+    return str(row.get("method") or "").lower() == "merge_simplex_soup"
+
+
 def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     run_dir = payload.get("run_dir", str(summary_path.parent))
@@ -802,6 +807,8 @@ def main() -> None:
                 payload = _load_json(p)
                 row = extract_perf_row_from_mia_result(p, payload)
                 if row is not None:
+                    if _should_skip_mia_performance_row(row):
+                        continue
                     perf_rows.append(row)
             except Exception as e:
                 perf_rows.append(
