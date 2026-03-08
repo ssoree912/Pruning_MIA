@@ -609,8 +609,8 @@ def extract_perf_row_from_mia_result(result_path: Path, payload: Dict[str, Any])
 
 
 def _should_skip_mia_performance_row(row: Dict[str, Any]) -> bool:
-    # connectivity summary already exports simplex_soup_best; skip duplicate MIA perf row.
-    return str(row.get("method") or "").lower() == "merge_simplex_soup"
+    # Keep mia_merge_bank values in mia_attacks.csv only.
+    return True
 
 
 def _summary_compare_seed(summary_path: Path, payload: Dict[str, Any]) -> Optional[int]:
@@ -627,6 +627,43 @@ def _summary_compare_seed(summary_path: Path, payload: Dict[str, Any]) -> Option
         if seed is not None:
             return seed
     return _first_seed_like(summary_path.name, summary_path.parent.name)
+
+
+def _endpoint_seed_metrics(endpoints: Dict[str, Any]) -> List[Tuple[int, Dict[str, Any]]]:
+    out: List[Tuple[int, Dict[str, Any]]] = []
+    endpoint_map = endpoints.get("metrics", {})
+    if not isinstance(endpoint_map, dict):
+        return out
+
+    seen: Set[int] = set()
+
+    # Prefer explicit pair order.
+    for seed_key in ("seed_a", "seed_b"):
+        seed_val = endpoints.get(seed_key)
+        if seed_val is None:
+            continue
+        seed = _first_seed_like(seed_val)
+        if seed is None or seed in seen:
+            continue
+        metrics = endpoint_map.get(f"seed{seed}")
+        if not isinstance(metrics, dict) or not metrics:
+            continue
+        seen.add(seed)
+        out.append((seed, metrics))
+
+    if out:
+        return out
+
+    # Fallback for generic maps.
+    for key, metrics in endpoint_map.items():
+        if not isinstance(metrics, dict) or not metrics:
+            continue
+        seed = _first_seed_like(key)
+        if seed is None or seed in seen:
+            continue
+        seen.add(seed)
+        out.append((seed, metrics))
+    return sorted(out, key=lambda item: item[0])
 
 
 def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -673,25 +710,24 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
         in_retrain_dir = "/retrain/" in norm_path
 
         seed_a = endpoints.get("seed_a")
-        key_a = f"seed{seed_a}" if seed_a is not None else None
-        endpoint_map = endpoints.get("metrics", {})
-        endpoint_a_metrics = endpoint_map.get(key_a, {}) if isinstance(endpoint_map, dict) and key_a else {}
+        endpoint_seed_rows = _endpoint_seed_metrics(endpoints)
         scratch_metrics = payload.get("scratch_retrain_baseline", {}).get("metrics", {})
 
         emit_unlearn = (not in_retrain_dir) or in_unlearn_dir
         emit_retrain = (not in_unlearn_dir) or in_retrain_dir
 
-        if emit_unlearn and isinstance(endpoint_a_metrics, dict) and endpoint_a_metrics:
-            rows.append(
-                _perf_row(
-                    summary_path=summary_path,
-                    source_type="unlearning_summary",
-                    method=f"unlearn_seed{seed_a}" if seed_a is not None else "unlearn_victim",
-                    run_dir=run_dir,
-                    metrics=endpoint_a_metrics,
-                    compare_seed=int(seed_a) if seed_a is not None else compare_seed,
+        if emit_unlearn:
+            for seed, endpoint_seed_metrics in endpoint_seed_rows:
+                rows.append(
+                    _perf_row(
+                        summary_path=summary_path,
+                        source_type="unlearning_summary",
+                        method=f"unlearn_seed{seed}",
+                        run_dir=run_dir,
+                        metrics=endpoint_seed_metrics,
+                        compare_seed=seed,
+                    )
                 )
-            )
         if emit_retrain and isinstance(scratch_metrics, dict) and scratch_metrics:
             rows.append(
                 _perf_row(
