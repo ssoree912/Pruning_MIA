@@ -77,10 +77,84 @@ def derive_mode_label(cfg: dict) -> str:
     return method
 
 
+def is_mia_result_payload(data: object) -> bool:
+    return (
+        isinstance(data, dict)
+        and isinstance(data.get('config'), dict)
+        and isinstance(data.get('results'), dict)
+    )
+
+
+def _join_seed_list(values: object) -> str:
+    if not isinstance(values, list):
+        return ''
+    return ','.join(str(v) for v in values)
+
+
+def _load_bank_plan(fp: Path) -> dict:
+    plan_path = fp.with_name('plan.expanded.json')
+    if not plan_path.exists():
+        return {}
+    try:
+        data = json.loads(plan_path.read_text())
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def add_bank_plan_metadata(meta: dict, fp: Path) -> None:
+    plan = _load_bank_plan(fp)
+    if not plan:
+        return
+
+    victim = plan.get('victim')
+    shadows = plan.get('shadows')
+    if not isinstance(victim, dict):
+        return
+
+    victim_name = victim.get('name')
+    victim_pipeline = victim.get('pipeline')
+    victim_source_seeds = victim.get('source_seeds')
+    victim_model_id = victim.get('model_id')
+
+    if victim_name:
+        meta['victim_name'] = victim_name
+    if victim_pipeline:
+        meta['pipeline'] = victim_pipeline
+        meta['method'] = victim_pipeline
+        meta['mode'] = 'bank'
+    if victim_model_id is not None and meta.get('victim_seed') is None:
+        meta['victim_seed'] = victim_model_id
+    if isinstance(victim_source_seeds, list):
+        meta['victim_source_seeds'] = _join_seed_list(victim_source_seeds)
+
+    if isinstance(shadows, list) and shadows:
+        shadow_names = []
+        shadow_pipelines = []
+        shadow_source_seeds = []
+        for shadow in shadows:
+            if not isinstance(shadow, dict):
+                continue
+            if shadow.get('name'):
+                shadow_names.append(str(shadow['name']))
+            if shadow.get('pipeline'):
+                shadow_pipelines.append(str(shadow['pipeline']))
+            if isinstance(shadow.get('source_seeds'), list):
+                shadow_source_seeds.append(_join_seed_list(shadow['source_seeds']))
+        if shadow_names:
+            meta['shadow_names'] = ';'.join(shadow_names)
+        if shadow_pipelines:
+            meta['shadow_pipelines'] = ';'.join(sorted(set(shadow_pipelines)))
+        if shadow_source_seeds:
+            meta['shadow_source_seeds'] = ';'.join(shadow_source_seeds)
+
+
 def parse_one_json(fp: Path):
     try:
         data = json.loads(fp.read_text())
     except Exception:
+        return []
+    if not is_mia_result_payload(data):
         return []
 
     cfg = data.get('config', {})
@@ -101,6 +175,7 @@ def parse_one_json(fp: Path):
         'use_temperature': data.get('use_temperature', None),
         'attack_mode': exp.get('attack_mode'),
     }
+    add_bank_plan_metadata(meta, fp)
 
     # Fallbacks from filename when metadata missing
     try:
@@ -200,6 +275,8 @@ def parse_one_json_wide(fp: Path):
         data = json.loads(fp.read_text())
     except Exception:
         return None
+    if not is_mia_result_payload(data):
+        return None
 
     cfg = data.get('config', {})
     exp = data.get('experiment_info', {})
@@ -217,6 +294,7 @@ def parse_one_json_wide(fp: Path):
         'victim_test_acc': data.get('victim_test_acc'),
         'use_temperature': data.get('use_temperature', None),
     }
+    add_bank_plan_metadata(row, fp)
 
     # Shadow count for convenience
     sc_map = (exp or {}).get('shadow_configs') or {}
@@ -683,7 +761,9 @@ def main():
             wide_df['sparsity'] = pd.to_numeric(wide_df['sparsity'], errors='coerce')
         # Stable column ordering: metadata first, then metrics sorted
         meta_cols = [
-            'file','dataset','arch','method','mode','forward_mode','sparsity','victim_seed','victim_test_acc','use_temperature','shadow_count'
+            'file','dataset','arch','method','mode','pipeline','victim_seed','victim_name',
+            'victim_source_seeds','sparsity','victim_test_acc','use_temperature','shadow_count',
+            'shadow_names','shadow_pipelines','shadow_source_seeds','forward_mode'
         ]
         metric_cols = sorted([c for c in wide_df.columns if c not in meta_cols])
         cols = [c for c in meta_cols if c in wide_df.columns] + metric_cols

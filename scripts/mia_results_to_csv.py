@@ -27,6 +27,78 @@ def sanitize_key(value: object) -> str:
     return str(value).replace(' ', '_').replace('.', '_').replace('%', 'pct')
 
 
+def is_mia_result_payload(data: object) -> bool:
+    return (
+        isinstance(data, dict)
+        and isinstance(data.get('config'), dict)
+        and isinstance(data.get('results'), dict)
+    )
+
+
+def _join_seed_list(values: object) -> str:
+    if not isinstance(values, list):
+        return ''
+    return ','.join(str(v) for v in values)
+
+
+def _load_bank_plan(fp: Path) -> Dict[str, object]:
+    plan_path = fp.with_name('plan.expanded.json')
+    if not plan_path.exists():
+        return {}
+    try:
+        data = json.loads(plan_path.read_text())
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def add_bank_plan_metadata(row: Dict[str, object], fp: Path) -> None:
+    plan = _load_bank_plan(fp)
+    if not plan:
+        return
+
+    victim = plan.get('victim')
+    shadows = plan.get('shadows')
+    if not isinstance(victim, dict):
+        return
+
+    victim_name = victim.get('name')
+    victim_pipeline = victim.get('pipeline')
+    victim_source_seeds = victim.get('source_seeds')
+    victim_model_id = victim.get('model_id')
+
+    if victim_name:
+        row['victim_name'] = victim_name
+    if victim_pipeline:
+        row['pipeline'] = victim_pipeline
+        row['method'] = victim_pipeline
+        row['mode'] = 'bank'
+    if victim_model_id is not None and row.get('victim_seed') is None:
+        row['victim_seed'] = victim_model_id
+    if isinstance(victim_source_seeds, list):
+        row['victim_source_seeds'] = _join_seed_list(victim_source_seeds)
+
+    if isinstance(shadows, list) and shadows:
+        shadow_names = []
+        shadow_pipelines = []
+        shadow_source_seeds = []
+        for shadow in shadows:
+            if not isinstance(shadow, dict):
+                continue
+            if shadow.get('name'):
+                shadow_names.append(str(shadow['name']))
+            if shadow.get('pipeline'):
+                shadow_pipelines.append(str(shadow['pipeline']))
+            if isinstance(shadow.get('source_seeds'), list):
+                shadow_source_seeds.append(_join_seed_list(shadow['source_seeds']))
+        if shadow_names:
+            row['shadow_names'] = ';'.join(shadow_names)
+        if shadow_pipelines:
+            row['shadow_pipelines'] = ';'.join(sorted(set(shadow_pipelines)))
+        if shadow_source_seeds:
+            row['shadow_source_seeds'] = ';'.join(shadow_source_seeds)
+
+
 def add_confidence_block(row: Dict[str, object], block: Dict[str, object]) -> None:
     if not isinstance(block, dict):
         return
@@ -71,6 +143,8 @@ def add_attack_block(prefix: str, row: Dict[str, object], block: Dict[str, objec
 
 def parse_json_file(fp: Path) -> Dict[str, object]:
     data = json.loads(fp.read_text())
+    if not is_mia_result_payload(data):
+        raise ValueError('not a MIA result JSON')
     cfg = data.get('config', {})
     exp = data.get('experiment_info', {})
     results = data.get('results', {})
@@ -114,6 +188,7 @@ def parse_json_file(fp: Path) -> Dict[str, object]:
     add_attack_block('nn_top3', row, results.get('nn_top3'))
     add_attack_block('nn_cls', row, results.get('nn_cls'))
     add_attack_block('lira', row, results.get('lira'))
+    add_bank_plan_metadata(row, fp)
 
     # Victim seed fallback from filename pattern when missing
     if not row.get('victim_seed'):
@@ -144,8 +219,10 @@ def sort_key(row: Dict[str, object]):
 
 def pick_field_order(all_keys: Iterable[str]) -> List[str]:
     preferred = [
-        'victim_seed', 'file', 'dataset', 'method', 'mode', 'sparsity', 'alpha', 'beta',
+        'victim_seed', 'victim_name', 'pipeline', 'victim_source_seeds',
+        'file', 'dataset', 'method', 'mode', 'sparsity', 'alpha', 'beta',
         'victim_test_acc', 'shadow_count',
+        'shadow_names', 'shadow_pipelines', 'shadow_source_seeds',
         'confidence', 'entropy', 'modified_entropy', 'top1_conf',
         'confidence_extended_auroc', 'confidence_extended_balacc',
         'confidence_extended_adv', 'confidence_extended_thr',
@@ -197,6 +274,8 @@ def main() -> None:
         try:
             row = parse_json_file(fp)
         except Exception as exc:
+            if str(exc) == 'not a MIA result JSON':
+                continue
             print(f'Skipped {fp}: {exc}')
             continue
         try:
