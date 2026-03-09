@@ -200,6 +200,7 @@ def _auto_perf_summaries() -> List[Path]:
         "runs/unlearning_connectivity_phase15*/**/summary.json",
         "runs/unlearning_df1/unlearn/**/summary.json",
         "runs/unlearning_df1/retrain/**/summary*.json",
+        "runs/dense/**/summary_seed*.json",
     ]
     return _resolve_input_paths(pats, kind="perf")
 
@@ -711,6 +712,24 @@ def extract_performance_rows(summary_path: Path, payload: Dict[str, Any]) -> Lis
         if rows:
             return rows
 
+    dense_baseline = payload.get("dense_baseline")
+    if isinstance(dense_baseline, dict):
+        dense_metrics = dense_baseline.get("metrics", {})
+        if isinstance(dense_metrics, dict) and dense_metrics:
+            dense_seed = _first_seed_like(dense_baseline.get("seed"), summary_path.name, summary_path.parent.name)
+            method = f"dense_seed{int(dense_seed)}" if dense_seed is not None else "dense"
+            rows.append(
+                _perf_row(
+                    summary_path=summary_path,
+                    source_type="dense_summary",
+                    method=method,
+                    run_dir=run_dir,
+                    metrics=dense_metrics,
+                    compare_seed=dense_seed if dense_seed is not None else compare_seed,
+                )
+            )
+            return rows
+
     endpoints = payload.get("endpoints")
     if isinstance(endpoints, dict):
         norm_path = str(summary_path).replace("\\", "/")
@@ -773,6 +792,7 @@ def _source_priority(source_type: Any) -> int:
     return {
         "mia_result_perf": 0,
         "connectivity_summary": 1,
+        "dense_summary": 2,
         "unlearning_summary": 2,
     }.get(str(source_type or ""), 99)
 

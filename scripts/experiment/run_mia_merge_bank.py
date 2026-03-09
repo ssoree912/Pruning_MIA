@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -84,6 +84,207 @@ def _extract_metrics(payload: Dict[str, Any]) -> Dict[str, float]:
     return out
 
 
+def _as_float(x: Any) -> Optional[float]:
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+
+def _to_ratio_acc(x: Any) -> Optional[float]:
+    v = _as_float(x)
+    if v is None:
+        return None
+    if v > 1.5:
+        return v / 100.0
+    return v
+
+
+def _metric_richness(metrics: Dict[str, Any]) -> int:
+    score = 0
+    if _to_ratio_acc(metrics.get("test_acc")) is not None:
+        score += 1
+    if _to_ratio_acc(metrics.get("retain_test_acc")) is not None:
+        score += 2
+    if _to_ratio_acc(metrics.get("forget_test_acc")) is not None:
+        score += 2
+    return score
+
+
+def _extract_source_metrics(
+    *,
+    pipeline: str,
+    ckpt_path: Path,
+    model_id: int,
+) -> Dict[str, float]:
+    if pipeline not in {"raw_unlearn", "scratch_retrain"}:
+        return {}
+
+    run_dir = ckpt_path.parent
+    candidate_summaries = [
+        run_dir / f"summary_seed{int(model_id)}.json",
+        run_dir / "summary.json",
+    ]
+
+    best_metrics: Dict[str, float] = {}
+    best_score = -1
+    for summary_path in candidate_summaries:
+        if not summary_path.exists():
+            continue
+        try:
+            payload = _load_json(summary_path)
+        except Exception:
+            continue
+
+        candidate_metrics: Dict[str, Any] = {}
+        if pipeline == "scratch_retrain":
+            scratch = payload.get("scratch_retrain_baseline", {})
+            if isinstance(scratch, dict):
+                m = scratch.get("metrics")
+                if isinstance(m, dict) and m:
+                    candidate_metrics = m
+        elif pipeline == "raw_unlearn":
+            endpoints = payload.get("endpoints", {})
+            if isinstance(endpoints, dict):
+                endpoint_map = endpoints.get("metrics", {})
+                key = f"seed{int(model_id)}"
+                if isinstance(endpoint_map, dict) and isinstance(endpoint_map.get(key), dict):
+                    candidate_metrics = endpoint_map.get(key, {})
+
+        if not candidate_metrics:
+            continue
+
+        score = _metric_richness(candidate_metrics)
+        if score <= best_score:
+            continue
+        best_score = score
+
+        normalized: Dict[str, float] = {}
+        test_acc = _to_ratio_acc(candidate_metrics.get("test_acc"))
+        retain_test_acc = _to_ratio_acc(candidate_metrics.get("retain_test_acc"))
+        forget_test_acc = _to_ratio_acc(candidate_metrics.get("forget_test_acc"))
+        if test_acc is not None:
+            normalized["test_acc"] = float(test_acc)
+        if retain_test_acc is not None:
+            normalized["retain_test_acc"] = float(retain_test_acc)
+        if forget_test_acc is not None:
+            normalized["forget_test_acc"] = float(forget_test_acc)
+        best_metrics = normalized
+
+    return best_metrics
+
+
+def _build_seed_performance_summary(
+    victim: Dict[str, Any],
+    result_payload: Dict[str, Any],
+) -> Tuple[Optional[Path], Optional[Dict[str, Any]]]:
+    pipeline = str(victim.get("pipeline", ""))
+    model_id_raw = victim.get("model_id")
+    ckpt_raw = victim.get("ckpt_path")
+    if model_id_raw is None or ckpt_raw is None:
+        return None, None
+
+    model_id = int(model_id_raw)
+    ckpt_path = Path(str(ckpt_raw)).expanduser().resolve()
+    if not ckpt_path.exists():
+        return None, None
+
+    metrics: Dict[str, float] = {}
+    mia_test_acc = _to_ratio_acc(result_payload.get("victim_test_acc"))
+    if mia_test_acc is not None:
+        metrics["test_acc"] = float(mia_test_acc)
+
+    if pipeline in {"raw_unlearn", "scratch_retrain"}:
+        source_metrics = _extract_source_metrics(
+            pipeline=pipeline,
+            ckpt_path=ckpt_path,
+            model_id=model_id,
+        )
+        if source_metrics:
+            metrics.update(source_metrics)
+
+    if not metrics:
+        return None, None
+
+    source_summary_path = ckpt_path.parent / f"summary_seed{int(model_id)}.json"
+    if pipeline == "dense":
+        payload = {
+            "generated_by": "run_mia_merge_bank",
+            "run_dir": str(ckpt_path.parent),
+            "dense_baseline": {
+                "seed": int(model_id),
+                "ckpt": str(ckpt_path),
+                "metrics": metrics,
+            },
+        }
+        return source_summary_path, payload
+
+    if pipeline == "raw_unlearn":
+        seed_key = f"seed{int(model_id)}"
+        payload = {
+            "generated_by": "run_mia_merge_bank",
+            "run_dir": str(ckpt_path.parent),
+            "endpoints": {
+                "seed_a": int(model_id),
+                "seed_b": int(model_id),
+                "ckpt_a": str(ckpt_path),
+                "ckpt_b": str(ckpt_path),
+                "metrics": {seed_key: metrics},
+            },
+            "scratch_retrain_baseline": {
+                "enabled": False,
+                "ckpt": None,
+                "metrics": {},
+            },
+        }
+        return source_summary_path, payload
+
+    if pipeline == "scratch_retrain":
+        payload = {
+            "generated_by": "run_mia_merge_bank",
+            "run_dir": str(ckpt_path.parent),
+            "scratch_retrain_baseline": {
+                "enabled": True,
+                "ckpt": str(ckpt_path),
+                "metrics": metrics,
+            },
+        }
+        return source_summary_path, payload
+
+    return None, None
+
+
+def _write_seed_performance_summaries(
+    *,
+    run_dir: Path,
+    victim: Dict[str, Any],
+    result_payload: Dict[str, Any],
+) -> None:
+    source_summary_path, perf_payload = _build_seed_performance_summary(victim=victim, result_payload=result_payload)
+    if source_summary_path is None or perf_payload is None:
+        return
+
+    model_id = int(victim["model_id"])
+    _write_json(run_dir / "performance_summary.json", perf_payload)
+    _write_json(run_dir / f"performance_summary_seed{model_id}.json", perf_payload)
+
+    should_write_source = True
+    if source_summary_path.exists():
+        try:
+            existing = _load_json(source_summary_path)
+        except Exception:
+            existing = {}
+        # Do not clobber train-generated summaries.
+        if existing.get("generated_by") != "run_mia_merge_bank":
+            should_write_source = False
+
+    if should_write_source:
+        _write_json(source_summary_path, perf_payload)
+        print(f"[MIA-BANK] perf summary -> {source_summary_path}")
+    else:
+        print(f"[MIA-BANK] keep existing summary -> {source_summary_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run MIA on a victim model with a matched shadow bank.")
     parser.add_argument("--repo-root", type=str, default=".")
@@ -122,6 +323,19 @@ def main() -> None:
 
     if args.skip_if_exists and result_file.exists():
         print(f"[skip] result exists: {result_file}")
+        try:
+            payload = _load_json(result_file)
+            _write_seed_performance_summaries(
+                run_dir=run_dir,
+                victim={
+                    "pipeline": victim_pipeline,
+                    "model_id": victim_model_id,
+                    "ckpt_path": str(victim_ckpt),
+                },
+                result_payload=payload,
+            )
+        except Exception as e:
+            print(f"[MIA-BANK] performance-summary backfill failed: {e}")
         return
 
     victim_cfg = _clone_base_config(base_cfg, dataset_name=dataset_name, seed_id=victim_model_id)
@@ -233,6 +447,11 @@ def main() -> None:
         "metrics": _extract_metrics(payload),
     }
     _write_json(run_dir / "summary.json", summary)
+    _write_seed_performance_summaries(
+        run_dir=run_dir,
+        victim=meta["victim"],
+        result_payload=payload,
+    )
     print(json.dumps(summary, indent=2))
 
 
