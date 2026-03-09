@@ -146,8 +146,9 @@ def _is_aux_summary(path: Path) -> bool:
     canonical = path.parent / "summary.json"
     if not canonical.exists():
         return False
-    # canonical summary가 실제로 추출 가능한 metric을 담고 있을 때만 보조 파일을 skip.
-    # (일부 run은 summary.json이 불완전하고 summary_seedXX.json에만 값이 있음)
+    # canonical summary가 connectivity/unlearn endpoint 정보를 담고 있을 때만
+    # 보조 파일을 skip. retrain의 summary_seedXX.json은 보조가 아니라
+    # 실제 per-seed 결과일 수 있으므로 여기서는 skip하지 않는다.
     try:
         payload = _load_json(canonical)
     except Exception:
@@ -156,11 +157,6 @@ def _is_aux_summary(path: Path) -> bool:
         return True
     if isinstance(payload.get("endpoints"), dict) and payload.get("endpoints"):
         return True
-    scratch = payload.get("scratch_retrain_baseline", {})
-    if isinstance(scratch, dict):
-        m = scratch.get("metrics")
-        if isinstance(m, dict) and m:
-            return True
     return False
 
 
