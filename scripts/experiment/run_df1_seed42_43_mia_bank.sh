@@ -33,6 +33,7 @@ RETRAIN_VICTIMS="${RETRAIN_VICTIMS:-${VICTIMS}}"
 MERGE_VICTIMS="${MERGE_VICTIMS:-${VICTIMS}}"
 
 SKIP_IF_EXISTS="${SKIP_IF_EXISTS:-0}"
+SKIP_MISSING_CKPT="${SKIP_MISSING_CKPT:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 
 IFS=' ' read -r -a VICTIM_IDS <<< "${VICTIMS}"
@@ -400,6 +401,9 @@ for plan in "${PLANS[@]}"; do
     --plan-json "${plan}"
     --min-shadows 4
   )
+  if [[ "${SKIP_MISSING_CKPT}" == "1" ]]; then
+    cmd+=(--skip-missing-ckpt)
+  fi
   if [[ "${SKIP_IF_EXISTS}" == "1" ]]; then
     cmd+=(--skip-if-exists)
   fi

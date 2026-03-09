@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import torch
+
 
 def _load_json(path: Path) -> Dict[str, Any]:
     with open(path, "r") as f:
@@ -26,13 +28,88 @@ def _ensure_exists(path: Path, label: str) -> None:
         raise FileNotFoundError(f"{label} not found: {path}")
 
 
-def _resolve_ckpt_path(path: Path, label: str) -> Path:
+def _load_state_dict(path: Path) -> Dict[str, torch.Tensor]:
+    payload = torch.load(str(path), map_location="cpu")
+    if isinstance(payload, dict) and isinstance(payload.get("state_dict"), dict):
+        return payload["state_dict"]
+    if isinstance(payload, dict) and payload:
+        if all(torch.is_tensor(v) for v in payload.values()):
+            return payload
+    raise ValueError(f"Unsupported checkpoint payload format: {path}")
+
+
+def _linear_interpolate_state_dict(
+    state_a: Dict[str, torch.Tensor],
+    state_b: Dict[str, torch.Tensor],
+    t: float,
+) -> Dict[str, torch.Tensor]:
+    out: Dict[str, torch.Tensor] = {}
+    for key, v0 in state_a.items():
+        v1 = state_b.get(key, v0)
+        if torch.is_tensor(v0) and torch.is_tensor(v1) and v0.dtype.is_floating_point:
+            out[key] = ((1.0 - t) * v0 + t * v1).detach().cpu().clone()
+        else:
+            out[key] = (v0 if t < 0.5 else v1).detach().cpu().clone()
+    return out
+
+
+def _resolve_path_with_repo_root(raw_path: Any, repo_root: Path) -> Path:
+    p = Path(str(raw_path)).expanduser()
+    if p.is_absolute():
+        return p.resolve()
+    return (repo_root / p).resolve()
+
+
+def _maybe_materialize_missing_ckpt(path: Path, repo_root: Path) -> bool:
+    # Backward compatibility for old connectivity runs that did not save raw_linear_best.pth.
+    if path.stem != "raw_linear_best":
+        return False
+    run_dir = path.parent
+    raw_linear_json = run_dir / "raw_linear.json"
+    summary_json = run_dir / "summary.json"
+    if not raw_linear_json.exists() or not summary_json.exists():
+        return False
+
+    try:
+        raw_linear = _load_json(raw_linear_json)
+        summary = _load_json(summary_json)
+        best = raw_linear.get("best_by_selector", {})
+        t = float(best["t"])
+        endpoint_a = _resolve_path_with_repo_root(summary["endpoint_a"], repo_root)
+        endpoint_b = _resolve_path_with_repo_root(summary["endpoint_b"], repo_root)
+        if not endpoint_a.exists() or not endpoint_b.exists():
+            return False
+        state_a = _load_state_dict(endpoint_a)
+        state_b = _load_state_dict(endpoint_b)
+        raw_best_state = _linear_interpolate_state_dict(state_a, state_b, t)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "state_dict": raw_best_state,
+                "stage": "raw_linear_best",
+                "best_t": float(t),
+                "generated_by": "run_mia_merge_bank",
+            },
+            str(path),
+        )
+        print(f"[MIA-BANK] materialized missing raw_linear checkpoint -> {path}")
+        return True
+    except Exception as e:
+        print(f"[MIA-BANK] failed to materialize {path.name}: {e}")
+        return False
+
+
+def _resolve_ckpt_path(path: Path, label: str, *, repo_root: Optional[Path] = None) -> Path:
     candidates: List[Path] = [path]
     if path.suffix == "":
         candidates.extend([path.with_suffix(".pth"), path.with_suffix(".pt"), path.with_suffix(".ckpt")])
     for cand in candidates:
         if cand.exists():
             return cand
+    if repo_root is not None:
+        for cand in candidates:
+            if _maybe_materialize_missing_ckpt(cand, repo_root):
+                return cand
     tried = ", ".join(str(p) for p in candidates)
     raise FileNotFoundError(f"{label} not found: {path} (tried: {tried})")
 
@@ -302,6 +379,11 @@ def main() -> None:
     parser.add_argument("--plan-json", type=str, required=True, help="Path to a victim/shadow bank plan JSON.")
     parser.add_argument("--min-shadows", type=int, default=4)
     parser.add_argument("--allow-pipeline-mismatch", action="store_true")
+    parser.add_argument(
+        "--skip-missing-ckpt",
+        action="store_true",
+        help="Skip this plan when victim/shadow checkpoints are missing, instead of failing.",
+    )
     parser.add_argument("--skip-if-exists", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -322,7 +404,14 @@ def main() -> None:
 
     victim_name = str(victim["name"])
     victim_pipeline = str(victim["pipeline"])
-    victim_ckpt = _resolve_ckpt_path(Path(victim["ckpt_path"]).expanduser().resolve(), "victim ckpt")
+    victim_ckpt_raw = _resolve_path_with_repo_root(victim["ckpt_path"], repo_root)
+    try:
+        victim_ckpt = _resolve_ckpt_path(victim_ckpt_raw, "victim ckpt", repo_root=repo_root)
+    except FileNotFoundError as e:
+        if args.skip_missing_ckpt:
+            print(f"[skip] {e}")
+            return
+        raise
     victim_model_id = int(victim["model_id"])
     victim_source_seeds = _norm_list(victim["source_seeds"])
 
@@ -356,12 +445,20 @@ def main() -> None:
     shadow_ckpts: List[str] = []
     shadow_cfgs: List[str] = []
     shadow_meta: List[Dict[str, Any]] = []
+    dropped_missing_shadows: List[str] = []
 
     seen_ids = set()
     for sh in shadows:
         sh_name = str(sh["name"])
         sh_pipeline = str(sh["pipeline"])
-        sh_ckpt = _resolve_ckpt_path(Path(sh["ckpt_path"]).expanduser().resolve(), f"shadow ckpt {sh_name}")
+        sh_ckpt_raw = _resolve_path_with_repo_root(sh["ckpt_path"], repo_root)
+        try:
+            sh_ckpt = _resolve_ckpt_path(sh_ckpt_raw, f"shadow ckpt {sh_name}", repo_root=repo_root)
+        except FileNotFoundError as e:
+            if args.skip_missing_ckpt:
+                dropped_missing_shadows.append(f"{sh_name}: {e}")
+                continue
+            raise
         sh_model_id = int(sh["model_id"])
         sh_source_seeds = _norm_list(sh["source_seeds"])
 
@@ -398,6 +495,18 @@ def main() -> None:
                 "config_path": str(sh_cfg_path),
             }
         )
+
+    if dropped_missing_shadows:
+        print("[MIA-BANK] dropped missing shadows:")
+        for msg in dropped_missing_shadows:
+            print(f"  - {msg}")
+
+    if len(shadow_model_ids) < int(args.min_shadows):
+        msg = f"Need at least {args.min_shadows} valid shadows after filtering, got {len(shadow_model_ids)}"
+        if args.skip_missing_ckpt:
+            print(f"[skip] {msg}")
+            return
+        raise ValueError(msg)
 
     mia_script = repo_root / "mia_eval" / "core" / "mia_modi.py"
     _ensure_exists(mia_script, "mia_modi.py")

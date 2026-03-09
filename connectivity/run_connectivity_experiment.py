@@ -531,6 +531,17 @@ def main() -> None:
     )
     with open(run_dir / "raw_linear.json", "w") as f:
         json.dump(raw_linear, f, indent=2)
+    best_raw_linear_t = float(raw_linear["best_by_selector"]["t"])
+    best_raw_linear_state = linear_state_dict(state_a, state_b, best_raw_linear_t)
+    save_checkpoint_with_state(
+        best_raw_linear_state,
+        run_dir / "raw_linear_best.pth",
+        {
+            "stage": "raw_linear_best",
+            "best_t": best_raw_linear_t,
+            "composite": float(raw_linear["best_by_selector"]["composite"]),
+        },
+    )
 
     # 2) Git Re-Basin / perm_linear
     sanity_x, _ = next(iter(retain_val_loader if retain_val_loader is not None else retain_eval_loader))
