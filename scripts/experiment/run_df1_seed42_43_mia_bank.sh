@@ -283,7 +283,7 @@ write_plan_merge_method() {
     "pipeline": "${pipeline}",
     "model_id": ${victim},
     "source_seeds": [42, 43],
-    "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed42__unlearn_seed43/${method}"
+    "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed42__unlearn_seed43/${method}.pth"
   },
   "shadows": [
     {
@@ -291,28 +291,28 @@ write_plan_merge_method() {
       "pipeline": "${pipeline}",
       "model_id": 44,
       "source_seeds": [44, 45],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed44__unlearn_seed45/${method}"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed44__unlearn_seed45/${method}.pth"
     },
     {
       "name": "${method_short}_46_47",
       "pipeline": "${pipeline}",
       "model_id": 46,
       "source_seeds": [46, 47],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed46__unlearn_seed47/${method}"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed46__unlearn_seed47/${method}.pth"
     },
     {
       "name": "${method_short}_48_49",
       "pipeline": "${pipeline}",
       "model_id": 48,
       "source_seeds": [48, 49],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed48__unlearn_seed49/${method}"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed48__unlearn_seed49/${method}.pth"
     },
     {
       "name": "${method_short}_50_51",
       "pipeline": "${pipeline}",
       "model_id": 50,
       "source_seeds": [50, 51],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed50__unlearn_seed51/${method}"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed50__unlearn_seed51/${method}.pth"
     }
   ]
 }

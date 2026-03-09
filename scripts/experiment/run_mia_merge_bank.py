@@ -26,6 +26,17 @@ def _ensure_exists(path: Path, label: str) -> None:
         raise FileNotFoundError(f"{label} not found: {path}")
 
 
+def _resolve_ckpt_path(path: Path, label: str) -> Path:
+    candidates: List[Path] = [path]
+    if path.suffix == "":
+        candidates.extend([path.with_suffix(".pth"), path.with_suffix(".pt"), path.with_suffix(".ckpt")])
+    for cand in candidates:
+        if cand.exists():
+            return cand
+    tried = ", ".join(str(p) for p in candidates)
+    raise FileNotFoundError(f"{label} not found: {path} (tried: {tried})")
+
+
 def _clone_base_config(base_cfg: Dict[str, Any], *, dataset_name: str, seed_id: int) -> Dict[str, Any]:
     cfg = json.loads(json.dumps(base_cfg))
     cfg.setdefault("seed", int(seed_id))
@@ -311,10 +322,9 @@ def main() -> None:
 
     victim_name = str(victim["name"])
     victim_pipeline = str(victim["pipeline"])
-    victim_ckpt = Path(victim["ckpt_path"]).expanduser().resolve()
+    victim_ckpt = _resolve_ckpt_path(Path(victim["ckpt_path"]).expanduser().resolve(), "victim ckpt")
     victim_model_id = int(victim["model_id"])
     victim_source_seeds = _norm_list(victim["source_seeds"])
-    _ensure_exists(victim_ckpt, "victim ckpt")
 
     result_root = Path(plan.get("result_root", repo_root / "runs" / "mia_merge_bank")).expanduser().resolve()
     run_dir = result_root / dataset_name / victim_name
@@ -351,10 +361,9 @@ def main() -> None:
     for sh in shadows:
         sh_name = str(sh["name"])
         sh_pipeline = str(sh["pipeline"])
-        sh_ckpt = Path(sh["ckpt_path"]).expanduser().resolve()
+        sh_ckpt = _resolve_ckpt_path(Path(sh["ckpt_path"]).expanduser().resolve(), f"shadow ckpt {sh_name}")
         sh_model_id = int(sh["model_id"])
         sh_source_seeds = _norm_list(sh["source_seeds"])
-        _ensure_exists(sh_ckpt, f"shadow ckpt {sh_name}")
 
         if sh_model_id in seen_ids:
             raise ValueError(f"Duplicate shadow model_id: {sh_model_id}")
