@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Build split files + plan JSONs and run MIA bank experiments for
-# dense / raw_unlearn / scratch_retrain / merge_simplex_soup on victim 42,43.
+# dense / raw_unlearn / scratch_retrain / merge_* on victim 42,43.
 #
 # Example:
 #   bash scripts/experiment/run_df1_seed42_43_mia_bank.sh
@@ -26,15 +26,29 @@ PLAN_DIR="${PLAN_DIR:-plans/mia_seed42_43_bank}"
 
 VICTIMS="${VICTIMS:-42 43}"
 SHADOW_MODEL_IDS="${SHADOW_MODEL_IDS:-44 46 48 50}"
+MERGE_METHODS="${MERGE_METHODS:-raw_linear_best perm_linear_best bezier_best bezier_swa_best simplex_best simplex_soup_best simplex_swa_best}"
+DENSE_VICTIMS="${DENSE_VICTIMS:-${VICTIMS}}"
+UNLEARN_VICTIMS="${UNLEARN_VICTIMS:-${VICTIMS}}"
+RETRAIN_VICTIMS="${RETRAIN_VICTIMS:-${VICTIMS}}"
+MERGE_VICTIMS="${MERGE_VICTIMS:-${VICTIMS}}"
 
 SKIP_IF_EXISTS="${SKIP_IF_EXISTS:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 
 IFS=' ' read -r -a VICTIM_IDS <<< "${VICTIMS}"
 IFS=' ' read -r -a SHADOW_IDS <<< "${SHADOW_MODEL_IDS}"
+IFS=' ' read -r -a MERGE_METHOD_IDS <<< "${MERGE_METHODS}"
+IFS=' ' read -r -a DENSE_VICTIM_IDS <<< "${DENSE_VICTIMS}"
+IFS=' ' read -r -a UNLEARN_VICTIM_IDS <<< "${UNLEARN_VICTIMS}"
+IFS=' ' read -r -a RETRAIN_VICTIM_IDS <<< "${RETRAIN_VICTIMS}"
+IFS=' ' read -r -a MERGE_VICTIM_IDS <<< "${MERGE_VICTIMS}"
 
-if [[ "${#VICTIM_IDS[@]}" -eq 0 ]]; then
-  echo "VICTIMS is empty" >&2
+if [[ "${#DENSE_VICTIM_IDS[@]}" -eq 0 && "${#UNLEARN_VICTIM_IDS[@]}" -eq 0 && "${#RETRAIN_VICTIM_IDS[@]}" -eq 0 && "${#MERGE_VICTIM_IDS[@]}" -eq 0 ]]; then
+  echo "No victims configured (DENSE/UNLEARN/RETRAIN/MERGE all empty)" >&2
+  exit 1
+fi
+if [[ "${#MERGE_METHOD_IDS[@]}" -eq 0 ]]; then
+  echo "MERGE_METHODS is empty" >&2
   exit 1
 fi
 if [[ "${#SHADOW_IDS[@]}" -lt 4 ]]; then
@@ -229,9 +243,30 @@ EOF
   echo "${plan}"
 }
 
-write_plan_merge_simplex_soup() {
+_merge_pipeline_from_method() {
+  local method="$1"
+  case "${method}" in
+    raw_linear_best) echo "merge_raw_linear" ;;
+    perm_linear_best) echo "merge_perm_linear" ;;
+    bezier_best) echo "merge_bezier" ;;
+    bezier_swa_best) echo "merge_bezier_swa" ;;
+    simplex_best) echo "merge_simplex" ;;
+    simplex_soup_best) echo "merge_simplex_soup" ;;
+    simplex_swa_best) echo "merge_simplex_swa" ;;
+    *)
+      echo "Unknown merge method: ${method}" >&2
+      return 1
+      ;;
+  esac
+}
+
+write_plan_merge_method() {
   local victim="$1"
-  local plan="${PLAN_DIR}/mia_merge_bank_plan.victim${victim}_from_42_43_simplex_soup.json"
+  local method="$2"
+  local pipeline
+  pipeline="$(_merge_pipeline_from_method "${method}")"
+  local plan="${PLAN_DIR}/mia_${pipeline}_bank_plan.victim${victim}_from_42_43.json"
+  local method_short="${method%_best}"
   cat > "${plan}" <<EOF
 {
   "dataset_name": "${DATASET}",
@@ -244,40 +279,40 @@ write_plan_merge_simplex_soup() {
   "save_scores": ${SAVE_SCORES},
   "result_root": "${RESULT_ROOT}",
   "victim": {
-    "name": "simplex_soup_42_43_v${victim}",
-    "pipeline": "merge_simplex_soup",
+    "name": "${method_short}_42_43_v${victim}",
+    "pipeline": "${pipeline}",
     "model_id": ${victim},
     "source_seeds": [42, 43],
-    "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed42__unlearn_seed43/simplex_soup_best.pth"
+    "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed42__unlearn_seed43/${method}"
   },
   "shadows": [
     {
-      "name": "simplex_soup_44_45",
-      "pipeline": "merge_simplex_soup",
+      "name": "${method_short}_44_45",
+      "pipeline": "${pipeline}",
       "model_id": 44,
       "source_seeds": [44, 45],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed44__unlearn_seed45/simplex_soup_best.pth"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed44__unlearn_seed45/${method}"
     },
     {
-      "name": "simplex_soup_46_47",
-      "pipeline": "merge_simplex_soup",
+      "name": "${method_short}_46_47",
+      "pipeline": "${pipeline}",
       "model_id": 46,
       "source_seeds": [46, 47],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed46__unlearn_seed47/simplex_soup_best.pth"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed46__unlearn_seed47/${method}"
     },
     {
-      "name": "simplex_soup_48_49",
-      "pipeline": "merge_simplex_soup",
+      "name": "${method_short}_48_49",
+      "pipeline": "${pipeline}",
       "model_id": 48,
       "source_seeds": [48, 49],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed48__unlearn_seed49/simplex_soup_best.pth"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed48__unlearn_seed49/${method}"
     },
     {
-      "name": "simplex_soup_50_51",
-      "pipeline": "merge_simplex_soup",
+      "name": "${method_short}_50_51",
+      "pipeline": "${pipeline}",
       "model_id": 50,
       "source_seeds": [50, 51],
-      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed50__unlearn_seed51/simplex_soup_best.pth"
+      "ckpt_path": "runs/unlearning_connectivity_phase15_final/${DATASET}/df1/unlearn_seed50__unlearn_seed51/${method}"
     }
   ]
 }
@@ -295,16 +330,39 @@ run_cmd() {
   "$@"
 }
 
+append_unique_int() {
+  local x="$1"
+  local y
+  for y in "${SPLIT_VICTIMS[@]}"; do
+    if [[ "${y}" == "${x}" ]]; then
+      return 0
+    fi
+  done
+  SPLIT_VICTIMS+=("${x}")
+}
+
 echo "================================================================"
-echo "MIA bank run for victims: ${VICTIMS}"
+echo "MIA bank run"
 echo "dataset: ${DATASET}"
 echo "split_seed: ${SPLIT_SEED}"
 echo "gpu: ${GPU}"
+echo "dense_victims: ${DENSE_VICTIMS}"
+echo "unlearn_victims: ${UNLEARN_VICTIMS}"
+echo "retrain_victims: ${RETRAIN_VICTIMS}"
+echo "merge_victims: ${MERGE_VICTIMS}"
+echo "merge_methods: ${MERGE_METHODS}"
 echo "plan_dir: ${PLAN_DIR}"
 echo "result_root: ${RESULT_ROOT}"
 echo "================================================================"
 
-for victim in "${VICTIM_IDS[@]}"; do
+declare -a SPLIT_VICTIMS=()
+for victim in "${DENSE_VICTIM_IDS[@]}" "${UNLEARN_VICTIM_IDS[@]}" "${RETRAIN_VICTIM_IDS[@]}" "${MERGE_VICTIM_IDS[@]}"; do
+  if [[ -n "${victim}" ]]; then
+    append_unique_int "${victim}"
+  fi
+done
+
+for victim in "${SPLIT_VICTIMS[@]}"; do
   echo "[split] victim=${victim}, shadows=${SHADOW_MODEL_IDS}"
   run_cmd python mia_eval/create_data/create_fixed_data_splits.py \
     --dataset "${DATASET}" \
@@ -315,11 +373,19 @@ for victim in "${VICTIM_IDS[@]}"; do
 done
 
 declare -a PLANS=()
-for victim in "${VICTIM_IDS[@]}"; do
+for victim in "${DENSE_VICTIM_IDS[@]}"; do
   PLANS+=("$(write_plan_dense "${victim}")")
+done
+for victim in "${UNLEARN_VICTIM_IDS[@]}"; do
   PLANS+=("$(write_plan_raw_unlearn "${victim}")")
+done
+for victim in "${RETRAIN_VICTIM_IDS[@]}"; do
   PLANS+=("$(write_plan_scratch_retrain "${victim}")")
-  PLANS+=("$(write_plan_merge_simplex_soup "${victim}")")
+done
+for victim in "${MERGE_VICTIM_IDS[@]}"; do
+  for merge_method in "${MERGE_METHOD_IDS[@]}"; do
+    PLANS+=("$(write_plan_merge_method "${victim}" "${merge_method}")")
+  done
 done
 
 echo "[plans] created:"
