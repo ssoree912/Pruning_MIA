@@ -31,7 +31,7 @@ PLAN_DIR="${PLAN_DIR:-plans/mia_seed42_43_bank}"
 VICTIMS="${VICTIMS:-42 43}"
 SHADOW_MODEL_IDS="${SHADOW_MODEL_IDS:-44 46 48 50}"
 MERGE_METHODS="${MERGE_METHODS:-raw_linear_best perm_linear_best bezier_best bezier_swa_best simplex_best simplex_soup_best simplex_swa_best}"
-DENSE_VICTIMS="${DENSE_VICTIMS:-${VICTIMS}}"
+DENSE_VICTIMS="${DENSE_VICTIMS-42}"
 UNLEARN_VICTIMS="${UNLEARN_VICTIMS:-${VICTIMS}}"
 RETRAIN_VICTIMS="${RETRAIN_VICTIMS:-${VICTIMS}}"
 
@@ -47,12 +47,30 @@ SKIP_IF_EXISTS="${SKIP_IF_EXISTS:-0}"
 SKIP_MISSING_CKPT="${SKIP_MISSING_CKPT:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 
-IFS=' ' read -r -a SHADOW_IDS <<< "${SHADOW_MODEL_IDS}"
-IFS=' ' read -r -a MERGE_METHOD_IDS <<< "${MERGE_METHODS}"
-IFS=' ' read -r -a DENSE_VICTIM_IDS <<< "${DENSE_VICTIMS}"
-IFS=' ' read -r -a UNLEARN_VICTIM_IDS <<< "${UNLEARN_VICTIMS}"
-IFS=' ' read -r -a RETRAIN_VICTIM_IDS <<< "${RETRAIN_VICTIMS}"
-IFS=' ' read -r -a MERGE_VICTIM_SEED_IDS <<< "${MERGE_VICTIMS}"
+SHADOW_IDS=()
+MERGE_METHOD_IDS=()
+DENSE_VICTIM_IDS=()
+UNLEARN_VICTIM_IDS=()
+RETRAIN_VICTIM_IDS=()
+MERGE_VICTIM_SEED_IDS=()
+if [[ -n "${SHADOW_MODEL_IDS// }" ]]; then
+  IFS=' ' read -r -a SHADOW_IDS <<< "${SHADOW_MODEL_IDS}"
+fi
+if [[ -n "${MERGE_METHODS// }" ]]; then
+  IFS=' ' read -r -a MERGE_METHOD_IDS <<< "${MERGE_METHODS}"
+fi
+if [[ -n "${DENSE_VICTIMS// }" ]]; then
+  IFS=' ' read -r -a DENSE_VICTIM_IDS <<< "${DENSE_VICTIMS}"
+fi
+if [[ -n "${UNLEARN_VICTIMS// }" ]]; then
+  IFS=' ' read -r -a UNLEARN_VICTIM_IDS <<< "${UNLEARN_VICTIMS}"
+fi
+if [[ -n "${RETRAIN_VICTIMS// }" ]]; then
+  IFS=' ' read -r -a RETRAIN_VICTIM_IDS <<< "${RETRAIN_VICTIMS}"
+fi
+if [[ -n "${MERGE_VICTIMS// }" ]]; then
+  IFS=' ' read -r -a MERGE_VICTIM_SEED_IDS <<< "${MERGE_VICTIMS}"
+fi
 
 MERGE_VICTIM_PAIR_OVERRIDES=()
 MERGE_SHADOW_PAIR_OVERRIDES=()
@@ -449,14 +467,14 @@ append_unique_pair_shadow() {
 
 declare -a MERGE_VICTIM_PAIR_IDS=()
 if [[ "${#MERGE_VICTIM_PAIR_OVERRIDES[@]}" -gt 0 ]]; then
-  for raw_pair in "${MERGE_VICTIM_PAIR_OVERRIDES[@]}"; do
+  for raw_pair in "${MERGE_VICTIM_PAIR_OVERRIDES[@]-}"; do
     if [[ -z "${raw_pair}" ]]; then
       continue
     fi
     append_unique_pair_victim "$(normalize_pair_token "${raw_pair}")"
   done
 else
-  for victim_seed in "${MERGE_VICTIM_SEED_IDS[@]}"; do
+  for victim_seed in "${MERGE_VICTIM_SEED_IDS[@]-}"; do
     if [[ -z "${victim_seed}" ]]; then
       continue
     fi
@@ -466,14 +484,14 @@ fi
 
 declare -a MERGE_SHADOW_PAIR_IDS=()
 if [[ "${#MERGE_SHADOW_PAIR_OVERRIDES[@]}" -gt 0 ]]; then
-  for raw_pair in "${MERGE_SHADOW_PAIR_OVERRIDES[@]}"; do
+  for raw_pair in "${MERGE_SHADOW_PAIR_OVERRIDES[@]-}"; do
     if [[ -z "${raw_pair}" ]]; then
       continue
     fi
     append_unique_pair_shadow "$(normalize_pair_token "${raw_pair}")"
   done
 else
-  for shadow_seed in "${SHADOW_IDS[@]}"; do
+  for shadow_seed in "${SHADOW_IDS[@]-}"; do
     if [[ -z "${shadow_seed}" ]]; then
       continue
     fi
@@ -482,12 +500,12 @@ else
 fi
 
 declare -a MERGE_VICTIM_MODEL_IDS=()
-for victim_pair in "${MERGE_VICTIM_PAIR_IDS[@]}"; do
+for victim_pair in "${MERGE_VICTIM_PAIR_IDS[@]-}"; do
   MERGE_VICTIM_MODEL_IDS+=("$(pair_model_id_for_pair_token "${victim_pair}")")
 done
 
 declare -a MERGE_SHADOW_MODEL_IDS=()
-for shadow_pair in "${MERGE_SHADOW_PAIR_IDS[@]}"; do
+for shadow_pair in "${MERGE_SHADOW_PAIR_IDS[@]-}"; do
   MERGE_SHADOW_MODEL_IDS+=("$(pair_model_id_for_pair_token "${shadow_pair}")")
 done
 
@@ -530,59 +548,74 @@ echo "result_root: ${RESULT_ROOT}"
 echo "================================================================"
 
 declare -a SPLIT_VICTIMS=()
-for victim in "${DENSE_VICTIM_IDS[@]}" "${UNLEARN_VICTIM_IDS[@]}" "${RETRAIN_VICTIM_IDS[@]}"; do
+for victim in "${DENSE_VICTIM_IDS[@]-}" "${UNLEARN_VICTIM_IDS[@]-}" "${RETRAIN_VICTIM_IDS[@]-}"; do
   if [[ -n "${victim}" ]]; then
     append_unique_int "${victim}"
   fi
 done
 
-for victim in "${SPLIT_VICTIMS[@]}"; do
+for victim in "${SPLIT_VICTIMS[@]-}"; do
   echo "[split] victim=${victim}, shadows=${SHADOW_MODEL_IDS}"
   run_cmd python mia_eval/create_data/create_fixed_data_splits.py \
     --dataset "${DATASET}" \
     --seed "${SPLIT_SEED}" \
     --victim_seed "${victim}" \
-    --shadow_seeds "${SHADOW_IDS[@]}" \
+    --shadow_seeds "${SHADOW_IDS[@]-}" \
     --verify
 done
 
 declare -a MERGE_SPLIT_VICTIMS=()
-for victim_model_id in "${MERGE_VICTIM_MODEL_IDS[@]}"; do
+for victim_model_id in "${MERGE_VICTIM_MODEL_IDS[@]-}"; do
   append_unique_merge_int "${victim_model_id}"
 done
 
-for victim_model_id in "${MERGE_SPLIT_VICTIMS[@]}"; do
+for victim_model_id in "${MERGE_SPLIT_VICTIMS[@]-}"; do
   echo "[split:merge] victim_model_id=${victim_model_id}, shadows=${MERGE_SHADOW_MODEL_IDS[*]}"
   run_cmd python mia_eval/create_data/create_fixed_data_splits.py \
     --dataset "${DATASET}" \
     --seed "${SPLIT_SEED}" \
     --victim_seed "${victim_model_id}" \
-    --shadow_seeds "${MERGE_SHADOW_MODEL_IDS[@]}" \
+    --shadow_seeds "${MERGE_SHADOW_MODEL_IDS[@]-}" \
     --verify
 done
 
 declare -a PLANS=()
-for victim in "${DENSE_VICTIM_IDS[@]}"; do
+for victim in "${DENSE_VICTIM_IDS[@]-}"; do
+  if [[ -z "${victim}" ]]; then
+    continue
+  fi
   PLANS+=("$(write_plan_dense "${victim}")")
 done
-for victim in "${UNLEARN_VICTIM_IDS[@]}"; do
+for victim in "${UNLEARN_VICTIM_IDS[@]-}"; do
+  if [[ -z "${victim}" ]]; then
+    continue
+  fi
   PLANS+=("$(write_plan_raw_unlearn "${victim}")")
 done
-for victim in "${RETRAIN_VICTIM_IDS[@]}"; do
+for victim in "${RETRAIN_VICTIM_IDS[@]-}"; do
+  if [[ -z "${victim}" ]]; then
+    continue
+  fi
   PLANS+=("$(write_plan_scratch_retrain "${victim}")")
 done
-for victim_pair in "${MERGE_VICTIM_PAIR_IDS[@]}"; do
-  for merge_method in "${MERGE_METHOD_IDS[@]}"; do
+for victim_pair in "${MERGE_VICTIM_PAIR_IDS[@]-}"; do
+  if [[ -z "${victim_pair}" ]]; then
+    continue
+  fi
+  for merge_method in "${MERGE_METHOD_IDS[@]-}"; do
+    if [[ -z "${merge_method}" ]]; then
+      continue
+    fi
     PLANS+=("$(write_plan_merge_method "${victim_pair}" "${merge_method}")")
   done
 done
 
 echo "[plans] created:"
-for plan in "${PLANS[@]}"; do
+for plan in "${PLANS[@]-}"; do
   echo "  - ${plan}"
 done
 
-for plan in "${PLANS[@]}"; do
+for plan in "${PLANS[@]-}"; do
   cmd=(
     python scripts/experiment/run_mia_merge_bank.py
     --repo-root "${REPO_ROOT}"
