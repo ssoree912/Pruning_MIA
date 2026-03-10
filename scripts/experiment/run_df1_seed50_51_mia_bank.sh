@@ -6,7 +6,7 @@ set -euo pipefail
 # Default behavior:
 # - dense victim: disabled
 # - raw/retrain victims: 50, 51
-# - single-seed shadows: 44, 46, 48, 50
+# - single-seed shadows: 42, 44, 46, 48
 # - merge victim pair: 50_51
 # - merge shadow pairs: 42_43, 44_45, 46_47, 48_49
 
@@ -21,7 +21,7 @@ export DENSE_VICTIMS="${DENSE_VICTIMS:-}"
 export UNLEARN_VICTIMS="${UNLEARN_VICTIMS:-${VICTIMS}}"
 export RETRAIN_VICTIMS="${RETRAIN_VICTIMS:-${VICTIMS}}"
 export MERGE_VICTIMS="${MERGE_VICTIMS:-${VICTIMS}}"
-export SHADOW_MODEL_IDS="${SHADOW_MODEL_IDS:-44 46 48 50}"
+export SHADOW_MODEL_IDS="${SHADOW_MODEL_IDS:-42 44 46 48}"
 export MERGE_SHADOW_PAIRS="${MERGE_SHADOW_PAIRS:-42_43 44_45 46_47 48_49}"
 
 exec bash "${SCRIPT_DIR}/run_df1_seed42_43_mia_bank.sh"

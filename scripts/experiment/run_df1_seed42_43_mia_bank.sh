@@ -151,6 +151,52 @@ pair_model_id_for_pair_token() {
   echo "$((10#${a} * 1000 + 10#${b}))"
 }
 
+write_single_seed_shadows() {
+  local pipeline="$1"
+  local active_shadows=()
+  local shadow
+  for shadow in "${SHADOW_IDS[@]-}"; do
+    if [[ -n "${shadow}" ]]; then
+      active_shadows+=("${shadow}")
+    fi
+  done
+
+  local i
+  for i in "${!active_shadows[@]}"; do
+    local shadow_id pair_dir ckpt_path suffix
+    shadow_id="${active_shadows[$i]}"
+    pair_dir="$(pair_dir_for_seed "${shadow_id}")"
+    case "${pipeline}" in
+      dense)
+        ckpt_path="runs/dense/${DATASET}/seed${shadow_id}/best_model.pth"
+        ;;
+      raw_unlearn)
+        ckpt_path="runs/unlearning_df1/unlearn/${DATASET}/df1/${pair_dir}/unlearn_seed${shadow_id}.pth"
+        ;;
+      scratch_retrain)
+        ckpt_path="runs/unlearning_df1/retrain/${DATASET}/df1/${pair_dir}/scratch_retrain_seed${shadow_id}.pth"
+        ;;
+      *)
+        echo "Unsupported single-seed pipeline: ${pipeline}" >&2
+        return 1
+        ;;
+    esac
+    suffix=","
+    if (( i == ${#active_shadows[@]} - 1 )); then
+      suffix=""
+    fi
+    cat <<EOF
+    {
+      "name": "${pipeline}_${shadow_id}",
+      "pipeline": "${pipeline}",
+      "model_id": ${shadow_id},
+      "source_seeds": [${shadow_id}],
+      "ckpt_path": "${ckpt_path}"
+    }${suffix}
+EOF
+  done
+}
+
 write_plan_dense() {
   local victim="$1"
   local plan="${PLAN_DIR}/mia_dense_bank_plan.victim${victim}.json"
@@ -173,37 +219,14 @@ write_plan_dense() {
     "ckpt_path": "runs/dense/${DATASET}/seed${victim}/best_model.pth"
   },
   "shadows": [
-    {
-      "name": "dense_44",
-      "pipeline": "dense",
-      "model_id": 44,
-      "source_seeds": [44],
-      "ckpt_path": "runs/dense/${DATASET}/seed44/best_model.pth"
-    },
-    {
-      "name": "dense_46",
-      "pipeline": "dense",
-      "model_id": 46,
-      "source_seeds": [46],
-      "ckpt_path": "runs/dense/${DATASET}/seed46/best_model.pth"
-    },
-    {
-      "name": "dense_48",
-      "pipeline": "dense",
-      "model_id": 48,
-      "source_seeds": [48],
-      "ckpt_path": "runs/dense/${DATASET}/seed48/best_model.pth"
-    },
-    {
-      "name": "dense_50",
-      "pipeline": "dense",
-      "model_id": 50,
-      "source_seeds": [50],
-      "ckpt_path": "runs/dense/${DATASET}/seed50/best_model.pth"
-    }
+EOF
+  {
+    write_single_seed_shadows "dense"
+    cat <<EOF
   ]
 }
 EOF
+  } >> "${plan}"
   echo "${plan}"
 }
 
@@ -231,37 +254,14 @@ write_plan_raw_unlearn() {
     "ckpt_path": "runs/unlearning_df1/unlearn/${DATASET}/df1/${pair_dir}/unlearn_seed${victim}.pth"
   },
   "shadows": [
-    {
-      "name": "raw_unlearn_44",
-      "pipeline": "raw_unlearn",
-      "model_id": 44,
-      "source_seeds": [44],
-      "ckpt_path": "runs/unlearning_df1/unlearn/${DATASET}/df1/seed44_seed45/unlearn_seed44.pth"
-    },
-    {
-      "name": "raw_unlearn_46",
-      "pipeline": "raw_unlearn",
-      "model_id": 46,
-      "source_seeds": [46],
-      "ckpt_path": "runs/unlearning_df1/unlearn/${DATASET}/df1/seed46_seed47/unlearn_seed46.pth"
-    },
-    {
-      "name": "raw_unlearn_48",
-      "pipeline": "raw_unlearn",
-      "model_id": 48,
-      "source_seeds": [48],
-      "ckpt_path": "runs/unlearning_df1/unlearn/${DATASET}/df1/seed48_seed49/unlearn_seed48.pth"
-    },
-    {
-      "name": "raw_unlearn_50",
-      "pipeline": "raw_unlearn",
-      "model_id": 50,
-      "source_seeds": [50],
-      "ckpt_path": "runs/unlearning_df1/unlearn/${DATASET}/df1/seed50_seed51/unlearn_seed50.pth"
-    }
+EOF
+  {
+    write_single_seed_shadows "raw_unlearn"
+    cat <<EOF
   ]
 }
 EOF
+  } >> "${plan}"
   echo "${plan}"
 }
 
@@ -289,37 +289,14 @@ write_plan_scratch_retrain() {
     "ckpt_path": "runs/unlearning_df1/retrain/${DATASET}/df1/${pair_dir}/scratch_retrain_seed${victim}.pth"
   },
   "shadows": [
-    {
-      "name": "scratch_retrain_44",
-      "pipeline": "scratch_retrain",
-      "model_id": 44,
-      "source_seeds": [44],
-      "ckpt_path": "runs/unlearning_df1/retrain/${DATASET}/df1/seed44_seed45/scratch_retrain_seed44.pth"
-    },
-    {
-      "name": "scratch_retrain_46",
-      "pipeline": "scratch_retrain",
-      "model_id": 46,
-      "source_seeds": [46],
-      "ckpt_path": "runs/unlearning_df1/retrain/${DATASET}/df1/seed46_seed47/scratch_retrain_seed46.pth"
-    },
-    {
-      "name": "scratch_retrain_48",
-      "pipeline": "scratch_retrain",
-      "model_id": 48,
-      "source_seeds": [48],
-      "ckpt_path": "runs/unlearning_df1/retrain/${DATASET}/df1/seed48_seed49/scratch_retrain_seed48.pth"
-    },
-    {
-      "name": "scratch_retrain_50",
-      "pipeline": "scratch_retrain",
-      "model_id": 50,
-      "source_seeds": [50],
-      "ckpt_path": "runs/unlearning_df1/retrain/${DATASET}/df1/seed50_seed51/scratch_retrain_seed50.pth"
-    }
+EOF
+  {
+    write_single_seed_shadows "scratch_retrain"
+    cat <<EOF
   ]
 }
 EOF
+  } >> "${plan}"
   echo "${plan}"
 }
 
